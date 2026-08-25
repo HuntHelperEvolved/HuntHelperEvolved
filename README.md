@@ -78,6 +78,41 @@ train is cleared" — that's what stops two people's clients both posting the sa
 message. Use "Send test message" to confirm the webhook works before your first
 real train.
 
+## 6. Publishing via GitHub (optional — replaces manual file sharing)
+
+Once you're happy it's working, this lets your other conductors get a normal
+Install/Update button in `/xlplugins` instead of you sending a zip every time.
+
+**The repo can stay Private while you're setting this up — it only needs to be
+Public once you're ready to actually share the URL with your friends.** Dalamud
+doesn't log in to fetch it, it's a plain public request, so a private repo will
+simply fail to load for anyone but you.
+
+1. Create a GitHub repository (e.g. `HuntTrainRelay`), and push this whole folder
+   to it — [GitHub Desktop](https://desktop.github.com) is the easiest way if you
+   don't want to use git from the command line.
+2. `repo.json` (in this folder) is the index file Dalamud reads. It already has
+   your name and repo URL filled in — the only things you'll update each release
+   are the version number and the three `DownloadLink` fields.
+3. Build in **Release** mode this time: `dotnet build -c Release`. Zip up
+   `HuntTrainRelay.dll` and `HuntTrainRelay.json` from `bin\Release\` — same two
+   files as always.
+4. On GitHub: Releases → Create a new release → tag it (e.g. `v1.0.0`) → attach
+   that zip → Publish. GitHub gives you a direct download URL for the attached
+   file afterward.
+5. Paste that URL into all three `DownloadLink...` fields in `repo.json`, commit,
+   and push.
+6. Flip the repo to Public (Settings → Danger Zone → Change visibility).
+7. Send your friends this URL to paste into Dalamud's Custom Plugin Repositories
+   (`/xlsettings` → Experimental tab):
+   `https://raw.githubusercontent.com/MusicManBowls/HuntTrainRelay/main/repo.json`
+
+**For future updates:** bump the `Version` in `HuntTrainRelay.csproj` and the
+`AssemblyVersion` in `repo.json` (they should match), rebuild, create a new
+GitHub Release with the new zip, update the three `DownloadLink` fields to the
+new release's URL, and push. Everyone with the repo added will see an Update
+button next time they open the plugin installer.
+
 ## Known limitations (by design, for now)
 
 - Only A-rank marks get a computed respawn window. B-rank and S-rank marks will
