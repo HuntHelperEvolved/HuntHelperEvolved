@@ -1557,7 +1557,11 @@ public sealed class Plugin : IDalamudPlugin
         for (var i = 0; i < marks.Count; i++)
         {
             var mark = marks[i];
-            ImGui.PushID($"{mark.NameId}_{mark.Instance}");
+            // World included, because the identity is. Two rows for the same
+            // mark on two worlds otherwise share an ImGui id, and ImGui cannot
+            // tell their buttons apart — clicking the second row's x did
+            // nothing to it.
+            ImGui.PushID($"{mark.NameId}_{mark.Instance}_{mark.WorldId}");
 
             var info = ExpansionData.Lookup(mark.NameId);
             var zone = info?.Location ?? (mark.IsCustom ? mark.ZoneName : "?");
