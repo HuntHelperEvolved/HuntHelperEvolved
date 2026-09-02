@@ -270,6 +270,12 @@ public class Configuration : IPluginConfiguration
     /// </summary>
     public Vector4 PlayerFacingColour { get; set; } = new(0.117647f, 0.5647f, 1f, 0.4f);
 
+    /// <summary>
+    /// Show the control bar pinned above the game's map window. It appears and
+    /// disappears with the map, so it costs nothing while the map is shut.
+    /// </summary>
+    public bool ShowMapControlBar { get; set; } = true;
+
     /// <summary>True when anything at all wants drawing on the map.</summary>
     public bool AnyMapOverlayEnabled =>
         ShowSpawnPointsOnMap || ShowPlayerCircleOnMap || ShowPlayerFacingOnMap;
