@@ -68,6 +68,7 @@ public sealed class Plugin : IDalamudPlugin
     private readonly HuntCounter _counter;
     private readonly WorldData _worldData;
     private readonly HuntMapOverlay _mapOverlay;
+    private readonly SsEventWatcher _ssEvent;
     private int _counterDcIndex;
     private int _counterWorldIndex;
 
@@ -272,7 +273,8 @@ public sealed class Plugin : IDalamudPlugin
             _log.Error(ex, "KamiToolKit failed to initialise; the map overlay will stay off.");
         }
 
-        _mapOverlay = new HuntMapOverlay(framework, clientState, objectTable, dataManager, addonLifecycle, gameGui, _log, _config, _detector, _pluginInterface);
+        _ssEvent = new SsEventWatcher(chatGui, clientState, _log, _detector);
+        _mapOverlay = new HuntMapOverlay(framework, clientState, objectTable, dataManager, addonLifecycle, gameGui, _log, _config, _detector, _ssEvent, _pluginInterface);
         _detector.OtherRankDetected += OnSightingDetected;
         _watcher.PersistRequested += PersistTrain;
         RestoreSavedTrain();
@@ -1232,6 +1234,13 @@ public sealed class Plugin : IDalamudPlugin
             _config.Save();
         }
 
+        var minion = _config.SsMinionColour;
+        if (ImGui.ColorEdit4("SS event minions", ref minion, flags))
+        {
+            _config.SsMinionColour = minion;
+            _config.Save();
+        }
+
         if (ImGui.Button("Reset dot colours"))
         {
             var defaults = new Configuration();
@@ -1239,6 +1248,7 @@ public sealed class Plugin : IDalamudPlugin
             _config.SpawnDotColourB = defaults.SpawnDotColourB;
             _config.SpawnDotColourA = defaults.SpawnDotColourA;
             _config.SpawnDotColourS = defaults.SpawnDotColourS;
+            _config.SsMinionColour = defaults.SsMinionColour;
             _config.Save();
         }
         ImGui.SameLine();
@@ -2475,6 +2485,15 @@ public sealed class Plugin : IDalamudPlugin
                 }
                 ImGui.TextDisabled("Hover a dot on the map for what's there. A live mark that isn't on a known spawn point — an SS, for instance — is drawn slightly larger at its real position.");
 
+                var ssEvent = _config.ShowSsEventOnMap;
+                if (ImGui.Checkbox("Mark SS event minion locations", ref ssEvent))
+                {
+                    _config.ShowSsEventOnMap = ssEvent;
+                    _config.Save();
+                }
+                ImGui.TextDisabled("From the \"minions of an extraordinarily powerful mark\" announcement until the mark spawns or you leave the zone. The spot is learned from the minions themselves — nothing in the game's data holds it.");
+                ImGui.TextDisabled(_ssEvent.Status);
+
                 ImGui.Spacing();
                 DrawDotColours();
                 ImGui.Spacing();
@@ -2686,6 +2705,7 @@ public sealed class Plugin : IDalamudPlugin
         _zoneReminder.Dispose();
         _counter.Dispose();
         _mapOverlay.Dispose();
+        _ssEvent.Dispose();
 
         try
         {

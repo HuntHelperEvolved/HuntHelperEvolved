@@ -39,6 +39,7 @@ public sealed unsafe class HuntMapOverlay : IDisposable
     private readonly IPluginLog _log;
     private readonly Configuration _config;
     private readonly MarkDetector _detector;
+    private readonly SsEventWatcher _ssEvent;
 
     private readonly IDalamudPluginInterface _pluginInterface;
     private Dictionary<string, string>? _dotPaths;
@@ -82,6 +83,7 @@ public sealed unsafe class HuntMapOverlay : IDisposable
         IPluginLog log,
         Configuration config,
         MarkDetector detector,
+        SsEventWatcher ssEvent,
         IDalamudPluginInterface pluginInterface)
     {
         _framework = framework;
@@ -93,6 +95,7 @@ public sealed unsafe class HuntMapOverlay : IDisposable
         _log = log;
         _config = config;
         _detector = detector;
+        _ssEvent = ssEvent;
         _pluginInterface = pluginInterface;
 
         try
@@ -148,6 +151,43 @@ public sealed unsafe class HuntMapOverlay : IDisposable
     /// which is what "runs off into the distance" needs to mean here.
     /// </summary>
     private const float ProjectedPathLength = 4096f;
+
+    /// <summary>
+    /// Marks where an SS event's minions were found.
+    ///
+    /// These outlive the minions themselves, which is the whole point — see
+    /// SsEventWatcher. Drawn a little larger again than an off-point mark,
+    /// because it is the one thing on this map that is not a live position but
+    /// a remembered one.
+    /// </summary>
+    private int DrawSsEventPins(uint mapId, Dictionary<string, string> dots)
+    {
+        if (_overlay == null || !_config.ShowSsEventOnMap) return 0;
+        if (!_ssEvent.Active || _ssEvent.Pins.Count == 0) return 0;
+
+        var placed = 0;
+
+        foreach (var pin in _ssEvent.Pins)
+        {
+            var world = MapCoordinates.ToWorld(
+                _dataManager, mapId, pin.MapPosition.X, pin.MapPosition.Y);
+
+            _overlay.AddMarker(new MapMarkerNode
+            {
+                AllowAnyMap = false,
+                MapId = mapId,
+                Position = world,
+                TexturePath = dots["ssminion"],
+                Size = new Vector2(_config.SpawnDotSize * 1.5f, _config.SpawnDotSize * 1.5f),
+                TextTooltip = $"SS event — {pin.Name} seen here\n"
+                              + $"{pin.MapPosition.X:F1}, {pin.MapPosition.Y:F1}\n"
+                              + "Stays until the mark spawns or you leave the zone.",
+            });
+            placed++;
+        }
+
+        return placed;
+    }
 
     /// <summary>
     /// Draws live marks that are not sitting on any known spawn point, at
@@ -378,7 +418,7 @@ public sealed unsafe class HuntMapOverlay : IDisposable
     private string DrawSignature() =>
         $"{_config.ShowSpawnPointsOnMap}{_config.ShowARankPoints}{_config.ShowBRankPoints}"
         + $"{_config.ShowSRankPoints}{_config.ShowPlayerCircleOnMap}"
-        + $"{_config.ShowPlayerFacingOnMap}{_config.SpawnDotSize}";
+        + $"{_config.ShowPlayerFacingOnMap}{_config.ShowSsEventOnMap}{_ssEvent.Pins.Count}{_config.SpawnDotSize}";
 
     /// <summary>
     /// The configured colours, as a string. Used both to name the files and to
@@ -389,6 +429,7 @@ public sealed unsafe class HuntMapOverlay : IDisposable
         + DotTextures.HexOf(_config.SpawnDotColourB) + "-"
         + DotTextures.HexOf(_config.SpawnDotColourA) + "-"
         + DotTextures.HexOf(_config.SpawnDotColourS) + "-"
+        + DotTextures.HexOf(_config.SsMinionColour) + "-"
         + DotTextures.HexOf(_config.PlayerCircleColour) + "t"
         + ((int)_config.PlayerCircleThickness).ToString() + "-"
         + DotTextures.HexOf(_config.PlayerFacingColour);
@@ -432,6 +473,8 @@ public sealed unsafe class HuntMapOverlay : IDisposable
                 Texture("a", "dot", _config.SpawnDotColourA,
                     c => DotTextures.Render(c)),
                 Texture("s", "dot", _config.SpawnDotColourS,
+                    c => DotTextures.Render(c)),
+                Texture("ssminion", "dot", _config.SsMinionColour,
                     c => DotTextures.Render(c)),
 
                 // Not dots: an outline stretched to the circle's width, and a
@@ -617,9 +660,13 @@ public sealed unsafe class HuntMapOverlay : IDisposable
 
             if (!_config.ShowSpawnPointsOnMap)
             {
-                Status = guides > 0
-                    ? $"{guides} guide markers shown; spawn points off."
-                    : "Player guides on, but nothing to draw yet.";
+                // An SS event is not a spawn point, so it is not switched off
+                // with them.
+                var pinsOnly = DrawSsEventPins(mapId, dots);
+
+                Status = "Spawn points off."
+                         + (pinsOnly > 0 ? $" {pinsOnly} SS event." : string.Empty)
+                         + (guides > 0 ? $" {guides} guide markers." : string.Empty);
                 return;
             }
 
@@ -741,9 +788,11 @@ public sealed unsafe class HuntMapOverlay : IDisposable
                 placed++;
             }
 
+            var pins = DrawSsEventPins(mapId, dots);
             var offPoint = DrawMarksOffSpawnPoints(mapId, dots, unclaimed);
 
             Status = $"{placed} spawn points shown, {occupied} with a mark on them."
+                     + (pins > 0 ? $" {pins} SS event." : string.Empty)
                      + (offPoint > 0 ? $" {offPoint} off-point." : string.Empty)
                      + (guides > 0 ? $" {guides} guide markers." : string.Empty);
         }
