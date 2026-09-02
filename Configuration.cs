@@ -1,7 +1,9 @@
 using Dalamud.Configuration;
 using Dalamud.Plugin;
+using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
+using System.IO;
 
 namespace HuntTrainRelay;
 
@@ -274,6 +276,59 @@ public class Configuration : IPluginConfiguration
 
     [NonSerialized]
     private IDalamudPluginInterface? _pluginInterface;
+
+    /// <summary>
+    /// Reads the config file directly, for when Dalamud's own loader hands back
+    /// something this assembly cannot use.
+    ///
+    /// GetPluginConfig resolves the "$type" line in the file —
+    /// "HuntTrainRelay.Configuration, HuntTrainRelay" — by assembly name. On a
+    /// dev-plugin reload the previous copy of this assembly is unloaded but not
+    /// yet collected, and it can win that lookup. The object handed back is then
+    /// the OLD assembly's Configuration: same name, same shape, different type
+    /// identity, so "as Configuration" yields null and the caller silently falls
+    /// back to a brand new one. Initialize() saves that immediately while seeding
+    /// the aetheryte blacklist, and every setting in the file is gone — webhook
+    /// URLs included. No exception is thrown anywhere along that path.
+    ///
+    /// Reading it here sidesteps the resolution entirely: the target type is
+    /// known statically, so the "$type" hints are not needed and are ignored.
+    ///
+    /// MetadataPropertyHandling deliberately stays at its default. Setting it to
+    /// Ignore would stop "$type" being treated as metadata, and inside a
+    /// dictionary it then becomes an ordinary key — CounterTallies is
+    /// Dictionary&lt;string, int&gt;, so it would fail converting "$type"'s value
+    /// to an int and take the whole load down.
+    /// </summary>
+    public static Configuration? LoadDirect(IDalamudPluginInterface pluginInterface)
+    {
+        try
+        {
+            var file = pluginInterface.ConfigFile;
+            if (file is null || !file.Exists)
+                return null;
+
+            return JsonConvert.DeserializeObject<Configuration>(
+                File.ReadAllText(file.FullName),
+                new JsonSerializerSettings
+                {
+                    TypeNameHandling = TypeNameHandling.None,
+
+                    // Replace, not Auto. Webhooks and AdditionalScouts are
+                    // declared with a one-entry initialiser, and under Auto
+                    // Newtonsoft keeps that entry and appends the file's rows
+                    // after it — so a config would come back with a blank
+                    // webhook at index 0 and everything shifted down by one,
+                    // gaining another blank on every load.
+                    ObjectCreationHandling = ObjectCreationHandling.Replace,
+                });
+        }
+        catch
+        {
+            // Caller falls back to defaults, which is the old behaviour.
+            return null;
+        }
+    }
 
     public void Initialize(IDalamudPluginInterface pluginInterface)
     {
