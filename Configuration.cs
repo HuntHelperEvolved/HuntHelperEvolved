@@ -238,6 +238,15 @@ public class Configuration : IPluginConfiguration
     public Vector4 SpawnDotColourS { get; set; } = new(0f, 0.827f, 0f, 1f);
 
     /// <summary>
+    /// Mark where an SS event's minions were found, from the announcement until
+    /// the mark appears or you leave the zone. See SsEventWatcher.
+    /// </summary>
+    public bool ShowSsEventOnMap { get; set; } = true;
+
+    /// <summary>Orange by default, so it is not mistaken for a rank's dot.</summary>
+    public Vector4 SsMinionColour { get; set; } = new(1f, 0.45f, 0f, 1f);
+
+    /// <summary>
     /// Draw the detection ring around your character. Independent of the spawn
     /// points and of the facing guide — any of the three can be on by itself.
     ///
@@ -278,7 +287,8 @@ public class Configuration : IPluginConfiguration
 
     /// <summary>True when anything at all wants drawing on the map.</summary>
     public bool AnyMapOverlayEnabled =>
-        ShowSpawnPointsOnMap || ShowPlayerCircleOnMap || ShowPlayerFacingOnMap;
+        ShowSpawnPointsOnMap || ShowPlayerCircleOnMap || ShowPlayerFacingOnMap
+        || ShowSsEventOnMap;
 
     /// <summary>How close (in map units) a mark must be to count as "at" a spawn point.</summary>
     public float SpawnPointMatchRadius { get; set; } = 2.5f;
