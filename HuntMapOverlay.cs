@@ -365,54 +365,49 @@ public sealed unsafe class HuntMapOverlay : IDisposable
             var dir = Path.Combine(_pluginInterface.GetPluginConfigDirectory(), "dots");
             Directory.CreateDirectory(dir);
 
-            var colours = new Dictionary<string, System.Numerics.Vector4>
+            // Kind and revision are in the file name alongside the colour, and
+            // both matter. Naming these by colour alone was a real bug: when the
+            // ring stopped being a filled dot and became an outline, and the
+            // guide became a stretched block, the names did not move with them —
+            // so the existence check kept handing back the old dots. The ring
+            // came out solid and the path came out a lens, because that is what
+            // a dot looks like stretched across a long quad.
+            //
+            // Bump Revision when what a kind DRAWS changes at the same colour.
+            var wanted = new List<(string Key, string Name, Func<byte[]> Render)>
             {
-                ["empty"] = _config.SpawnDotColourEmpty,
-                ["b"] = _config.SpawnDotColourB,
-                ["a"] = _config.SpawnDotColourA,
-                ["s"] = _config.SpawnDotColourS,
-            };
+                Texture("empty", "dot", _config.SpawnDotColourEmpty,
+                    c => DotTextures.Render(c)),
+                Texture("b", "dot", _config.SpawnDotColourB,
+                    c => DotTextures.Render(c)),
+                Texture("a", "dot", _config.SpawnDotColourA,
+                    c => DotTextures.Render(c)),
+                Texture("s", "dot", _config.SpawnDotColourS,
+                    c => DotTextures.Render(c)),
 
-            // The guides are not dots: a ring outline stretched to the circle's
-            // width, and a flat block of colour stretched into the path band.
-            var shapes = new Dictionary<string, Func<byte[]>>
-            {
-                ["circle"] = () => DotTextures.RenderRing(_config.PlayerCircleColour),
-                ["facing"] = () => DotTextures.RenderSolid(_config.PlayerFacingColour),
+                // Not dots: an outline stretched to the circle's width, and a
+                // flat block of colour stretched into the path band.
+                Texture("circle", "ring", _config.PlayerCircleColour,
+                    c => DotTextures.RenderRing(c)),
+                Texture("facing", "band", _config.PlayerFacingColour,
+                    c => DotTextures.RenderSolid(c)),
             };
 
             var paths = new Dictionary<string, string>();
-            var wanted = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var keep = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-            foreach (var (state, colour) in colours)
+            foreach (var (key, name, render) in wanted)
             {
-                var name = $"{state}-{DotTextures.HexOf(colour)}.png";
-                var path = Path.Combine(dir, name);
-
-                if (!File.Exists(path))
-                    File.WriteAllBytes(path, DotTextures.Render(colour));
-
-                paths[state] = path;
-                wanted.Add(name);
-            }
-
-            foreach (var (state, render) in shapes)
-            {
-                var colour = state == "circle"
-                    ? _config.PlayerCircleColour
-                    : _config.PlayerFacingColour;
-
-                var name = $"{state}-{DotTextures.HexOf(colour)}.png";
                 var path = Path.Combine(dir, name);
 
                 if (!File.Exists(path))
                     File.WriteAllBytes(path, render());
 
-                paths[state] = path;
-                wanted.Add(name);
+                paths[key] = path;
+                keep.Add(name);
             }
 
-            PruneStaleDots(dir, wanted);
+            PruneStaleDots(dir, keep);
 
             _dotPaths = paths;
             _dotSignature = signature;
@@ -420,10 +415,22 @@ public sealed unsafe class HuntMapOverlay : IDisposable
         }
         catch (Exception ex)
         {
-            _log.Error(ex, "Could not write the spawn point dot images.");
+            _log.Error(ex, "Could not write the spawn point map images.");
             return null;
         }
     }
+
+    /// <summary>
+    /// Bumped when an existing kind's drawing changes but its name would not,
+    /// so the files on disk are replaced rather than reused.
+    /// </summary>
+    private const int TextureRevision = 2;
+
+    private static (string Key, string Name, Func<byte[]> Render) Texture(
+        string key, string kind, System.Numerics.Vector4 colour, Func<System.Numerics.Vector4, byte[]> render) =>
+        (key,
+         $"{key}-{kind}{TextureRevision}-{DotTextures.HexOf(colour)}.png",
+         () => render(colour));
 
     /// <summary>
     /// Removes dot images the current colours no longer use. Best effort: a
