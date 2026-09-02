@@ -23,6 +23,11 @@ namespace HuntTrainRelay;
 /// </summary>
 public static class DotTextures
 {
+    /// <summary>
+    /// Default tile size, which is what a spawn point dot is drawn at. The
+    /// player's ring and its fill ask for something much larger, since they are
+    /// stretched to the circle's width on screen rather than shown at icon size.
+    /// </summary>
     public const int Size = 32;
 
     /// <summary>
@@ -38,24 +43,24 @@ public static class DotTextures
     /// whole tile and only the alpha channel falls off at the rim, which is
     /// how the original images were built.
     /// </summary>
-    public static byte[] Render(Vector4 colour)
+    public static byte[] Render(Vector4 colour, int size = Size)
     {
         var r = ToByte(colour.X);
         var g = ToByte(colour.Y);
         var b = ToByte(colour.Z);
         var a = Math.Clamp(colour.W, 0f, 1f);
 
-        var pixels = new byte[Size * Size * 4];
+        var pixels = new byte[size * size * 4];
 
-        // Radius 16 about the tile's centre, so the circle spans the full 32
-        // pixels edge to edge and leaves the corners empty.
-        const float centre = (Size - 1) / 2f;
-        const float radius = Size / 2f;
-        const float radiusSq = radius * radius;
+        // Radius half the tile, about its centre, so the circle spans the full
+        // width edge to edge and leaves the corners empty.
+        var centre = (size - 1) / 2f;
+        var radius = size / 2f;
+        var radiusSq = radius * radius;
 
-        for (var y = 0; y < Size; y++)
+        for (var y = 0; y < size; y++)
         {
-            for (var x = 0; x < Size; x++)
+            for (var x = 0; x < size; x++)
             {
                 var inside = 0;
 
@@ -78,7 +83,7 @@ public static class DotTextures
                     continue;
 
                 var coverage = inside / (float)(Samples * Samples);
-                var offset = ((y * Size) + x) * 4;
+                var offset = ((y * size) + x) * 4;
                 pixels[offset + 0] = r;
                 pixels[offset + 1] = g;
                 pixels[offset + 2] = b;
@@ -86,7 +91,7 @@ public static class DotTextures
             }
         }
 
-        return EncodePng(Size, Size, pixels);
+        return EncodePng(size, size, pixels);
     }
 
     /// <summary>
