@@ -51,6 +51,22 @@ public static class SsMinionSpawns
         [1192] = [new(11.5f, 18.1f), new(27.3f, 7.1f), new(19.7f, 30.7f), new(28.5f, 36.5f)],  // Living Memory
     };
 
+    /// <summary>
+    /// Where the mark itself appears once all four minions are down, per zone.
+    ///
+    /// EMPTY for now — the minion spots came from Faloop and these did not, and
+    /// a star pointing at the wrong end of a zone is worse than no star. Add a
+    /// zone here and it is drawn; leave it out and only the minion spots are.
+    /// </summary>
+    public static readonly Dictionary<uint, Vector2> MarkSpawnByTerritory = new()
+    {
+        // [814] = new(00.0f, 00.0f),   // Kholusia — Forgiven Rebellion
+    };
+
+    /// <summary>Where the mark will appear, if that is known for this zone.</summary>
+    public static Vector2? MarkSpawnFor(uint territoryId) =>
+        MarkSpawnByTerritory.TryGetValue(territoryId, out var point) ? point : null;
+
     public static Vector2[] For(uint territoryId) =>
         ByTerritory.TryGetValue(territoryId, out var points) ? points : [];
 
