@@ -191,17 +191,11 @@ public sealed class MarkDetector
         var instance = GetCurrentInstance();
         var now = DateTime.UtcNow;
 
-        // A mark that's disappeared from somewhere we're standing has almost
-        // certainly been killed — drop it so its dot goes back to grey.
-        var player = _objectTable.LocalPlayer;
-        if (player != null)
-        {
-            var playerMapPos = MapCoordinates.FromWorld(_dataManager, mapId, player.Position.X, player.Position.Z);
-            // One scan interval plus a little slack: any shorter and a mark
-            // simply missed by one pass would be wrongly declared dead.
-            var stale = Math.Max(2, _config.PollIntervalSeconds) + 1;
-            ExpireNearbySightings(playerMapPos, territoryId, instance, stale);
-        }
+        // A mark we have stopped seeing is no longer there to show. One scan
+        // interval plus a little slack: any shorter and a mark simply missed by
+        // one pass would be wrongly dropped.
+        var stale = Math.Max(2, _config.PollIntervalSeconds) + 1;
+        ExpireStaleSightings(territoryId, instance, stale);
 
         foreach (var obj in _objectTable)
         {
@@ -334,22 +328,25 @@ public sealed class MarkDetector
     /// Drops sightings for marks that have gone from a spot we're still
     /// standing next to — almost always because they were just killed.
     ///
-    /// Distance matters here: a sighting going stale while we're far away just
-    /// means we flew off, and that's exactly the scouting information we want
-    /// to keep. Only a mark missing from somewhere we can currently see counts
-    /// as gone.
+    /// A sighting says a mark is there NOW. Anything not seen for a scan or two
+    /// is not visible any more — killed, despawned, or simply left behind — and
+    /// the dot goes out.
+    ///
+    /// This used to expire only marks close enough that we ought to still be
+    /// able to see them, keeping the rest as scouting information. That made a
+    /// dot lit once stay lit for the session however far away it was, which
+    /// reads as a mark that is still up. The train list is where a scouted mark
+    /// is remembered; this store is only what the map is showing, and the map
+    /// should show what is actually there.
     /// </summary>
-    public void ExpireNearbySightings(Vector2 playerMapPos, uint territoryId, uint instance, double staleSeconds)
+    public void ExpireStaleSightings(uint territoryId, uint instance, double staleSeconds)
     {
-        const float visibleMapUnits = 3f; // roughly the game's render range
-
         var now = DateTime.UtcNow;
         foreach (var (key, sighting) in _otherRanks.ToList())
         {
             if (sighting.TerritoryId != territoryId) continue;
             if (sighting.Instance != instance) continue;
             if ((now - sighting.LastSeenUtc).TotalSeconds < staleSeconds) continue;
-            if (Vector2.Distance(sighting.MapPosition, playerMapPos) > visibleMapUnits) continue;
 
             _otherRanks.Remove(key);
         }
