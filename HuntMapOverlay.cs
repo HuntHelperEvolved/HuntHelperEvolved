@@ -160,17 +160,25 @@ public sealed unsafe class HuntMapOverlay : IDisposable
     /// because it is the one thing on this map that is not a live position but
     /// a remembered one.
     /// </summary>
-    private int DrawSsEventPins(uint mapId, Dictionary<string, string> dots)
+    private int DrawSsEventPins(uint territory, uint mapId, Dictionary<string, string> dots)
     {
         if (_overlay == null || !_config.ShowSsEventOnMap) return 0;
-        if (!_ssEvent.Active || _ssEvent.Pins.Count == 0) return 0;
+        if (!_ssEvent.Active) return 0;
+
+        // The four fixed spots when this zone's are on file, which is the whole
+        // set whether or not any have been visited. Otherwise fall back to the
+        // ones actually found, so the feature still says something in a zone
+        // that has not been filled in yet.
+        var known = SsMinionSpawns.For(territory);
+        var spots = known.Length > 0
+            ? known.Select(p => (Position: p, Label: "Minion spawn point")).ToList()
+            : _ssEvent.Pins.Select(p => (Position: p.MapPosition, Label: $"{p.Name} seen here")).ToList();
 
         var placed = 0;
 
-        foreach (var pin in _ssEvent.Pins)
+        foreach (var (position, label) in spots)
         {
-            var world = MapCoordinates.ToWorld(
-                _dataManager, mapId, pin.MapPosition.X, pin.MapPosition.Y);
+            var world = MapCoordinates.ToWorld(_dataManager, mapId, position.X, position.Y);
 
             _overlay.AddMarker(new MapMarkerNode
             {
@@ -179,8 +187,8 @@ public sealed unsafe class HuntMapOverlay : IDisposable
                 Position = world,
                 TexturePath = dots["ssminion"],
                 Size = new Vector2(_config.SpawnDotSize * 1.5f, _config.SpawnDotSize * 1.5f),
-                TextTooltip = $"SS event — {pin.Name} seen here\n"
-                              + $"{pin.MapPosition.X:F1}, {pin.MapPosition.Y:F1}\n"
+                TextTooltip = $"SS event — {label}\n"
+                              + $"{position.X:F1}, {position.Y:F1}\n"
                               + "Stays until the mark spawns or you leave the zone.",
             });
             placed++;
@@ -224,12 +232,16 @@ public sealed unsafe class HuntMapOverlay : IDisposable
             };
             if (!wanted) continue;
 
-            var dot = sighting.Rank switch
-            {
-                HuntRank.S => "s",
-                HuntRank.A => "a",
-                _ => "b",
-            };
+            // Minions come through as S ranks, so without this a live one would
+            // be an ordinary green dot and read as the S itself.
+            var dot = SsEventWatcher.IsMinion(sighting.NameId)
+                ? "ssminion"
+                : sighting.Rank switch
+                {
+                    HuntRank.S => "s",
+                    HuntRank.A => "a",
+                    _ => "b",
+                };
 
             var world = MapCoordinates.ToWorld(
                 _dataManager, mapId, sighting.MapPosition.X, sighting.MapPosition.Y);
@@ -418,7 +430,7 @@ public sealed unsafe class HuntMapOverlay : IDisposable
     private string DrawSignature() =>
         $"{_config.ShowSpawnPointsOnMap}{_config.ShowARankPoints}{_config.ShowBRankPoints}"
         + $"{_config.ShowSRankPoints}{_config.ShowPlayerCircleOnMap}"
-        + $"{_config.ShowPlayerFacingOnMap}{_config.ShowSsEventOnMap}{_ssEvent.Pins.Count}{_config.SpawnDotSize}";
+        + $"{_config.ShowPlayerFacingOnMap}{_config.ShowSsEventOnMap}{_ssEvent.Pins.Count}{_ssEvent.Active}{_config.SpawnDotSize}";
 
     /// <summary>
     /// The configured colours, as a string. Used both to name the files and to
@@ -662,7 +674,7 @@ public sealed unsafe class HuntMapOverlay : IDisposable
             {
                 // An SS event is not a spawn point, so it is not switched off
                 // with them.
-                var pinsOnly = DrawSsEventPins(mapId, dots);
+                var pinsOnly = DrawSsEventPins(territory, mapId, dots);
 
                 Status = "Spawn points off."
                          + (pinsOnly > 0 ? $" {pinsOnly} SS event." : string.Empty)
@@ -788,7 +800,7 @@ public sealed unsafe class HuntMapOverlay : IDisposable
                 placed++;
             }
 
-            var pins = DrawSsEventPins(mapId, dots);
+            var pins = DrawSsEventPins(territory, mapId, dots);
             var offPoint = DrawMarksOffSpawnPoints(mapId, dots, unclaimed);
 
             Status = $"{placed} spawn points shown, {occupied} with a mark on them."

@@ -41,9 +41,13 @@ public sealed class SsEventWatcher : IDisposable
     /// </summary>
     private static readonly Dictionary<uint, uint> MinionToMark = new()
     {
-        [8916] = 8915,   // Forgiven Gossip  -> Forgiven Rebellion
-        [10616] = 10615, // Ker Shroud       -> Ker
+        [8916] = 8915,    // Forgiven Gossip     -> Forgiven Rebellion   (ShB)
+        [10616] = 10615,  // Ker Shroud          -> Ker                  (EW)
+        [13407] = 13406,  // crystal incarnation -> arch aethereater     (DT)
     };
+
+    /// <summary>Whether a mark id is one of the SS minions.</summary>
+    public static bool IsMinion(uint nameId) => MinionToMark.ContainsKey(nameId);
 
     /// <summary>
     /// Matched against the announcement. A fragment rather than the whole line,
@@ -95,8 +99,9 @@ public sealed class SsEventWatcher : IDisposable
 
     public string Status =>
         !Active ? "No SS event."
-        : _pins.Count > 0 ? $"SS event up, {_pins.Count} minion location(s) marked."
-        : "SS event up — minions not found yet.";
+        : SsMinionSpawns.Known(Territory) ? "SS event up; this zone's spots are known."
+        : _pins.Count > 0 ? $"SS event up, {_pins.Count} minion location(s) found."
+        : "SS event up — minions not found yet, and this zone's spots aren't on file.";
 
     private void OnChatMessage(IChatMessage message)
     {
