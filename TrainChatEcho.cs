@@ -69,10 +69,7 @@ public static class TrainChatEcho
 
         var colour = sighting.Rank switch
         {
-            // SS shares the S colour rather than falling through. Without this
-            // it landed on the B-rank blue below, which is the wrong end of the
-            // scale entirely for the rarest thing on the map.
-            HuntRank.SS or HuntRank.S => GoldColour,
+            HuntRank.S => GoldColour,
             HuntRank.A => ARankColour,
             _ => (ushort)34, // blue, matching the B-rank dot
         };
