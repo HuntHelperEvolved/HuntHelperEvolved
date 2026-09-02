@@ -311,6 +311,21 @@ public sealed unsafe class HuntMapOverlay : IDisposable
     }
 
     /// <summary>
+    /// Whether marks happen here at all.
+    ///
+    /// Judged by whether the zone is in either of our own tables — the spawn
+    /// points, which cover every hunt zone from ARR to Dawntrail, or the SS
+    /// minion spots. A city, a dungeon or a housing ward is in neither.
+    ///
+    /// Deliberately not read from the game's TerritoryIntendedUse, which would
+    /// be the tidier test but means guessing at what its values stand for. A
+    /// zone missing from both tables is treated as none of ours, which is also
+    /// the honest answer: there would be nothing to draw in it either way.
+    /// </summary>
+    private static bool IsHuntZone(uint territoryId) =>
+        SpawnPointData.For(territoryId).Length > 0 || SsMinionSpawns.Known(territoryId);
+
+    /// <summary>
     /// The map's current marker scaling factor, which WorldSizedMarker needs to
     /// undo the constant-size counter-scaling every marker is given.
     /// </summary>
@@ -623,6 +638,23 @@ public sealed unsafe class HuntMapOverlay : IDisposable
             {
                 _lastTerritory = territory;
                 _needsRefresh = true;
+            }
+
+            // Nothing here draws anything worth seeing in a city or an
+            // instance. The ring and the path are the reason this matters:
+            // they follow the player rather than the zone's contents, so
+            // without a check they would happily sweep across Limsa.
+            if (!IsHuntZone(territory))
+            {
+                if (_enabled)
+                {
+                    _overlay.RemoveAllMarkers();
+                    _overlay.Disable();
+                    _enabled = false;
+                }
+
+                Status = "Not a hunt zone.";
+                return;
             }
 
             // Re-place when the detected marks change, so a dot lights up as
