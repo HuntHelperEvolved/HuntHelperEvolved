@@ -41,6 +41,10 @@ public sealed unsafe class HuntMapOverlay : IDisposable
     private readonly IDalamudPluginInterface _pluginInterface;
     private Dictionary<string, string>? _dotPaths;
 
+    // The colours the files on disk were drawn in. A change means new files,
+    // new paths, and markers that have to be re-placed to pick them up.
+    private string _dotSignature = string.Empty;
+
     private MapOverlayController? _overlay;
     private bool _enabled;
     private bool _needsRefresh = true;
@@ -109,44 +113,99 @@ public sealed unsafe class HuntMapOverlay : IDisposable
     }
 
     /// <summary>
-    /// Writes the embedded dot images into the plugin's config folder once, and
-    /// returns their paths. KamiToolKit takes a file path, so they need to
-    /// exist on disk — but shipping them as loose files in the release risks
-    /// them going missing, so they travel inside the DLL instead.
+    /// The configured colours, as a string. Used both to name the files and to
+    /// notice when they need drawing again.
+    /// </summary>
+    private string DotSignature() =>
+        DotTextures.HexOf(_config.SpawnDotColourEmpty) + "-"
+        + DotTextures.HexOf(_config.SpawnDotColourB) + "-"
+        + DotTextures.HexOf(_config.SpawnDotColourA) + "-"
+        + DotTextures.HexOf(_config.SpawnDotColourS);
+
+    /// <summary>
+    /// Draws the dots in the configured colours and writes them to the
+    /// plugin's config folder, returning their paths. KamiToolKit takes a file
+    /// path, so they have to exist on disk.
+    ///
+    /// The colour is part of the file name on purpose. Textures are cached by
+    /// path, so rewriting the same name with new pixels would keep handing back
+    /// the old image; a new colour has to mean a new path to be picked up.
+    /// Files for colours no longer in use are pruned as we go, since otherwise
+    /// every colour ever tried would stay in that folder.
     /// </summary>
     private Dictionary<string, string>? EnsureDotFiles()
     {
-        if (_dotPaths != null) return _dotPaths;
+        var signature = DotSignature();
+        if (_dotPaths != null && _dotSignature == signature) return _dotPaths;
 
         try
         {
             var dir = Path.Combine(_pluginInterface.GetPluginConfigDirectory(), "dots");
             Directory.CreateDirectory(dir);
 
-            var sources = new Dictionary<string, string>
+            var colours = new Dictionary<string, System.Numerics.Vector4>
             {
-                ["grey"] = DotTextures.Grey,
-                ["blue"] = DotTextures.Blue,
-                ["red"] = DotTextures.Red,
-                ["green"] = DotTextures.Green,
+                ["empty"] = _config.SpawnDotColourEmpty,
+                ["b"] = _config.SpawnDotColourB,
+                ["a"] = _config.SpawnDotColourA,
+                ["s"] = _config.SpawnDotColourS,
             };
 
             var paths = new Dictionary<string, string>();
-            foreach (var (name, base64) in sources)
+            var wanted = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var (state, colour) in colours)
             {
-                var path = Path.Combine(dir, $"{name}.png");
+                var name = $"{state}-{DotTextures.HexOf(colour)}.png";
+                var path = Path.Combine(dir, name);
+
                 if (!File.Exists(path))
-                    File.WriteAllBytes(path, Convert.FromBase64String(base64));
-                paths[name] = path;
+                    File.WriteAllBytes(path, DotTextures.Render(colour));
+
+                paths[state] = path;
+                wanted.Add(name);
             }
 
+            PruneStaleDots(dir, wanted);
+
             _dotPaths = paths;
+            _dotSignature = signature;
             return _dotPaths;
         }
         catch (Exception ex)
         {
             _log.Error(ex, "Could not write the spawn point dot images.");
             return null;
+        }
+    }
+
+    /// <summary>
+    /// Removes dot images the current colours no longer use. Best effort: a
+    /// file still held open by the texture cache simply stays, and is caught
+    /// the next time round.
+    /// </summary>
+    private void PruneStaleDots(string dir, HashSet<string> keep)
+    {
+        try
+        {
+            foreach (var file in Directory.EnumerateFiles(dir, "*.png"))
+            {
+                if (keep.Contains(Path.GetFileName(file)))
+                    continue;
+
+                try
+                {
+                    File.Delete(file);
+                }
+                catch
+                {
+                    // In use, or gone already. Neither is worth a log line.
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _log.Warning(ex, "Could not tidy up old spawn point dot images.");
         }
     }
 
@@ -208,6 +267,12 @@ public sealed unsafe class HuntMapOverlay : IDisposable
                 _lastMarkSignature = markSignature;
                 _needsRefresh = true;
             }
+
+            // Recolouring changes which file each marker points at, so the
+            // markers have to be rebuilt for it to show. EnsureDotFiles below
+            // redraws them and updates the signature on this same pass.
+            if (DotSignature() != _dotSignature)
+                _needsRefresh = true;
 
             if (!_needsRefresh) return;
             _needsRefresh = false;
@@ -313,16 +378,16 @@ public sealed unsafe class HuntMapOverlay : IDisposable
                 {
                     dot = mark.Rank switch
                     {
-                        HuntRank.S => "green",
-                        HuntRank.A => "red",
-                        _ => "blue",
+                        HuntRank.S => "s",
+                        HuntRank.A => "a",
+                        _ => "b",
                     };
                     tooltip = $"{mark.Name}  ({mark.Rank} rank)\n{point.X:F1}, {point.Y:F1}";
                     occupied++;
                 }
                 else
                 {
-                    dot = "grey";
+                    dot = "empty";
                     var canSpawn = new List<string>();
                     if (point.Ranks.HasFlag(SpawnRanks.B)) canSpawn.Add("B");
                     if (point.Ranks.HasFlag(SpawnRanks.A)) canSpawn.Add("A");

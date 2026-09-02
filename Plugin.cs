@@ -1117,6 +1117,61 @@ public sealed class Plugin : IDalamudPlugin
     /// A small always-available window for the map dot filters, so they can be
     /// flipped mid-scout without opening Settings.
     /// </summary>
+    /// <summary>
+    /// Colour pickers for each state a spawn point can be in.
+    ///
+    /// Alpha is editable too. A zone with sixty ARR spawn points is a wall of
+    /// dots at full opacity, and turning the empty ones down is what makes the
+    /// occupied ones stand out.
+    /// </summary>
+    private void DrawDotColours()
+    {
+        ImGui.TextWrapped("Dot colours");
+
+        const ImGuiColorEditFlags flags =
+            ImGuiColorEditFlags.AlphaBar | ImGuiColorEditFlags.AlphaPreviewHalf;
+
+        var empty = _config.SpawnDotColourEmpty;
+        if (ImGui.ColorEdit4("Empty point", ref empty, flags))
+        {
+            _config.SpawnDotColourEmpty = empty;
+            _config.Save();
+        }
+
+        var b = _config.SpawnDotColourB;
+        if (ImGui.ColorEdit4("B rank on it", ref b, flags))
+        {
+            _config.SpawnDotColourB = b;
+            _config.Save();
+        }
+
+        var a = _config.SpawnDotColourA;
+        if (ImGui.ColorEdit4("A rank on it", ref a, flags))
+        {
+            _config.SpawnDotColourA = a;
+            _config.Save();
+        }
+
+        var sRank = _config.SpawnDotColourS;
+        if (ImGui.ColorEdit4("S rank on it", ref sRank, flags))
+        {
+            _config.SpawnDotColourS = sRank;
+            _config.Save();
+        }
+
+        if (ImGui.Button("Reset dot colours"))
+        {
+            var defaults = new Configuration();
+            _config.SpawnDotColourEmpty = defaults.SpawnDotColourEmpty;
+            _config.SpawnDotColourB = defaults.SpawnDotColourB;
+            _config.SpawnDotColourA = defaults.SpawnDotColourA;
+            _config.SpawnDotColourS = defaults.SpawnDotColourS;
+            _config.Save();
+        }
+        ImGui.SameLine();
+        ImGui.TextDisabled("Back to the original grey/blue/red/green.");
+    }
+
     private void DrawMapPopout()
     {
         if (!_mapPopoutVisible) return;
@@ -2266,7 +2321,11 @@ public sealed class Plugin : IDalamudPlugin
                     _config.ShowSRankPoints = showS;
                     _config.Save();
                 }
-                ImGui.TextDisabled("Grey = nothing there, blue = B, red = A, green = S. Hover a dot for its name.");
+                ImGui.TextDisabled("Hover a dot on the map for what's there.");
+
+                ImGui.Spacing();
+                DrawDotColours();
+                ImGui.Spacing();
 
                 var dotSize = _config.SpawnDotSize;
                 ImGui.SetNextItemWidth(90);

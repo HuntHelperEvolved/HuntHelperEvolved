@@ -1,25 +1,185 @@
+using System;
+using System.Buffers.Binary;
+using System.IO;
+using System.IO.Compression;
+using System.Numerics;
+
 namespace HuntTrainRelay;
 
 /// <summary>
-/// The spawn point dot images, embedded as base64 PNGs and written to the
-/// plugin's own config folder on first use.
+/// Draws the spawn point dots, as 32x32 RGBA PNGs written to the plugin's own
+/// config folder on first use.
 ///
-/// Embedded rather than shipped as loose files so a release stays two files
-/// (dll + manifest) — an image that fails to get copied would break the map
-/// silently, and this removes that possibility entirely. They're 32x32, which
-/// matches KamiToolKit's default marker size.
+/// They used to be four fixed base64 blobs — grey, blue, red and green — baked
+/// into this file. They're generated now because the colours are configurable,
+/// and a hardcoded image can't be recoloured without decoding it first. The
+/// generated shape matches what the blobs drew: a circle inscribed in the tile,
+/// solid through the middle, antialiased at the rim, with the corners fully
+/// transparent.
+///
+/// Written to disk rather than handed over as a texture because KamiToolKit's
+/// MapMarkerInfo picks its image by file path, and generating them means a
+/// release still stays two files (dll + manifest) with nothing to go missing.
 /// </summary>
 public static class DotTextures
 {
-    public const string Grey =
-        "iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAEfUlEQVR42sVXTWhcVRT+znl33s+0GVLsQkWrVaS03bU70fhXFanbCSq4FkUsKRQpSfvygjObEFw14M5FBXmDW0GthagLQahiTBYFW7WmFhEEM8ncyb33HBfOlNimJcVk/Hbvvsf9zvvu+bkf4TbI89wUReEBYGZmJut0OiOq+oyIHFbVBwDUABAR/QXglyiKLgA475ybK4qifeMeG4E2WlRVwj87a57nd0dR9BoRvQxgnzEGIgIRgaqi9x2YGcyMEAJE5Eci+tBa+16j0bgCgPI8p6Io5EYu3uCvmYiUiHRqauqYMWY+TdNJItrnvVdrbXDOifdeRURFRL336pyT3jtl5oeTJBnPsuz7qamptwGgKArJ85xvq0Ce51wUhRw/fnz3rl273k+S5Ki1FiLie8EyNgFVVSIKRGSyLIO19vzy8vKr09PTV+v1etRqtcJNCvTJx8fH7x8eHp6L4/hou932IQQFYDZL3jsSAmBERFdWVlwcx0/XarUvJyYmHmm1WmG9EtQn7z0PM/NXSZLs73Q6jogq2AKIiM+yzDjnfrLWPtpsNq/1c4IB4ODBg1QUhRDRB2mabik5ADCz6XQ6Po7jB+M4Lsuy5MXFRQJAUVmW0ejoaMjz/M0dO3a8tbq6uqXk646FnXNu586de5eWlrqzs7NflGUZkapSs9nc7b2/yMy1EALu5LzvEMrMqqpdZt536tSpX5mIdG1t7fUsy4ZDCLKN5ABAIiJZlmUicgyA0tjYWDY0NPRDHMd7vfe6zQFAVdUYA+/9NWvtflOr1R43xjzknFMi2lbyfomGECSO43sAPMsAnjPGAIBgcFBmViJ6nonosIj0m8egQCEEAnCIAezpDZaBBiAiAHAfA6ipKgYrAEhVoapDjP8ZDGCZiK7P9kElIRGBiNoM4Aozg4h0wFUAAEsM4AIzQwcrgUZRpKr6LavqZ9vc/29VBQTgU26323POuZ8rlcpAmpGqahRF7Jz7PU3TT3hmZmYFwNk4jmkQARBRSJIEIlKePHnyTwZAzrkz1to292blNicfWWu7RPQuAOKyLLnZbP4WQijSNGUAfhvl91mWRd776aIoLpVlyQSAyrLkhYUFJaLP0zR9cnV11TOz2UpyEfHVatVYa79R1ccWFxdDq9USBqALCws6OTmplUrlpbW1tUtZlpneVXzLyJMkMc65q865elEUawcOHFAAGgHA3NycAuDTp0+3R0ZGPgbwYpqmdznnHAD+D5NSe7JXQghL3W73hUajcbFer0ezs7NykzHpm4YTJ07cW6vVziZJ8lSn04GqelWNNhvIBsbk6263+0qj0bjcvwRvaM36pmF6evqq9/6ItXaCmZer1aoxxlCvQkKvXNdXi/bWAgAxxlC1WjXM3LHWvjM/P/9Eo9G4XK/X/0V+S3Pac0kKQMfHx/cmSfIGgNEoivasM6A3mdMoiiAiCCEsEdFH3vszRVFcXO+8NuWON7LneZ4PR1F0BMARAIdEZA+Aod41b5mIrgD4DsC5EMK5oij+AICe5Dcqdh1/A/qdju1jJQJ6AAAAAElFTkSuQmCC";
+    public const int Size = 32;
 
-    public const string Blue =
-        "iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAEI0lEQVR42sWXTYiVVRjHf895z/2cO9c7jplWOthGdKkEEhZKlgOtHSpo0SoSwZQRCYw7lzapmBC4aBfkIkZa24cZgosgsBYpYTTl+C2O43hn7td7znlavHN1zDHF5t7+y/c95/n/z+F5nvP8hX9D+QdLZbMD4NB4DrP4ZVRfQcN6CAOoFlEVJLqDyDgSnQFOkp45xY6npx+IMQ9k3q+qyXcR5cD1ZdjcuyBvIrKaVAaCB+9Aw2wUA1EEYsG3IIQ/MOZLXOMzhvsvggrlEaFSCY8WUFZDRZKFn0ztxET7yPQsoVWHVl2BgCAocne3AoKiKGBIZYVMHpq126j/mF3FA4DeF3teAe0F5d+WUHr2c7KF16lXwccOwSRHfQyoKuCJrCVXhEb1JLcn36YycIVtGnFM/IMC2uQfXVpBYdHXZAprmZlwIBEiwpMgEeLI96WIa2M0JwfZu+L3uTeRBC6Xk5MVd5VATpPpWUN9KkYkxUJAgyNbtMSNv6DxIrufukYZoSIhETCqEUPiOXjzOD39g8xMxIhZGPK5IvJ9ltrUaQb6NgEwRDBzyHdQ6B9k5tbCkyeVYqndjunt28j4xF6GxDOKEVSFT6tLcHoeY4r4GMDQEahirAJNglvN8OJLBhGl5d4jXyzhmqFz5EljwbtArpgD2QmiwqHxHCH/K+n8KuK6PnapPfklKDYDrnkNL2sMPv8SNvs8rTodJ08uQfBNJZ1fThReNRheI5UBCHQLSjsXthqQ9QTPnMbaeQhCiAVknUFZmTwsXRQAgncg8pwBiqinq/SIoAFUew3/KwSDUEWi5EntXhYqYkCYNsBFIpu8511UQGQBvWxQzmAiZoeJbpfhz4bAd7hWB/v/Q8pQvaB8azCtU7jGBVLZ7jQjVSVKG1q1G/RE3xj2LJ9BOEomL2gI3egAZAsQGGV7adKACuKPUJuaxqbN7BjVuew3VqhXm/j4MKgYRjHsXnoV7ytkew3gOph8jlwxwjUP8sGysWQgQYVRDGdRem99T65vE7VbDjF2wUeyXMnSqP5EtbSRc3iOEQyIchZlBMWm36A1M0auaNHgFpQ8U7DE9SuobqMiLdaiIJqUXkUCIwjv916nXtuKa42R77Ooxv8tJ1RRjcmVLMFdpjk5yJ7FF9g2Gt0/lrfRNg37LzxDuv8o2Z7N1KYgeAc8vj9QVQSPGEu+BI3pH5mefosPl/95dwieRXTfxnOVxD7tK91hQ+oL7PoYE71AflGOEIQQt63ZvVetfdKkvyX/bNqQW2RQXydu7Wfq+DuUN0z8k/zh5rRcNlRGFEQ5eHUVtrAd1SGi1EpMBMHNY04tGJsY1+AuI/IVrnaE4aXnH/CcjxQwnz0/rCW0tgXCFgjrCGElaC+KYKSKmIvAL5jUCZw7wXDx5j3TQwCZN5f+Bj0U7Ds873+jAAAAAElFTkSuQmCC";
+    /// <summary>
+    /// Supersampling factor per axis. 4 gives 16 samples a pixel, which is
+    /// enough that the rim reads as smooth at the sizes these are drawn at.
+    /// </summary>
+    private const int Samples = 4;
 
-    public const string Red =
-        "iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAEWUlEQVR42r1XS0ydRRg95/vn5829EOqTtlhq02A1MW3UhhapsdomrmniwoVxYTQmXboxoex8LFx14c7ELgzEta/ahkD6iKY2aly0ioVKHz7KBe4FLv/8c1zcexFasFG5fMvJzJwzZ+b75jvEP8TpXrhnhuEBYGIv6mvjzNOp8KyEPQHqkJgRQDPNGDhhwoXIdEpWN3zf8O/52/dYLbjaoMrjBPRLb8P9tal7lcCLAHbWGpEK8BJCeb4BcCQiAosSgvQzhY/zlnywY2ThqgAeAziApSVrExBgLE+c3Nd8NCLfanLcVEiFhQChhEvwjrWCIBBWZ2BDRBS8cin4dvvo9LsApH4YB1aSWLFJZcI3e5o2PVhvHzZHfGE2FZIAT8LKh71rqEQmdQaXdcSM16npkLzUdWb+2mAfoiNDSO8gUAG/3NO6pSmknzU6PnIrkS8rS/yHECAAvsUxnkvDWCHB4YfPz15ergQBoL98slf2ZlqiCKMNEbtmUiUEYqxDBMFnHN1C0JVF+u6OkbkbAEggEADUh4hDSMe7mz9tje3wlF8/8OUkWmO66USjW9pnDgAAhhCsAn5lX+aNtprqgAOAES7nlbTVcP/EZOZNDiFFH4wCeH1/06YgXjIy47WUWeseAuQAgSiK0c72kalfjYB8sNdaYmtJAkK1wMsPjl4IWcd6KT1KQJzYi3pZ8w91EbctBIhVJFBRoZZAMeCGL0ZdJsv01Bg7FwJQbfCKCsUA1Ud8IKoJzxmA52uNgO4sk9UUwhGihUMGaE+qtf+FKslALxHCbiOwNZWwSm2vKgUvgORmE5hJsbFBgKFUp5ttQ8+9MhvKBUqatY0HV0SAQt5EXnVk6QPduCtQREDUpFG4EHGFKtVXQFBMCuC3lkJfLpayYCNvgqlABnxh0/mG4WLQeF0JPmzE/dcYbC7oN0X83B7/7maBwInGiNRGVEMhbXIEpMGO0ekpE8Bg6fFcEvLOYKriW1CpBDPvVYTZ+wJo6IM9NDJ33QMDWUcD1u7h1yF8S8xoIei9jtHpsaWGBH0wDEET3c1ftcR2YCqRN8Ktd0uWdXT5NHw9PTW7f9cupBiq9ISlb1hjTzXeWx/bmTqzzhm/fiSC4JsiukS6Np9ad+fZ3HjFf1i5MAT0g9vPF24WPA8VQxhrjekEJP/nTQiQgCTr6Lw0mfPp4c6zufHBPkQV87OU+xxAGOxDtOPczE+54HvmU51uixlHACX4f0NEgCR4A9gWM14IOpdbZE/XucL3us2YRMsXDv1Ysk/3nPAzjRPFjx7bXJtExBNZx/ogMEHZmvHvX22ZAanYNtQYLOtoqTA/H/TO6K3Zl3svFv8c7EP06DLwNZuQfsCOASKgK09mt9XW6HUARyJyq2PJmHoBoawJCTgCMZeM6ySFTwrU8e2js5du95x3JbCaPZ/qzbYspjgYEA4GYXcAtwpoLuUyZkldNfAigZMhCifbh/N/VExP+bWveoV/AW/fL/MOowGtAAAAAElFTkSuQmCC";
+    /// <summary>
+    /// A dot in the given colour, as PNG bytes.
+    ///
+    /// Alpha is straight, not premultiplied: RGB stays constant across the
+    /// whole tile and only the alpha channel falls off at the rim, which is
+    /// how the original images were built.
+    /// </summary>
+    public static byte[] Render(Vector4 colour)
+    {
+        var r = ToByte(colour.X);
+        var g = ToByte(colour.Y);
+        var b = ToByte(colour.Z);
+        var a = Math.Clamp(colour.W, 0f, 1f);
 
-    public const string Green =
-        "iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAADd0lEQVR42sXXz4tVZRgH8M/73nNHZ8Z7MzOwKEsRzHEUcWoTGUSWRWulFi5aRRH4BxSYBNEPaBMt2gUVxET7LNGEkCgyMSXQ0so0icxJx/Heueeet8U9juM4Y0PN3L7wcuBwzvP9nuc8P4MbYZ/MQ3JwQK9bPajtYYUhhbskdQTBBcEvMgexV8t+g0avszENwrR3U3k/SI5YJnpG9BRW60GBvLxCRKU8LRR+VPGhpnesc0oSvCTYNfHGDQQkUSgfPGqHzIv6LTWGhlTShmneTeWJFgj6MGZE26sGvI50je1pBVx5YJ+llnnXIk+4iFwuiOW3/jOShLaKTB2j9jpnuwecMaxim/b1Aq6Qf+VONZ/oN2BEjooww6+ajZAgV1d12QljHrPR8cme6BjeWX7ZVotFX+izxgUtQdVcoJCryTT8ZMz9hpy9EhMd4rVlgBQ+sGiOyTtBmhmV63e3HsOI1gqSECQVQdthz1viLee1mEPya9Fys6rzXrDOK5JKkATHLdVyTFQvMzbOC32SZBKa2lYb9GsUJA3PusliLcW8kStLVq5Q14sdghQc0GuRIxZaoVnm8XwiSXow7qxxazI1m1St1JDKXJ9fBMG4Qq/bJI9EPKqnTJZuoRP6SbAlSoZK6kAXJeQCNkbB8jLyuyegUx8J7oiSehedfzUOCiS16P9EIAou6raMTmOG0YhTKhP9vHtZkCE5HSUHuy5AWZKDbyM+05rH+j9TFrQFfBoV9mv62YIuFaNOKY4u+12yO9rgkuh9/YLUlYRs60cybL3znXb8vWWSY6I+LeFfj2Cza8eFINcyYJ2TnUFzwG8Ku9TEskbNF3J1FU1vWO8EYkRhWMWgN/3pc3VVxTyISOVwOuJrmZcNq6DoDCRHJ2b6J405oSabUxFJrk+m4YymrQaNOyp1BpKpY/k3Vum3W6+V/tJC9p/GcnI1VU2njXrcvb6bvBvESdWp8yuG/OCSTRr2WaKqIkjy0tjsiZNcFCxR1fSlEZumkiu3uav4qKzSt7vgFu9ZpSVzn7reMnbTxGqVyq52dQHprG0JPaK6qO2yca857GlbnJtKPvMMsFO0q4yLQ1ZY6DnJNpnlKuViOnU5zcrTRu604GMNb9vg2CSbs1hOZ1rPT1qsYbNgs8JGheWSWumHi4JTokOiPZI97vFH6Z0KitJD1+Fvty1QYQ5glH4AAAAASUVORK5CYII=";
+        var pixels = new byte[Size * Size * 4];
+
+        // Radius 16 about the tile's centre, so the circle spans the full 32
+        // pixels edge to edge and leaves the corners empty.
+        const float centre = (Size - 1) / 2f;
+        const float radius = Size / 2f;
+        const float radiusSq = radius * radius;
+
+        for (var y = 0; y < Size; y++)
+        {
+            for (var x = 0; x < Size; x++)
+            {
+                var inside = 0;
+
+                for (var sy = 0; sy < Samples; sy++)
+                {
+                    for (var sx = 0; sx < Samples; sx++)
+                    {
+                        // Sample at sub-pixel centres, so coverage is
+                        // symmetric about the middle of the pixel.
+                        var px = x + (sx + 0.5f) / Samples - 0.5f;
+                        var py = y + (sy + 0.5f) / Samples - 0.5f;
+                        var dx = px - centre;
+                        var dy = py - centre;
+                        if ((dx * dx) + (dy * dy) <= radiusSq)
+                            inside++;
+                    }
+                }
+
+                if (inside == 0)
+                    continue;
+
+                var coverage = inside / (float)(Samples * Samples);
+                var offset = ((y * Size) + x) * 4;
+                pixels[offset + 0] = r;
+                pixels[offset + 1] = g;
+                pixels[offset + 2] = b;
+                pixels[offset + 3] = ToByte(coverage * a);
+            }
+        }
+
+        return EncodePng(Size, Size, pixels);
+    }
+
+    /// <summary>Six hex digits for a colour, for use in a file name.</summary>
+    public static string HexOf(Vector4 colour) =>
+        $"{ToByte(colour.X):x2}{ToByte(colour.Y):x2}{ToByte(colour.Z):x2}{ToByte(colour.W):x2}";
+
+    private static byte ToByte(float value) =>
+        (byte)Math.Clamp((int)MathF.Round(value * 255f), 0, 255);
+
+    /// <summary>
+    /// Minimal PNG writer: signature, IHDR, one IDAT and IEND. Hand-rolled
+    /// rather than pulled in, because the only alternative on this target is
+    /// another third-party dependency for what amounts to a header, a zlib
+    /// stream and three CRCs.
+    /// </summary>
+    private static byte[] EncodePng(int width, int height, byte[] rgba)
+    {
+        using var output = new MemoryStream();
+        output.Write([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
+
+        var header = new byte[13];
+        BinaryPrimitives.WriteInt32BigEndian(header.AsSpan(0), width);
+        BinaryPrimitives.WriteInt32BigEndian(header.AsSpan(4), height);
+        header[8] = 8;  // bit depth
+        header[9] = 6;  // colour type: truecolour with alpha
+        header[10] = 0; // deflate
+        header[11] = 0; // adaptive filtering
+        header[12] = 0; // no interlacing
+        WriteChunk(output, "IHDR", header);
+
+        // Each scanline is prefixed with its filter type. Zero — "none" —
+        // keeps this trivial; deflate still does the real work.
+        var stride = width * 4;
+        var raw = new byte[height * (stride + 1)];
+        for (var y = 0; y < height; y++)
+        {
+            raw[y * (stride + 1)] = 0;
+            Array.Copy(rgba, y * stride, raw, (y * (stride + 1)) + 1, stride);
+        }
+
+        byte[] compressed;
+        using (var buffer = new MemoryStream())
+        {
+            // ZLibStream, not DeflateStream: PNG wants the zlib wrapper
+            // (RFC 1950) around the deflate data, not bare deflate.
+            using (var zlib = new ZLibStream(buffer, CompressionLevel.Optimal, leaveOpen: true))
+                zlib.Write(raw, 0, raw.Length);
+            compressed = buffer.ToArray();
+        }
+
+        WriteChunk(output, "IDAT", compressed);
+        WriteChunk(output, "IEND", []);
+        return output.ToArray();
+    }
+
+    private static void WriteChunk(Stream stream, string type, byte[] data)
+    {
+        Span<byte> length = stackalloc byte[4];
+        BinaryPrimitives.WriteInt32BigEndian(length, data.Length);
+        stream.Write(length);
+
+        var payload = new byte[4 + data.Length];
+        for (var i = 0; i < 4; i++)
+            payload[i] = (byte)type[i];
+        Array.Copy(data, 0, payload, 4, data.Length);
+        stream.Write(payload);
+
+        // The CRC covers the chunk type and its data, but not the length.
+        Span<byte> crc = stackalloc byte[4];
+        BinaryPrimitives.WriteUInt32BigEndian(crc, Crc32(payload));
+        stream.Write(crc);
+    }
+
+    private static readonly uint[] CrcTable = BuildCrcTable();
+
+    private static uint[] BuildCrcTable()
+    {
+        var table = new uint[256];
+        for (var i = 0u; i < 256; i++)
+        {
+            var c = i;
+            for (var k = 0; k < 8; k++)
+                c = (c & 1) != 0 ? 0xEDB88320u ^ (c >> 1) : c >> 1;
+            table[i] = c;
+        }
+        return table;
+    }
+
+    private static uint Crc32(byte[] data)
+    {
+        var c = 0xFFFFFFFFu;
+        foreach (var b in data)
+            c = CrcTable[(c ^ b) & 0xFF] ^ (c >> 8);
+        return c ^ 0xFFFFFFFFu;
+    }
 }
