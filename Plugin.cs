@@ -769,7 +769,7 @@ public sealed class Plugin : IDalamudPlugin
         var startIndex = 0;
         if (_currentMark is { } key)
         {
-            var idx = ordered.FindIndex(m => m.NameId == key.NameId && m.Instance == key.Instance);
+            var idx = ordered.FindIndex(m => m.Key == key);
             if (idx >= 0) startIndex = idx + 1;
         }
 
@@ -797,7 +797,7 @@ public sealed class Plugin : IDalamudPlugin
         if (!announce) return;
 
         var ordered = _detector.Ordered();
-        var index = ordered.FindIndex(m => m.NameId == mark.NameId && m.Instance == mark.Instance);
+        var index = ordered.FindIndex(m => m.Key == mark.Key);
         TrainChatEcho.Send(_chatGui, _gameGui, mark, index < 0 ? 0 : index, ordered.Count);
     }
 
@@ -1614,8 +1614,7 @@ public sealed class Plugin : IDalamudPlugin
             ImGui.SameLine();
             ImGui.SetCursorPosX(nameColumnX);
             var ageSuffix = _config.ShowMarkAge ? $"  ({FormatAge(mark.LastSeenUtc)})" : string.Empty;
-            var isCurrent = _currentMark is { } cur
-                            && cur.NameId == mark.NameId && cur.Instance == mark.Instance;
+            var isCurrent = _currentMark is { } cur && cur == mark.Key;
             if (isCurrent)
             {
                 ImGui.PushStyleColor(ImGuiCol.Text, new Vector4(1f, 0.85f, 0.4f, 1f));
@@ -1710,7 +1709,7 @@ public sealed class Plugin : IDalamudPlugin
                 mark.DeathObservedAtUtc = dead ? DateTime.UtcNow : null;
 
                 // Keep the map honest: a mark ticked dead shouldn't stay lit.
-                if (dead) _detector.RemoveSighting(mark.NameId, mark.Instance);
+                if (dead) _detector.RemoveSighting(mark.NameId, mark.Instance, mark.WorldId);
             }
             ImGui.SetItemAllowOverlap();
 
@@ -1759,7 +1758,7 @@ public sealed class Plugin : IDalamudPlugin
 
                 if (_config.EchoOnMarkClick)
                 {
-                    var fullIndex = allMarks.FindIndex(m => m.NameId == mark.NameId && m.Instance == mark.Instance);
+                    var fullIndex = allMarks.FindIndex(m => m.Key == mark.Key);
                     TrainChatEcho.Send(_chatGui, _gameGui, mark, fullIndex < 0 ? i : fullIndex, allMarks.Count);
                 }
                 else
@@ -1796,8 +1795,8 @@ public sealed class Plugin : IDalamudPlugin
                 var moving = marks[_dragFromIndex];
                 var target = marks[_dragToIndex];
 
-                var fromFull = allMarks.FindIndex(m => m.NameId == moving.NameId && m.Instance == moving.Instance);
-                var toFull = allMarks.FindIndex(m => m.NameId == target.NameId && m.Instance == target.Instance);
+                var fromFull = allMarks.FindIndex(m => m.Key == moving.Key);
+                var toFull = allMarks.FindIndex(m => m.Key == target.Key);
 
                 if (fromFull >= 0 && toFull >= 0)
                 {

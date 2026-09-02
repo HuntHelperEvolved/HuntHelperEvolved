@@ -12,6 +12,7 @@ public sealed class SsMinionPin
     public string Name = string.Empty;
     public uint NameId;
     public uint Instance;
+    public uint WorldId;
     public Vector2 MapPosition;
     public DateTime SeenUtc;
 }
@@ -141,7 +142,9 @@ public sealed class SsEventWatcher : IDisposable
         Begin(sighting.TerritoryId, "minions sighted");
 
         var already = _pins.Exists(
-            p => p.NameId == sighting.NameId && p.Instance == sighting.Instance);
+            p => p.NameId == sighting.NameId
+                 && p.Instance == sighting.Instance
+                 && p.WorldId == sighting.WorldId);
         if (already)
             return;
 
@@ -150,6 +153,7 @@ public sealed class SsEventWatcher : IDisposable
             Name = sighting.Name,
             NameId = sighting.NameId,
             Instance = sighting.Instance,
+            WorldId = sighting.WorldId,
             MapPosition = sighting.MapPosition,
             SeenUtc = DateTime.UtcNow,
         });

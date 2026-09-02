@@ -733,8 +733,12 @@ public sealed unsafe class HuntMapOverlay : IDisposable
             // on the other's map.
             var instance = MarkDetector.GetCurrentInstance();
 
+            // The same mark is up on every world; only this one is on this map.
+            var worldId = _detector.CurrentWorldId();
+
             var here = _detector.OtherRanks.Values
-                .Where(o => o.TerritoryId == territory && o.Instance == instance)
+                .Where(o => o.TerritoryId == territory && o.Instance == instance
+                            && o.WorldId == worldId)
                 .ToList();
 
             var aMarks = here.Where(o => o.Rank == HuntRank.A && !deadNameIds.Contains(o.NameId)).ToList();
