@@ -268,6 +268,28 @@ public sealed unsafe class HuntMapOverlay : IDisposable
             placed++;
         }
 
+        // Between the path and the ring, matching Hunt Helper's order. The fill
+        // only appears when the path does: on its own the ring is a range
+        // marker and wants to be an outline, but alongside the path the two are
+        // one shape — the swathe you are about to sweep, and the part of it you
+        // are standing in. Filling it in the path's own colour is what joins
+        // them up.
+        if (_config.ShowPlayerCircleOnMap && _config.ShowPlayerFacingOnMap)
+        {
+            var fill = new WorldSizedMarker(MarkerPositionScaling)
+            {
+                AllowAnyMap = false,
+                MapId = mapId,
+                TexturePath = dots["fill"],
+                WorldSize = new Vector2(radius * 2f, radius * 2f),
+                TextTooltip = "Detection range",
+                PositionProvider = PlayerPosition,
+            };
+
+            _overlay.AddMarker(fill);
+            placed++;
+        }
+
         if (_config.ShowPlayerCircleOnMap)
         {
             var ring = new WorldSizedMarker(MarkerPositionScaling)
@@ -358,6 +380,12 @@ public sealed unsafe class HuntMapOverlay : IDisposable
                 Texture("circle", $"ring{(int)_config.PlayerCircleThickness}",
                     _config.PlayerCircleColour,
                     c => DotTextures.RenderRing(c, strokePixels: _config.PlayerCircleThickness)),
+
+                // The ring's fill, in the path's colour so the two read as one
+                // shape. Drawn large for the same reason the ring is: it is
+                // stretched to the circle's width, not shown at icon size.
+                Texture("fill", "disc", _config.PlayerFacingColour,
+                    c => DotTextures.Render(c, 256)),
                 Texture("facing", "band", _config.PlayerFacingColour,
                     c => DotTextures.RenderSolid(c)),
             };
