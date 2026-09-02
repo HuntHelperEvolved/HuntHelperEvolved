@@ -20,6 +20,13 @@ public class DetectedMark
     public uint TerritoryId;
     public uint MapId;
     public uint Instance;
+
+    /// <summary>
+    /// The world it was seen on. Part of a mark's identity, not decoration: the
+    /// same mark is up on every world at once, and they are different marks.
+    /// </summary>
+    public uint WorldId;
+    public string WorldName = string.Empty;
     public Vector2 MapPosition;
     public bool Dead;
     public DateTime FirstSeenUtc;
@@ -71,6 +78,8 @@ public class OtherRankSighting
     public uint TerritoryId;
     public uint MapId;
     public uint Instance;
+    public uint WorldId;
+    public string WorldName = string.Empty;
     public Vector2 MapPosition;
     public DateTime LastSeenUtc;
 
@@ -85,20 +94,20 @@ public sealed class MarkDetector
     private readonly IDataManager _dataManager;
     private readonly Configuration _config;
 
-    private readonly Dictionary<(uint NameId, uint Instance), DetectedMark> _marks = new();
+    private readonly Dictionary<(uint NameId, uint Instance, uint WorldId), DetectedMark> _marks = new();
     private int _nextOrder;
 
     // Synthetic ids for custom flags, counting down from the top so they can
     // never collide with a real BNpcName row id.
     private uint _nextCustomId = uint.MaxValue;
 
-    private readonly Dictionary<(uint NameId, uint Instance), OtherRankSighting> _otherRanks = new();
+    private readonly Dictionary<(uint NameId, uint Instance, uint WorldId), OtherRankSighting> _otherRanks = new();
 
     /// <summary>
     /// Every mark seen, of every rank. Independent of the train, and populated
     /// whether or not recording is active.
     /// </summary>
-    public IReadOnlyDictionary<(uint NameId, uint Instance), OtherRankSighting> OtherRanks => _otherRanks;
+    public IReadOnlyDictionary<(uint NameId, uint Instance, uint WorldId), OtherRankSighting> OtherRanks => _otherRanks;
 
     /// <summary>Raised the first time any mark is spotted, regardless of rank.</summary>
     public event Action<OtherRankSighting>? OtherRankDetected;
@@ -106,7 +115,7 @@ public sealed class MarkDetector
     /// <summary>Raised once when a mark is first picked up by scanning.</summary>
     public event Action<DetectedMark>? MarkDetected;
 
-    public IReadOnlyDictionary<(uint NameId, uint Instance), DetectedMark> Marks => _marks;
+    public IReadOnlyDictionary<(uint NameId, uint Instance, uint WorldId), DetectedMark> Marks => _marks;
 
     public MarkDetector(IObjectTable objectTable, IClientState clientState, IDataManager dataManager, Configuration config)
     {
@@ -141,7 +150,7 @@ public sealed class MarkDetector
         _nextOrder = ordered.Count;
     }
 
-    public void Remove((uint NameId, uint Instance) key) => _marks.Remove(key);
+    public void Remove((uint NameId, uint Instance, uint WorldId) key) => _marks.Remove(key);
 
     /// <summary>
     /// Removes every mark currently flagged dead — the equivalent of Hunt
@@ -161,9 +170,22 @@ public sealed class MarkDetector
     public int Merge(IEnumerable<DetectedMark> incoming)
     {
         var added = 0;
+        var worldId = CurrentWorldId();
+        var worldName = CurrentWorldName();
+
         foreach (var mark in incoming)
         {
-            var key = (mark.NameId, mark.Instance);
+            // An import code carries no world. It is a scout list for wherever
+            // you are, so it is stamped with that rather than left at zero,
+            // which would make every imported mark a stranger to the live one
+            // standing on the same spot.
+            if (mark.WorldId == 0)
+            {
+                mark.WorldId = worldId;
+                mark.WorldName = worldName;
+            }
+
+            var key = (mark.NameId, mark.Instance, mark.WorldId);
             if (_marks.ContainsKey(key)) continue;
             mark.Order = _nextOrder++;
             _marks[key] = mark;
@@ -189,6 +211,8 @@ public sealed class MarkDetector
 
         var mapId = GetMapId(territoryId);
         var instance = GetCurrentInstance();
+        var worldId = CurrentWorldId();
+        var worldName = CurrentWorldName();
         var now = DateTime.UtcNow;
 
         // A mark we have stopped seeing is no longer there to show. One scan
@@ -205,16 +229,16 @@ public sealed class MarkDetector
             if (info == null)
             {
                 // B or S rank: worth showing on the map, never joins the train.
-                TrackSighting(mob, territoryId, mapId, instance, now, null);
+                TrackSighting(mob, territoryId, mapId, instance, worldId, worldName, now, null);
                 continue;
             }
 
             // An A-rank is always recorded as a sighting, so the map and the
             // detection echo work even with train recording paused. Whether it
             // also joins the train is decided below.
-            TrackSighting(mob, territoryId, mapId, instance, now, HuntRank.A);
+            TrackSighting(mob, territoryId, mapId, instance, worldId, worldName, now, HuntRank.A);
 
-            var key = (mob.NameId, instance);
+            var key = (mob.NameId, instance, worldId);
             if (_marks.TryGetValue(key, out var existing))
             {
                 existing.LastSeenUtc = now;
@@ -226,6 +250,8 @@ public sealed class MarkDetector
 
             _marks[key] = new DetectedMark
             {
+                WorldId = worldId,
+                WorldName = worldName,
                 Name = mob.Name.TextValue,
                 NameId = mob.NameId,
                 TerritoryId = territoryId,
@@ -271,15 +297,18 @@ public sealed class MarkDetector
             Order = _nextOrder++,
             IsCustom = true,
             ZoneName = GetZoneName(territoryId),
+            WorldId = CurrentWorldId(),
+            WorldName = CurrentWorldName(),
         };
 
-        _marks[(mark.NameId, mark.Instance)] = mark;
+        _marks[(mark.NameId, mark.Instance, mark.WorldId)] = mark;
         return mark;
     }
 
     private void TrackSighting(
         Dalamud.Game.ClientState.Objects.Types.IBattleNpc mob,
-        uint territoryId, uint mapId, uint instance, DateTime now, HuntRank? knownRank)
+        uint territoryId, uint mapId, uint instance, uint worldId, string worldName,
+        DateTime now, HuntRank? knownRank)
     {
         HuntRank rank;
         if (knownRank is { } r)
@@ -293,7 +322,7 @@ public sealed class MarkDetector
             rank = other.Rank;
         }
 
-        var key = (mob.NameId, instance);
+        var key = (mob.NameId, instance, worldId);
         if (_otherRanks.TryGetValue(key, out var existing))
         {
             existing.LastSeenUtc = now;
@@ -303,6 +332,8 @@ public sealed class MarkDetector
 
         var sighting = new OtherRankSighting
         {
+            WorldId = worldId,
+            WorldName = worldName,
             Name = mob.Name.TextValue,
             NameId = mob.NameId,
             Rank = rank,
@@ -322,7 +353,8 @@ public sealed class MarkDetector
     public void ClearOtherRanks() => _otherRanks.Clear();
 
     /// <summary>Forgets one sighting, e.g. when a mark is known to be dead.</summary>
-    public void RemoveSighting(uint nameId, uint instance) => _otherRanks.Remove((nameId, instance));
+    public void RemoveSighting(uint nameId, uint instance) =>
+        _otherRanks.Remove((nameId, instance, CurrentWorldId()));
 
     /// <summary>
     /// Drops sightings for marks that have gone from a spot we're still
@@ -376,6 +408,8 @@ public sealed class MarkDetector
             TerritoryId = m.TerritoryId,
             MapId = m.MapId,
             Instance = m.Instance,
+            WorldId = m.WorldId,
+            WorldName = m.WorldName,
             X = m.MapPosition.X,
             Y = m.MapPosition.Y,
             Dead = m.Dead,
@@ -398,6 +432,13 @@ public sealed class MarkDetector
         _marks.Clear();
         _nextOrder = 0;
 
+        // A train saved before marks knew about worlds has none recorded. It
+        // was scouted somewhere, and the only reasonable somewhere is where you
+        // are now — without this, every restored mark would sit at world 0 and
+        // walking past it would create a second copy of the same mark.
+        var worldId = CurrentWorldId();
+        var worldName = CurrentWorldName();
+
         foreach (var p in saved)
         {
             var mark = new DetectedMark
@@ -407,6 +448,8 @@ public sealed class MarkDetector
                 TerritoryId = p.TerritoryId,
                 MapId = p.MapId,
                 Instance = p.Instance,
+                WorldId = p.WorldId == 0 ? worldId : p.WorldId,
+                WorldName = p.WorldId == 0 ? worldName : p.WorldName,
                 MapPosition = new Vector2(p.X, p.Y),
                 Dead = p.Dead,
                 FirstSeenUtc = p.FirstSeenUtc,
@@ -418,7 +461,7 @@ public sealed class MarkDetector
                 Spiced = p.Spiced,
             };
 
-            _marks[(mark.NameId, mark.Instance)] = mark;
+            _marks[(mark.NameId, mark.Instance, mark.WorldId)] = mark;
             if (mark.Order >= _nextOrder) _nextOrder = mark.Order + 1;
             if (mark.IsCustom && mark.NameId <= _nextCustomId) _nextCustomId = mark.NameId - 1;
         }
@@ -427,6 +470,44 @@ public sealed class MarkDetector
     public uint GetMapId(uint territoryId) =>
         _dataManager.GetExcelSheet<TerritoryType>().GetRowOrDefault(territoryId)?.Map.RowId ?? 0;
 
+
+    /// <summary>
+    /// The world the player is on, which is part of a mark's identity. Read the
+    /// same way HuntCounter reads it, since its tallies are world-scoped for the
+    /// same reason.
+    /// </summary>
+    public uint CurrentWorldId()
+    {
+        try
+        {
+            return _objectTable.LocalPlayer?.CurrentWorld.RowId ?? 0;
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    public string CurrentWorldName()
+    {
+        try
+        {
+            var name = _objectTable.LocalPlayer?.CurrentWorld.Value.Name.ExtractText();
+            return string.IsNullOrWhiteSpace(name) ? string.Empty : name;
+        }
+        catch
+        {
+            return string.Empty;
+        }
+    }
+
+    /// <summary>
+    /// Looks a mark up on the world the player is on. Callers that only have a
+    /// name and an instance — a kill coming out of the tally, say — mean the
+    /// mark in front of them, which is this one.
+    /// </summary>
+    public bool TryGetCurrentWorldMark(uint nameId, uint instance, out DetectedMark mark) =>
+        _marks.TryGetValue((nameId, instance, CurrentWorldId()), out mark!);
 
     public static unsafe uint GetCurrentInstance()
     {

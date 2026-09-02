@@ -51,6 +51,13 @@ public class PersistedMark
     public uint TerritoryId { get; set; }
     public uint MapId { get; set; }
     public uint Instance { get; set; }
+
+    /// <summary>
+    /// World it was scouted on. Part of the mark's identity — without it a
+    /// saved train reloads with the same mark from two worlds merged into one.
+    /// </summary>
+    public uint WorldId { get; set; }
+    public string WorldName { get; set; } = string.Empty;
     public float X { get; set; }
     public float Y { get; set; }
     public bool Dead { get; set; }
@@ -342,6 +349,7 @@ public class Configuration : IPluginConfiguration
     /// <summary>The current-mark pointer, saved alongside the train.</summary>
     public uint? SavedCurrentNameId { get; set; }
     public uint? SavedCurrentInstance { get; set; }
+    public uint? SavedCurrentWorldId { get; set; }
 
     /// <summary>Height of a train list row, in pixels.</summary>
     public int TrainRowHeight { get; set; } = 22;

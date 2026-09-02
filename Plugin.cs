@@ -131,7 +131,7 @@ public sealed class Plugin : IDalamudPlugin
     // Custom flags removed a few seconds after teleporting to them — instant
     // removal was jarring mid-click.
     private const double CustomFlagRemovalDelaySeconds = 5;
-    private readonly Dictionary<(uint NameId, uint Instance), DateTime> _pendingCustomRemovals = new();
+    private readonly Dictionary<(uint NameId, uint Instance, uint WorldId), DateTime> _pendingCustomRemovals = new();
     private int _blacklistExpansion;
     private int _blacklistZone;
     private int _blacklistAetheryte;
@@ -143,7 +143,9 @@ public sealed class Plugin : IDalamudPlugin
     // The mark the conductor is currently on. Tracked by identity rather than
     // list position, so dragging rows or removing marks can't silently change
     // what "current" points at.
-    private (uint NameId, uint Instance)? _currentMark;
+    // Keyed the same way marks are, world included — the same mark on two
+    // worlds is two marks, and the pointer has to say which.
+    private (uint NameId, uint Instance, uint WorldId)? _currentMark;
 
     // Measured on the previous frame. The drag threshold has to match the real
     // on-screen row pitch (selectable + buttons + separator), not just a line of
@@ -790,7 +792,7 @@ public sealed class Plugin : IDalamudPlugin
             return;
         }
 
-        _currentMark = (mark.NameId, mark.Instance);
+        _currentMark = (mark.NameId, mark.Instance, mark.WorldId);
 
         if (!announce) return;
 
@@ -916,6 +918,7 @@ public sealed class Plugin : IDalamudPlugin
         _config.SavedTrainAtUtc = marks.Count > 0 ? DateTime.UtcNow : null;
         _config.SavedCurrentNameId = _currentMark?.NameId;
         _config.SavedCurrentInstance = _currentMark?.Instance;
+        _config.SavedCurrentWorldId = _currentMark?.WorldId;
         _config.Save();
     }
 
@@ -932,7 +935,7 @@ public sealed class Plugin : IDalamudPlugin
         _detector.LoadPersisted(_config.SavedTrain);
 
         if (_config.SavedCurrentNameId is { } nameId && _config.SavedCurrentInstance is { } instance)
-            _currentMark = (nameId, instance);
+            _currentMark = (nameId, instance, _config.SavedCurrentWorldId ?? 0);
 
         var age = _config.SavedTrainAtUtc is { } at
             ? FormatAge(at)
@@ -951,6 +954,7 @@ public sealed class Plugin : IDalamudPlugin
         _config.SavedTrainAtUtc = null;
         _config.SavedCurrentNameId = null;
         _config.SavedCurrentInstance = null;
+        _config.SavedCurrentWorldId = null;
         _config.Save();
     }
 
@@ -1510,7 +1514,7 @@ public sealed class Plugin : IDalamudPlugin
             return;
         }
 
-        (uint, uint)? toRemove = null;
+        (uint NameId, uint Instance, uint WorldId)? toRemove = null;
 
         var rowHeight = (float)Math.Clamp(_config.TrainRowHeight, 14, 48);
         const float leftPad = 6f;
@@ -1575,7 +1579,7 @@ public sealed class Plugin : IDalamudPlugin
             ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, new Vector2(3, 0));
             if (ImGui.SmallButton("x"))
             {
-                toRemove = (mark.NameId, mark.Instance);
+                toRemove = (mark.NameId, mark.Instance, mark.WorldId);
             }
             ImGui.PopStyleVar();
             if (ImGui.IsItemHovered()) ImGui.SetTooltip("Remove this mark from the train");
@@ -1585,9 +1589,19 @@ public sealed class Plugin : IDalamudPlugin
             ImGui.PushStyleVar(ImGuiStyleVar.ItemSpacing, Vector2.Zero);
             // Highlighted while it's the row being dragged.
             ImGui.SetCursorPosX(leftPad + removeColWidth);
-            var zoneLabel = showZones
-                ? (mark.IsCustom ? $"⚑ 「{zone}」" : $"「{zone}」")
+            // Say the world when it is not the one you are standing on. Marks
+            // are per-world now, so scouting across a world change genuinely
+            // produces two rows for the same name — which is correct, and
+            // unreadable without this.
+            var otherWorld = mark.WorldId != 0
+                             && mark.WorldId != _detector.CurrentWorldId()
+                             && !string.IsNullOrEmpty(mark.WorldName)
+                ? $" [{mark.WorldName}]"
                 : string.Empty;
+
+            var zoneLabel = showZones
+                ? (mark.IsCustom ? $"⚑ 「{zone}」{otherWorld}" : $"「{zone}」{otherWorld}")
+                : otherWorld;
             ImGui.Selectable(zoneLabel, _dragFromIndex == i, ImGuiSelectableFlags.None,
                 new Vector2(ImGui.GetWindowWidth(), rowHeight));
             ImGui.SetItemAllowOverlap();
@@ -1645,9 +1659,9 @@ public sealed class Plugin : IDalamudPlugin
                     // completing it, so tick it off and let auto-advance move
                     // on. Never done for real marks, which aren't dead just
                     // because someone travelled to them.
-                    if (mark.IsCustom && !_pendingCustomRemovals.ContainsKey((mark.NameId, mark.Instance)))
+                    if (mark.IsCustom && !_pendingCustomRemovals.ContainsKey((mark.NameId, mark.Instance, mark.WorldId)))
                     {
-                        _pendingCustomRemovals[(mark.NameId, mark.Instance)] =
+                        _pendingCustomRemovals[(mark.NameId, mark.Instance, mark.WorldId)] =
                             DateTime.UtcNow.AddSeconds(CustomFlagRemovalDelaySeconds);
                     }
                 }
@@ -1737,7 +1751,7 @@ public sealed class Plugin : IDalamudPlugin
             {
                 // Clicking a mark makes it the current one, so a conductor can
                 // jump the pointer anywhere just by clicking.
-                _currentMark = (mark.NameId, mark.Instance);
+                _currentMark = (mark.NameId, mark.Instance, mark.WorldId);
 
                 if (_config.EchoOnMarkClick)
                 {
