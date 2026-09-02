@@ -4,6 +4,7 @@ using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Numerics;
 
 namespace HuntTrainRelay;
 
@@ -215,6 +216,26 @@ public class Configuration : IPluginConfiguration
 
     /// <summary>Dot size in pixels. KamiToolKit's default marker is 32x32.</summary>
     public float SpawnDotSize { get; set; } = 16f;
+
+    /// <summary>
+    /// Dot colour for each state a spawn point can be in. Defaults are the
+    /// exact colours the dots shipped as before they were configurable, so
+    /// nothing changes on screen until someone picks something.
+    ///
+    /// Alpha is honoured, which is the point of making them editable at all —
+    /// a zone with sixty ARR spawn points is a wall of solid dots, and dropping
+    /// the empty ones to half opacity makes the occupied ones readable.
+    /// </summary>
+    public Vector4 SpawnDotColourEmpty { get; set; } = new(0.502f, 0.502f, 0.502f, 1f);
+
+    /// <summary>Colour when a B rank is sitting on the point.</summary>
+    public Vector4 SpawnDotColourB { get; set; } = new(0f, 0.549f, 0.933f, 1f);
+
+    /// <summary>Colour when an A rank is sitting on the point.</summary>
+    public Vector4 SpawnDotColourA { get; set; } = new(0.886f, 0.231f, 0.055f, 1f);
+
+    /// <summary>Colour when an S rank is sitting on the point.</summary>
+    public Vector4 SpawnDotColourS { get; set; } = new(0f, 0.827f, 0f, 1f);
 
     /// <summary>How close (in map units) a mark must be to count as "at" a spawn point.</summary>
     public float SpawnPointMatchRadius { get; set; } = 2.5f;
