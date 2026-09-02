@@ -176,6 +176,26 @@ public sealed unsafe class HuntMapOverlay : IDisposable
 
         var placed = 0;
 
+        // Where it is all heading, drawn first so a minion spot sitting on top
+        // of it still reads.
+        if (SsMinionSpawns.MarkSpawnFor(territory) is { } markSpawn)
+        {
+            var markWorld = MapCoordinates.ToWorld(_dataManager, mapId, markSpawn.X, markSpawn.Y);
+
+            _overlay.AddMarker(new MapMarkerNode
+            {
+                AllowAnyMap = false,
+                MapId = mapId,
+                Position = markWorld,
+                TexturePath = dots["ssmark"],
+                Size = new Vector2(_config.SpawnDotSize * 2.2f, _config.SpawnDotSize * 2.2f),
+                TextTooltip = "SS event — the mark spawns here\n"
+                              + $"{markSpawn.X:F1}, {markSpawn.Y:F1}\n"
+                              + "Once all four minions are down.",
+            });
+            placed++;
+        }
+
         foreach (var (position, label) in spots)
         {
             var world = MapCoordinates.ToWorld(_dataManager, mapId, position.X, position.Y);
@@ -522,6 +542,11 @@ public sealed unsafe class HuntMapOverlay : IDisposable
                     c => DotTextures.Render(c, 256)),
                 Texture("facing", "band", _config.PlayerFacingColour,
                     c => DotTextures.RenderSolid(c)),
+
+                // Where the mark itself will appear. Same colour as the minions
+                // it belongs with; the shape is what tells them apart.
+                Texture("ssmark", "star", _config.SsMinionColour,
+                    c => DotTextures.RenderStar(c)),
             };
 
             var paths = new Dictionary<string, string>();

@@ -154,6 +154,96 @@ public static class DotTextures
     }
 
     /// <summary>
+    /// A five-pointed star, for where the mark itself will appear.
+    ///
+    /// A different shape rather than a different colour on purpose: it belongs
+    /// to the same event as the minion dots and reads better sharing their
+    /// colour, so the shape is what says it is not one of them.
+    ///
+    /// Filled by the even-odd rule, which for a star drawn as ten alternating
+    /// points gives the outline everyone draws by hand rather than a pentagon
+    /// with spikes.
+    /// </summary>
+    public static byte[] RenderStar(Vector4 colour, int size = 128)
+    {
+        var r = ToByte(colour.X);
+        var g = ToByte(colour.Y);
+        var b = ToByte(colour.Z);
+        var a = Math.Clamp(colour.W, 0f, 1f);
+
+        var pixels = new byte[size * size * 4];
+
+        var centre = (size - 1) / 2f;
+        var outer = size / 2f;
+
+        // The classic proportion; anything much larger loses the points.
+        var inner = outer * 0.382f;
+
+        var corners = new Vector2[10];
+        for (var i = 0; i < 10; i++)
+        {
+            // Start at the top and alternate out, in, out...
+            var angle = (-MathF.PI / 2f) + (i * MathF.PI / 5f);
+            var radius = (i % 2) == 0 ? outer : inner;
+            corners[i] = new Vector2(
+                centre + (MathF.Cos(angle) * radius),
+                centre + (MathF.Sin(angle) * radius));
+        }
+
+        for (var y = 0; y < size; y++)
+        {
+            for (var x = 0; x < size; x++)
+            {
+                var inside = 0;
+
+                for (var sy = 0; sy < Samples; sy++)
+                {
+                    for (var sx = 0; sx < Samples; sx++)
+                    {
+                        var px = x + (sx + 0.5f) / Samples - 0.5f;
+                        var py = y + (sy + 0.5f) / Samples - 0.5f;
+                        if (InPolygon(corners, px, py))
+                            inside++;
+                    }
+                }
+
+                if (inside == 0)
+                    continue;
+
+                var coverage = inside / (float)(Samples * Samples);
+                var offset = ((y * size) + x) * 4;
+                pixels[offset + 0] = r;
+                pixels[offset + 1] = g;
+                pixels[offset + 2] = b;
+                pixels[offset + 3] = ToByte(coverage * a);
+            }
+        }
+
+        return EncodePng(size, size, pixels);
+    }
+
+    /// <summary>Even-odd point-in-polygon: counts crossings of a ray going right.</summary>
+    private static bool InPolygon(Vector2[] corners, float x, float y)
+    {
+        var inside = false;
+
+        for (int i = 0, j = corners.Length - 1; i < corners.Length; j = i++)
+        {
+            var a = corners[i];
+            var b = corners[j];
+
+            if ((a.Y > y) == (b.Y > y))
+                continue;
+
+            var crossingX = ((b.X - a.X) * (y - a.Y) / (b.Y - a.Y)) + a.X;
+            if (x < crossingX)
+                inside = !inside;
+        }
+
+        return inside;
+    }
+
+    /// <summary>
     /// A flat block of colour, for the projected path band. The band is a
     /// stretched quad, so the image only has to carry the colour — its shape
     /// comes from the node it is drawn into.
