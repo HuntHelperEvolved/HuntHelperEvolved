@@ -272,7 +272,7 @@ public sealed class Plugin : IDalamudPlugin
             _log.Error(ex, "KamiToolKit failed to initialise; the map overlay will stay off.");
         }
 
-        _mapOverlay = new HuntMapOverlay(framework, clientState, dataManager, addonLifecycle, _log, _config, _detector, _pluginInterface);
+        _mapOverlay = new HuntMapOverlay(framework, clientState, objectTable, dataManager, addonLifecycle, _log, _config, _detector, _pluginInterface);
         _detector.OtherRankDetected += OnSightingDetected;
         _watcher.PersistRequested += PersistTrain;
         RestoreSavedTrain();
@@ -1118,6 +1118,87 @@ public sealed class Plugin : IDalamudPlugin
     /// flipped mid-scout without opening Settings.
     /// </summary>
     /// <summary>
+    /// The ring and facing guide drawn around your character.
+    ///
+    /// Both stand on their own — either can be used without the other, and
+    /// without the spawn points, which is why the overlay's enable check asks
+    /// whether ANY of the three is on rather than looking at spawn points.
+    /// </summary>
+    private void DrawPlayerGuideSettings()
+    {
+        ImGui.TextWrapped("Around your character");
+
+        const ImGuiColorEditFlags flags =
+            ImGuiColorEditFlags.AlphaBar | ImGuiColorEditFlags.AlphaPreviewHalf;
+
+        var circle = _config.ShowPlayerCircleOnMap;
+        if (ImGui.Checkbox("Range circle", ref circle))
+        {
+            _config.ShowPlayerCircleOnMap = circle;
+            _config.Save();
+        }
+        ImGui.TextDisabled("A ring at a set distance from you. Drawn in yalms, so it stays true at any zoom.");
+
+        if (_config.ShowPlayerCircleOnMap)
+        {
+            var radius = _config.PlayerCircleRadius;
+            ImGui.SetNextItemWidth(90);
+            if (ImGui.InputFloat("Radius (yalms)", ref radius, 5f))
+            {
+                _config.PlayerCircleRadius = Math.Clamp(radius, 1f, 200f);
+                _config.Save();
+            }
+
+            var circleColour = _config.PlayerCircleColour;
+            if (ImGui.ColorEdit4("Circle colour", ref circleColour, flags))
+            {
+                _config.PlayerCircleColour = circleColour;
+                _config.Save();
+            }
+        }
+
+        ImGui.Spacing();
+
+        var facing = _config.ShowPlayerFacingOnMap;
+        if (ImGui.Checkbox("Facing guide", ref facing))
+        {
+            _config.ShowPlayerFacingOnMap = facing;
+            _config.Save();
+        }
+        ImGui.TextDisabled("A line out from you in the direction you're looking.");
+
+        if (_config.ShowPlayerFacingOnMap)
+        {
+            var length = _config.PlayerFacingLength;
+            ImGui.SetNextItemWidth(90);
+            if (ImGui.InputFloat("Length (yalms)", ref length, 5f))
+            {
+                _config.PlayerFacingLength = Math.Clamp(length, 1f, 200f);
+                _config.Save();
+            }
+
+            var facingColour = _config.PlayerFacingColour;
+            if (ImGui.ColorEdit4("Facing colour", ref facingColour, flags))
+            {
+                _config.PlayerFacingColour = facingColour;
+                _config.Save();
+            }
+        }
+
+        if (_config.ShowPlayerCircleOnMap || _config.ShowPlayerFacingOnMap)
+        {
+            var guideDot = _config.PlayerGuideDotSize;
+            ImGui.SetNextItemWidth(90);
+            if (ImGui.InputFloat("Guide dot size", ref guideDot, 1f))
+            {
+                _config.PlayerGuideDotSize = Math.Clamp(guideDot, 3f, 24f);
+                _config.Save();
+            }
+            ImGui.TextDisabled("Both guides are made of dots — there's no line to draw with on the game's map.");
+        }
+    }
+
+    /// <summary>
     /// Colour pickers for each state a spawn point can be in.
     ///
     /// Alpha is editable too. A zone with sixty ARR spawn points is a wall of
@@ -1206,6 +1287,23 @@ public sealed class Plugin : IDalamudPlugin
             if (ImGui.Checkbox("S ranks", ref showS))
             {
                 _config.ShowSRankPoints = showS;
+                _config.Save();
+            }
+
+            ImGui.Separator();
+
+            // Not gated on the spawn points above — either guide works on its own.
+            var circle = _config.ShowPlayerCircleOnMap;
+            if (ImGui.Checkbox("Range circle", ref circle))
+            {
+                _config.ShowPlayerCircleOnMap = circle;
+                _config.Save();
+            }
+
+            var facing = _config.ShowPlayerFacingOnMap;
+            if (ImGui.Checkbox("Facing guide", ref facing))
+            {
+                _config.ShowPlayerFacingOnMap = facing;
                 _config.Save();
             }
 
@@ -2344,6 +2442,11 @@ public sealed class Plugin : IDalamudPlugin
                 }
                 ImGui.TextDisabled("How close a mark must be to count as sitting on a spawn point.");
             }
+
+            ImGui.Spacing();
+            ImGui.Separator();
+            ImGui.Spacing();
+            DrawPlayerGuideSettings();
             ImGui.Spacing();
         }
 

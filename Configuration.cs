@@ -237,6 +237,40 @@ public class Configuration : IPluginConfiguration
     /// <summary>Colour when an S rank is sitting on the point.</summary>
     public Vector4 SpawnDotColourS { get; set; } = new(0f, 0.827f, 0f, 1f);
 
+    /// <summary>
+    /// Draw a ring around your character on the map, at
+    /// <see cref="PlayerCircleRadius"/> yalms. Independent of the spawn points
+    /// and of the facing guide — any of the three can be on by itself.
+    /// </summary>
+    public bool ShowPlayerCircleOnMap { get; set; } = false;
+
+    /// <summary>
+    /// Ring radius in yalms. Drawn in world units rather than screen pixels, so
+    /// it stays true to that distance at any map zoom.
+    /// </summary>
+    public float PlayerCircleRadius { get; set; } = 25f;
+
+    public Vector4 PlayerCircleColour { get; set; } = new(1f, 1f, 1f, 0.6f);
+
+    /// <summary>Draw a line from your character showing which way you are facing.</summary>
+    public bool ShowPlayerFacingOnMap { get; set; } = false;
+
+    /// <summary>How far the facing guide reaches, in yalms.</summary>
+    public float PlayerFacingLength { get; set; } = 30f;
+
+    public Vector4 PlayerFacingColour { get; set; } = new(1f, 0.85f, 0.2f, 0.85f);
+
+    /// <summary>
+    /// Dot size for the ring and facing guide, in pixels. Separate from
+    /// <see cref="SpawnDotSize"/> because these are made of many more dots and
+    /// want to be smaller than a spawn point to read as a line.
+    /// </summary>
+    public float PlayerGuideDotSize { get; set; } = 7f;
+
+    /// <summary>True when anything at all wants drawing on the map.</summary>
+    public bool AnyMapOverlayEnabled =>
+        ShowSpawnPointsOnMap || ShowPlayerCircleOnMap || ShowPlayerFacingOnMap;
+
     /// <summary>How close (in map units) a mark must be to count as "at" a spawn point.</summary>
     public float SpawnPointMatchRadius { get; set; } = 2.5f;
 
