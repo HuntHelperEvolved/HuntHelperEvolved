@@ -250,6 +250,14 @@ public class Configuration : IPluginConfiguration
     public Vector4 PlayerCircleColour { get; set; } = new(1f, 1f, 0f, 0.9f);
 
     /// <summary>
+    /// Ring line width, as a fraction of the ring texture's 256 pixels. It is
+    /// drawn into the image rather than stroked on screen, so the line thickens
+    /// and thins with the map's zoom along with the ring itself. 8 lands at
+    /// roughly 3 pixels at the default zoom, which is Hunt Helper's width.
+    /// </summary>
+    public float PlayerCircleThickness { get; set; } = 8f;
+
+    /// <summary>
     /// Draw the projected path: the swathe ahead of you that your detection
     /// range will sweep if you keep walking. Exactly as wide as the ring, and
     /// long enough to leave the map, so neither is set here.

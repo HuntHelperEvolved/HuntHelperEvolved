@@ -38,6 +38,22 @@ public sealed class WorldSizedMarker : MapMarkerNode
     /// <summary>Size in map units, the same space <see cref="MapMarkerNode.Position"/> uses.</summary>
     public Vector2 WorldSize { get; set; } = Vector2.One;
 
+    /// <summary>
+    /// Where the marker should sit, asked afresh each frame.
+    ///
+    /// This is what stops the guides flickering. Anything that follows the
+    /// player used to be redrawn by tearing down every marker on the map and
+    /// building them again, which blinks — and blinks the spawn points along
+    /// with it, since they go at the same time. A marker that moves itself
+    /// never has to be replaced at all: OnUpdate runs every frame anyway, so
+    /// the position is simply current, and it tracks at the frame rate rather
+    /// than in ten-per-second steps.
+    /// </summary>
+    public Func<Vector2>? PositionProvider { get; init; }
+
+    /// <summary>Facing, asked afresh each frame. Same reasoning as the position.</summary>
+    public Func<float>? RotationProvider { get; init; }
+
     protected override void OnUpdate()
     {
         var scaling = markerPositionScaling();
@@ -49,5 +65,13 @@ public sealed class WorldSizedMarker : MapMarkerNode
 
         Size = WorldSize;
         MarkerScale = scaling;
+
+        // Set before the base class lays the marker out — Update calls this
+        // first and then reads both.
+        if (PositionProvider is { } position)
+            Position = position();
+
+        if (RotationProvider is { } rotation)
+            Rotation = rotation();
     }
 }

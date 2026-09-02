@@ -47,12 +47,18 @@ public sealed unsafe class HuntMapOverlay : IDisposable
     // new paths, and markers that have to be re-placed to pick them up.
     private string _dotSignature = string.Empty;
 
-    // Where the player was when the guides were last drawn. They follow the
-    // character, so something has to decide when that is worth redoing — see
-    // PlayerGuidesNeedRefresh.
+    // What the last drawn set of markers was asked to show. Toggling an option
+    // has to re-place them, and nothing else would notice: since the guides
+    // started moving themselves, player movement no longer forces a rebuild,
+    // so a toggle would otherwise sit there doing nothing until the map
+    // happened to refresh for some other reason.
+    private string _drawSignature = string.Empty;
+
+    // Last known player position and facing, used when the object table cannot
+    // answer for a frame. The guides read these every frame and move themselves;
+    // nothing about the player triggers a rebuild any more.
     private Vector2 _lastPlayerPos;
     private float _lastPlayerRotation;
-    private double _secondsSincePlayerCheck;
 
     private MapOverlayController? _overlay;
     private bool _enabled;
@@ -144,78 +150,39 @@ public sealed unsafe class HuntMapOverlay : IDisposable
     private const float ProjectedPathLength = 4096f;
 
     /// <summary>
-    /// Whether the ring and facing guide have drifted far enough from where
-    /// they were drawn to be worth re-placing.
-    ///
-    /// These follow the character, so without a check they would rebuild every
-    /// marker on the map on every frame. Sampled ten times a second, and only
-    /// acted on once the player has actually moved half a yalm or turned about
-    /// three degrees — standing still costs nothing at all.
+    /// The player's position on the map, or the last one known when they are
+    /// briefly unavailable — better a marker that holds still for a frame than
+    /// one that snaps to the middle of the map.
     /// </summary>
-    private bool PlayerGuidesNeedRefresh(IFramework framework)
+    private Vector2 PlayerPosition()
     {
-        if (!_config.ShowPlayerCircleOnMap && !_config.ShowPlayerFacingOnMap)
-            return false;
-
-        // These are the only thing here that redraws because the player moved,
-        // and they are hundreds of markers. With the map shut nobody can see
-        // them, so nothing is rebuilt until it is open.
-        if (!IsMapOpen())
-            return false;
-
-        _secondsSincePlayerCheck += framework.UpdateDelta.TotalSeconds;
-        if (_secondsSincePlayerCheck < 0.1)
-            return false;
-        _secondsSincePlayerCheck = 0;
-
         var player = _objectTable.LocalPlayer;
-        if (player is null)
-            return false;
+        if (player is not null)
+            _lastPlayerPos = new Vector2(player.Position.X, player.Position.Z);
 
-        var pos = new Vector2(player.Position.X, player.Position.Z);
-        var moved = Vector2.Distance(pos, _lastPlayerPos) > 0.5f;
-
-        // Only meaningful for the facing guide; the ring looks the same however
-        // the character is turned.
-        var turned = _config.ShowPlayerFacingOnMap
-                     && MathF.Abs(WrapAngle(player.Rotation - _lastPlayerRotation)) > 0.05f;
-
-        return moved || turned;
+        return _lastPlayerPos;
     }
 
-    /// <summary>Whether the map window is on screen.</summary>
-    private bool IsMapOpen()
+    /// <summary>Player facing in radians, with the same fallback.</summary>
+    private float PlayerRotation()
     {
-        try
-        {
-            var addon = _gameGui.GetAddonByName("AreaMap");
-            return !addon.IsNull && addon.IsVisible;
-        }
-        catch
-        {
-            // If we cannot tell, assume it is open rather than silently
-            // refusing to draw.
-            return true;
-        }
-    }
+        var player = _objectTable.LocalPlayer;
+        if (player is not null)
+            _lastPlayerRotation = player.Rotation;
 
-    private static float WrapAngle(float radians)
-    {
-        while (radians > MathF.PI) radians -= MathF.Tau;
-        while (radians < -MathF.PI) radians += MathF.Tau;
-        return radians;
+        return _lastPlayerRotation;
     }
 
     /// <summary>
-    /// Places the ring and the facing guide, returning how many markers went
-    /// down. Both are built from the same small dots as everything else, since
-    /// a map marker is a texture at a position — there is no line to draw with
-    /// and no way to rotate one, so a line has to be made of points.
-    ///
-    /// Positions are world coordinates, which is what MapMarkerInfo wants, so
-    /// the radius is in yalms and stays honest at any zoom rather than being a
-    /// fixed number of screen pixels.
+    /// Forward as a world X/Z vector. The game's convention is (sin, cos), with
+    /// zero facing south, which is +Z, and +Z is down the map.
     /// </summary>
+    private Vector2 PlayerForward()
+    {
+        var rotation = PlayerRotation();
+        return new Vector2(MathF.Sin(rotation), MathF.Cos(rotation));
+    }
+
     /// <summary>
     /// The detection radius in map units, derived from the map itself rather
     /// than assumed, by asking what two map coordinates are worth here.
@@ -271,10 +238,6 @@ public sealed unsafe class HuntMapOverlay : IDisposable
         var player = _objectTable.LocalPlayer;
         if (player is null) return 0;
 
-        var centre = new Vector2(player.Position.X, player.Position.Z);
-        _lastPlayerPos = centre;
-        _lastPlayerRotation = player.Rotation;
-
         var radius = DetectionRadiusWorld(mapId);
         if (radius <= 0f) return 0;
 
@@ -283,30 +246,22 @@ public sealed unsafe class HuntMapOverlay : IDisposable
         // The path goes under the ring, matching the order Hunt Helper draws in.
         if (_config.ShowPlayerFacingOnMap)
         {
-            // Rotation is radians about the vertical axis, and the game's own
-            // convention puts forward at (sin, cos) in world X/Z — zero facing
-            // south, which is +Z, and +Z is down the map.
-            var forward = new Vector2(MathF.Sin(player.Rotation), MathF.Cos(player.Rotation));
-
-            // The quad's length runs along its own +X, and a node's rotation is
-            // clockwise on screen, so +X lands on (cos, sin). Solving that
-            // against forward gives this angle. Negate it if the band ever comes
-            // out mirrored.
-            var rotation = (MathF.PI / 2f) - player.Rotation;
-
-            // Centred half its length ahead, so it starts at the player and runs
-            // forward rather than straddling them.
-            var midpoint = centre + (forward * (ProjectedPathLength / 2f));
-
             var path = new WorldSizedMarker(MarkerPositionScaling)
             {
                 AllowAnyMap = false,
                 MapId = mapId,
-                Position = midpoint,
                 TexturePath = dots["facing"],
                 WorldSize = new Vector2(ProjectedPathLength, radius * 2f),
-                Rotation = rotation,
                 TextTooltip = "Projected path",
+
+                // Centred half its length ahead, so it starts at the player and
+                // runs forward rather than straddling them.
+                PositionProvider = () => PlayerPosition() + (PlayerForward() * (ProjectedPathLength / 2f)),
+
+                // The quad's length runs along its own +X, and a node's rotation
+                // is clockwise on screen, so +X lands on (cos, sin). Solving that
+                // against the game's forward vector of (sin, cos) gives this.
+                RotationProvider = () => (MathF.PI / 2f) - PlayerRotation(),
             };
 
             _overlay.AddMarker(path);
@@ -319,10 +274,10 @@ public sealed unsafe class HuntMapOverlay : IDisposable
             {
                 AllowAnyMap = false,
                 MapId = mapId,
-                Position = centre,
                 TexturePath = dots["circle"],
                 WorldSize = new Vector2(radius * 2f, radius * 2f),
                 TextTooltip = "Detection range",
+                PositionProvider = PlayerPosition,
             };
 
             _overlay.AddMarker(ring);
@@ -333,6 +288,15 @@ public sealed unsafe class HuntMapOverlay : IDisposable
     }
 
     /// <summary>
+    /// Everything that decides WHICH markers get placed, as a string. Compared
+    /// each frame so that ticking any of these boxes shows up at once.
+    /// </summary>
+    private string DrawSignature() =>
+        $"{_config.ShowSpawnPointsOnMap}{_config.ShowARankPoints}{_config.ShowBRankPoints}"
+        + $"{_config.ShowSRankPoints}{_config.ShowPlayerCircleOnMap}"
+        + $"{_config.ShowPlayerFacingOnMap}{_config.SpawnDotSize}";
+
+    /// <summary>
     /// The configured colours, as a string. Used both to name the files and to
     /// notice when they need drawing again.
     /// </summary>
@@ -341,7 +305,8 @@ public sealed unsafe class HuntMapOverlay : IDisposable
         + DotTextures.HexOf(_config.SpawnDotColourB) + "-"
         + DotTextures.HexOf(_config.SpawnDotColourA) + "-"
         + DotTextures.HexOf(_config.SpawnDotColourS) + "-"
-        + DotTextures.HexOf(_config.PlayerCircleColour) + "-"
+        + DotTextures.HexOf(_config.PlayerCircleColour) + "t"
+        + ((int)_config.PlayerCircleThickness).ToString() + "-"
         + DotTextures.HexOf(_config.PlayerFacingColour);
 
     /// <summary>
@@ -387,8 +352,12 @@ public sealed unsafe class HuntMapOverlay : IDisposable
 
                 // Not dots: an outline stretched to the circle's width, and a
                 // flat block of colour stretched into the path band.
-                Texture("circle", "ring", _config.PlayerCircleColour,
-                    c => DotTextures.RenderRing(c)),
+                // Thickness is in the name too: it changes what the ring
+                // draws without changing its colour, which is exactly the case
+                // that served up a stale image last time.
+                Texture("circle", $"ring{(int)_config.PlayerCircleThickness}",
+                    _config.PlayerCircleColour,
+                    c => DotTextures.RenderRing(c, strokePixels: _config.PlayerCircleThickness)),
                 Texture("facing", "band", _config.PlayerFacingColour,
                     c => DotTextures.RenderSolid(c)),
             };
@@ -527,8 +496,12 @@ public sealed unsafe class HuntMapOverlay : IDisposable
             if (DotSignature() != _dotSignature)
                 _needsRefresh = true;
 
-            if (PlayerGuidesNeedRefresh(framework))
+            var drawSignature = DrawSignature();
+            if (drawSignature != _drawSignature)
+            {
+                _drawSignature = drawSignature;
                 _needsRefresh = true;
+            }
 
             if (!_needsRefresh) return;
             _needsRefresh = false;
