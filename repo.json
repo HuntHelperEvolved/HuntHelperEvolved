@@ -2,12 +2,10 @@
   {
     "Author": "MusicManBowls",
     "Name": "Hunt Train Relay",
-    "Description": "Detects hunt marks, tracks a train with exact kill times, posts reports to Discord, counts S-rank trigger mobs, and draws spawn points on the in-game map.",
+    "Description": "Detects hunt marks, tracks a train with exact kill times, posts reports to Discord, counts S-rank trigger mobs, and draws spawn points on the in-game map. Also includes Hunt Tally, the lifetime per-mark kill counter that used to be a separate plugin - it keeps counting into its existing HuntTally.json, so upgrading loses nothing. Uninstall the standalone Hunt Tally plugin after updating.",
     "InternalName": "HuntTrainRelay",
-
     "AssemblyVersion": "1.15.1.0",
-    "TestingAssemblyVersion": "1.16.0.0",
-
+    "TestingAssemblyVersion": "1.17.0.0",
     "RepoUrl": "https://raw.githubusercontent.com/MusicManBowls/HuntTrainRelay/main/repo.json",
     "ApplicableVersion": "any",
     "DalamudApiLevel": 15,
@@ -15,9 +13,8 @@
     "Punchline": "Hunt train tracking, Discord reports, and spawn points on the in-game map.",
     "IsHide": false,
     "IsTestingExclusive": false,
-
     "DownloadLinkInstall": "https://github.com/MusicManBowls/HuntTrainRelay/releases/download/1.15.1/HuntTrainRelay.zip",
     "DownloadLinkUpdate": "https://github.com/MusicManBowls/HuntTrainRelay/releases/download/1.15.1/HuntTrainRelay.zip",
-    "DownloadLinkTesting": "https://github.com/MusicManBowls/HuntTrainRelay/releases/download/1.16/HuntTrainRelay.zip"
+    "DownloadLinkTesting": "https://github.com/MusicManBowls/HuntTrainRelay/releases/download/1.17/HuntTrainRelay.zip"
   }
 ]

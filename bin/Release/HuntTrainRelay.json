@@ -2,15 +2,18 @@
   "Author": "MusicManBowls",
   "Name": "Hunt Train Relay",
   "InternalName": "HuntTrainRelay",
-  "AssemblyVersion": "1.16.0.0",
-  "Description": "Watches Hunt Helper's train via its IPC. Ends manually via End Train Now, posting a Discord report sorted by the order marks actually died, with Assumed Sniped detection for named marks never seen. Also supports on-demand scouting reports with multi-scout credit.",
+  "AssemblyVersion": "1.17.0.0",
+  "Description": "Watches Hunt Helper's train via its IPC. Ends manually via End Train Now, posting a Discord report sorted by the order marks actually died, with Assumed Sniped detection for named marks never seen. Also supports on-demand scouting reports with multi-scout credit. Now includes Hunt Tally, the lifetime per-mark kill counter that used to be a separate plugin - it keeps counting into its existing HuntTally.json, so upgrading loses nothing. Uninstall the standalone Hunt Tally plugin after updating.",
   "ApplicableVersion": "any",
   "RepoUrl": "https://github.com/MusicManBowls/HuntTrainRelay",
   "Tags": [
     "hunt",
     "train",
     "discord",
-    "webhook"
+    "webhook",
+    "marks",
+    "tracker",
+    "statistics"
   ],
   "DalamudApiLevel": 15,
   "LoadRequiredState": 0,

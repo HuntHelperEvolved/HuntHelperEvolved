@@ -7,6 +7,10 @@ in every Discord reader's own local time. Also tracks a small, fixed set of
 S-rank checks the group actually cares about, and can post an on-demand
 scouting report with a code that pastes straight into anyone else's Hunt Helper.
 
+As of 1.16 it also includes **Hunt Tally**, the lifetime per-mark kill counter
+that used to be a separate plugin. See [The tally](#the-tally) below — including
+the one thing you have to do when upgrading.
+
 ## Install
 
 1. In-game, type `/xlsettings`, go to the **Experimental** tab, and find
@@ -75,6 +79,46 @@ Treat the webhook URL like a password — anyone who has it can post to that cha
 - *Check interval (seconds)*: how often (while "Tracking this train" is on) it
   checks Hunt Helper for changes. 3 seconds is fine for most people.
 
+**Tally**
+- The hunt tally's settings — kill credit detection, which ranks to track,
+  seeding baselines from your achievements, and the reset. These were the
+  standalone plugin's own settings window; nothing about them has changed
+  except where they live.
+- *Open the tally* opens the tally's own window, which stays separate.
+
+## The tally
+
+Hunt Tally is built in from 1.16. It counts every hunt mark you get kill credit
+for, permanently and per character, broken down by rank and expansion — so the
+number survives finishing the achievement, which stops reporting a running
+total once it's complete.
+
+**If you were running the standalone Hunt Tally plugin, uninstall it** in
+`/xlplugins` after updating, then reload Hunt Train Relay. Until you do, this
+plugin deliberately counts nothing and doesn't touch your tally file: both
+would otherwise be writing the same file on their own timers and each save
+would wipe out whatever the other had recorded since it last read. You'll get a
+red warning in chat and on the Tally tab while that's the case.
+
+**Your existing counts carry over untouched.** The tally still reads and writes
+`HuntTally.json`, exactly where the standalone plugin kept it, so there's no
+import step and nothing to migrate. Your characters, per-mark records, kill
+history, achievement baselines and settings are all just there.
+
+- `/hunttally` opens the tally window — marks, by expansion, statistics and
+  characters — same as it always did.
+- `/hunttally config` opens the **Tally** tab of this plugin's settings window.
+  The tally's settings used to be a window of their own; they're a tab here
+  now, with the same controls.
+- `/hunttally ipc` is the same self-test as before.
+
+The tally still publishes its kills over Dalamud IPC on the `HuntTally.OnKill`
+gate, so any other plugin that was listening carries on working unchanged.
+
+Auto-marking on the **Conductor** tab now reads the tally directly instead of
+going through IPC. It follows the same feed it always did — the marks you were
+credited with, or every mark death if you turn that on in the Tally tab.
+
 ## Known limitations (by design)
 
 - Only A-rank marks get a computed respawn window. B-rank and S-rank marks
@@ -95,3 +139,13 @@ Treat the webhook URL like a password — anyone who has it can post to that cha
 `dotnet build -c Release`, zip `HuntTrainRelay.dll` + `HuntTrainRelay.json`
 from `bin\Release\`, attach that zip to a GitHub Release, and update the
 version + download links in `repo.json`.
+
+On macOS or Linux, run `./build-macos.sh` instead — the Dalamud SDK needs to be
+pointed at `Dalamud.dll` via `DALAMUD_HOME`, which it only finds by itself on
+Windows. The script looks in the usual XIV on Mac and XIVLauncher.Core places.
+
+The tally lives in `Tally/`, in its original `HuntTally` namespace. That's
+deliberate: it keeps the merge to a wiring change, so the code people's
+existing totals were built by is the same code. `Tally/TallyConfigStore.cs` is
+the one genuinely new piece — it reads and writes `HuntTally.json` directly,
+because Dalamud only ever hands a plugin the config file named after it.
