@@ -137,23 +137,11 @@ public sealed unsafe class HuntMapOverlay : IDisposable
     private const float DetectionRadiusCoords = 2f;
 
     /// <summary>
-    /// Roughly how far apart the ring's dots sit, in world units.
-    ///
-    /// The ring has to be drawn as a run of dots, because a map marker is a
-    /// texture at a position: there is no line to draw with. Positions scale
-    /// with the map's zoom but each marker is counter-scaled to a constant size
-    /// on screen, so spacing them evenly in world units and choosing a value
-    /// well under the dot's own width is what makes them overlap into a
-    /// continuous line instead of reading as beads.
+    /// How far the projected path runs, in map units. The map itself is 2048
+    /// across, so this always leaves the edge of it whichever way you face —
+    /// which is what "runs off into the distance" needs to mean here.
     /// </summary>
-    private const float GuideDotSpacing = 3.5f;
-
-    /// <summary>
-    /// Ceiling on how many dots one guide may use. The ring at its normal
-    /// radius wants a bit over 180; this stops a pathological map turning that
-    /// into thousands.
-    /// </summary>
-    private const int MaxGuideDots = 220;
+    private const float ProjectedPathLength = 4096f;
 
     /// <summary>
     /// Whether the ring and facing guide have drifted far enough from where
@@ -229,7 +217,7 @@ public sealed unsafe class HuntMapOverlay : IDisposable
     /// fixed number of screen pixels.
     /// </summary>
     /// <summary>
-    /// The detection radius in world units, derived from the map itself rather
+    /// The detection radius in map units, derived from the map itself rather
     /// than assumed, by asking what two map coordinates are worth here.
     /// </summary>
     private float DetectionRadiusWorld(uint mapId)
@@ -240,17 +228,40 @@ public sealed unsafe class HuntMapOverlay : IDisposable
     }
 
     /// <summary>
-    /// Places the detection ring and the facing guide, returning how many
+    /// The map's current marker scaling factor, which WorldSizedMarker needs to
+    /// undo the constant-size counter-scaling every marker is given.
+    /// </summary>
+    private float MarkerPositionScaling()
+    {
+        try
+        {
+            var addon = (FFXIVClientStructs.FFXIV.Client.UI.AddonAreaMap*)
+                _gameGui.GetAddonByName("AreaMap").Address;
+            if (addon == null) return 1f;
+
+            var scaling = addon->AreaMap.MarkerPositionScaling;
+            return scaling > 0f ? scaling : 1f;
+        }
+        catch
+        {
+            return 1f;
+        }
+    }
+
+    /// <summary>
+    /// Places the detection ring and the projected path, returning how many
     /// markers went down.
     ///
-    /// Both are runs of small overlapping dots rather than shapes. A map marker
-    /// is a texture at a position — KamiToolKit gives no line primitive, and
-    /// MapMarkerInfo has no rotation, so neither a circle nor a heading line can
-    /// be a single sprite. Drawing them from points is also what keeps them
-    /// honest: marker positions live in the map's own space and move with its
-    /// zoom, while a marker's size is counter-scaled to stay constant on screen,
-    /// so one stretched ring texture would claim a radius it did not have at
-    /// every zoom but one.
+    /// Two markers, not two hundred. Both are WorldSizedMarkers, so they are
+    /// measured in map units and keep their meaning at any zoom: the ring stays
+    /// the same number of yalms across, and the path stays exactly as wide as
+    /// the ring.
+    ///
+    /// The path is one rotated quad rather than a row of sprites because it is
+    /// translucent. Overlapping translucent shapes compound their alpha, so a
+    /// band built from pieces would be visibly blotched where they met, and a
+    /// band built from pieces that only touch would be scalloped along its
+    /// edges. A single quad is flat, which is what Hunt Helper's AddLine gives.
     /// </summary>
     private int DrawPlayerGuides(uint mapId, Dictionary<string, string> dots)
     {
@@ -267,71 +278,59 @@ public sealed unsafe class HuntMapOverlay : IDisposable
         var radius = DetectionRadiusWorld(mapId);
         if (radius <= 0f) return 0;
 
-        var size = new Vector2(_config.PlayerGuideDotSize, _config.PlayerGuideDotSize);
         var placed = 0;
+
+        // The path goes under the ring, matching the order Hunt Helper draws in.
+        if (_config.ShowPlayerFacingOnMap)
+        {
+            // Rotation is radians about the vertical axis, and the game's own
+            // convention puts forward at (sin, cos) in world X/Z — zero facing
+            // south, which is +Z, and +Z is down the map.
+            var forward = new Vector2(MathF.Sin(player.Rotation), MathF.Cos(player.Rotation));
+
+            // The quad's length runs along its own +X, and a node's rotation is
+            // clockwise on screen, so +X lands on (cos, sin). Solving that
+            // against forward gives this angle. Negate it if the band ever comes
+            // out mirrored.
+            var rotation = (MathF.PI / 2f) - player.Rotation;
+
+            // Centred half its length ahead, so it starts at the player and runs
+            // forward rather than straddling them.
+            var midpoint = centre + (forward * (ProjectedPathLength / 2f));
+
+            var path = new WorldSizedMarker(MarkerPositionScaling)
+            {
+                AllowAnyMap = false,
+                MapId = mapId,
+                Position = midpoint,
+                TexturePath = dots["facing"],
+                WorldSize = new Vector2(ProjectedPathLength, radius * 2f),
+                Rotation = rotation,
+                TextTooltip = "Projected path",
+            };
+
+            _overlay.AddMarker(path);
+            placed++;
+        }
 
         if (_config.ShowPlayerCircleOnMap)
         {
-            var segments = DotsFor(MathF.Tau * radius);
-
-            for (var i = 0; i < segments; i++)
+            var ring = new WorldSizedMarker(MarkerPositionScaling)
             {
-                var angle = MathF.Tau * i / segments;
-                var at = centre + new Vector2(MathF.Cos(angle) * radius, MathF.Sin(angle) * radius);
+                AllowAnyMap = false,
+                MapId = mapId,
+                Position = centre,
+                TexturePath = dots["circle"],
+                WorldSize = new Vector2(radius * 2f, radius * 2f),
+                TextTooltip = "Detection range",
+            };
 
-                _overlay.AddMarker(new MapMarkerInfo
-                {
-                    AllowAnyMap = false,
-                    MapId = mapId,
-                    Position = at,
-                    TexturePath = dots["circle"],
-                    Size = size,
-                    Tooltip = "Detection range",
-                });
-                placed++;
-            }
-        }
-
-        if (_config.ShowPlayerFacingOnMap)
-        {
-            // A diameter's worth, so it runs the width of the ring and carries
-            // on far enough past it to be unmistakable at a glance. Hunt Helper
-            // stops its line at the rim, one radius out.
-            var length = radius * 2f;
-            var segments = DotsFor(length);
-
-            // Rotation is radians about the vertical axis, and the game's own
-            // convention puts forward at (sin, cos) in world X/Z — zero facing
-            // south, which is +Z. If the guide ever points the wrong way, this
-            // is the line to negate.
-            var forward = new Vector2(MathF.Sin(player.Rotation), MathF.Cos(player.Rotation));
-
-            for (var i = 1; i <= segments; i++)
-            {
-                var at = centre + (forward * (length * i / segments));
-
-                _overlay.AddMarker(new MapMarkerInfo
-                {
-                    AllowAnyMap = false,
-                    MapId = mapId,
-                    Position = at,
-                    TexturePath = dots["facing"],
-                    Size = size,
-                    Tooltip = "Facing",
-                });
-                placed++;
-            }
+            _overlay.AddMarker(ring);
+            placed++;
         }
 
         return placed;
     }
-
-    /// <summary>
-    /// How many dots to spend on a run of the given length, so that spacing
-    /// stays even whatever the length is and the dots keep overlapping.
-    /// </summary>
-    private static int DotsFor(float worldLength) =>
-        Math.Clamp((int)MathF.Ceiling(worldLength / GuideDotSpacing), 8, MaxGuideDots);
 
     /// <summary>
     /// The configured colours, as a string. Used both to name the files and to
@@ -372,8 +371,14 @@ public sealed unsafe class HuntMapOverlay : IDisposable
                 ["b"] = _config.SpawnDotColourB,
                 ["a"] = _config.SpawnDotColourA,
                 ["s"] = _config.SpawnDotColourS,
-                ["circle"] = _config.PlayerCircleColour,
-                ["facing"] = _config.PlayerFacingColour,
+            };
+
+            // The guides are not dots: a ring outline stretched to the circle's
+            // width, and a flat block of colour stretched into the path band.
+            var shapes = new Dictionary<string, Func<byte[]>>
+            {
+                ["circle"] = () => DotTextures.RenderRing(_config.PlayerCircleColour),
+                ["facing"] = () => DotTextures.RenderSolid(_config.PlayerFacingColour),
             };
 
             var paths = new Dictionary<string, string>();
@@ -386,6 +391,22 @@ public sealed unsafe class HuntMapOverlay : IDisposable
 
                 if (!File.Exists(path))
                     File.WriteAllBytes(path, DotTextures.Render(colour));
+
+                paths[state] = path;
+                wanted.Add(name);
+            }
+
+            foreach (var (state, render) in shapes)
+            {
+                var colour = state == "circle"
+                    ? _config.PlayerCircleColour
+                    : _config.PlayerFacingColour;
+
+                var name = $"{state}-{DotTextures.HexOf(colour)}.png";
+                var path = Path.Combine(dir, name);
+
+                if (!File.Exists(path))
+                    File.WriteAllBytes(path, render());
 
                 paths[state] = path;
                 wanted.Add(name);
