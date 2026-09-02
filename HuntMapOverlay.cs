@@ -150,25 +150,47 @@ public sealed unsafe class HuntMapOverlay : IDisposable
     private const float ProjectedPathLength = 4096f;
 
     /// <summary>
-    /// Marks live SS ranks where they actually are.
+    /// Draws live marks that are not sitting on any known spawn point, at
+    /// wherever they actually are.
     ///
-    /// Everything else on this map is a spawn point that changes colour when
-    /// something is standing on it. An SS has no spawn points, so there is no
-    /// dot to colour and nothing to show while it is dead — which is the point:
-    /// if this dot is on the map, one is up, and it is there.
+    /// This is how an SS shows up. An SS spawns on its own spot, one no S rank
+    /// uses, and those spots are not in the spawn point data — so there is no
+    /// dot at that location to light up, and until now a live SS simply did not
+    /// appear on the map at all. Rather than special-case the rank, anything
+    /// the claiming step could not place gets drawn where it is: the same gap
+    /// swallows a mark that spawned somewhere unlisted, or one whose nearest
+    /// point was already taken by a higher rank, and a live mark should never
+    /// be invisible.
     ///
-    /// Drawn last so it sits over the spawn points and the path both. An SS
-    /// being up is the most important thing the map can be telling you.
+    /// Drawn a little larger than a spawn point, and after them, so it is clear
+    /// this is the mark itself rather than a point it happens to be near.
     /// </summary>
-    private int DrawLiveSSMarks(uint mapId, Dictionary<string, string> dots, List<OtherRankSighting> sightings)
+    private int DrawMarksOffSpawnPoints(
+        uint mapId, Dictionary<string, string> dots, IEnumerable<OtherRankSighting> unclaimed)
     {
-        if (_overlay == null || !_config.ShowSSRankOnMap || sightings.Count == 0)
-            return 0;
+        if (_overlay == null) return 0;
 
         var placed = 0;
 
-        foreach (var sighting in sightings)
+        foreach (var sighting in unclaimed)
         {
+            // Same filters the spawn points use, so turning a rank off turns
+            // it off everywhere rather than only half of the map.
+            var wanted = sighting.Rank switch
+            {
+                HuntRank.A => _config.ShowARankPoints,
+                HuntRank.B => _config.ShowBRankPoints,
+                _ => _config.ShowSRankPoints,
+            };
+            if (!wanted) continue;
+
+            var dot = sighting.Rank switch
+            {
+                HuntRank.S => "s",
+                HuntRank.A => "a",
+                _ => "b",
+            };
+
             var world = MapCoordinates.ToWorld(
                 _dataManager, mapId, sighting.MapPosition.X, sighting.MapPosition.Y);
 
@@ -177,13 +199,11 @@ public sealed unsafe class HuntMapOverlay : IDisposable
                 AllowAnyMap = false,
                 MapId = mapId,
                 Position = world,
-                TexturePath = dots["ss"],
-
-                // A shade larger than a spawn point, because it is not one of
-                // them and should not be mistaken for one.
-                Size = new Vector2(_config.SpawnDotSize * 1.4f, _config.SpawnDotSize * 1.4f),
-                TextTooltip = $"{sighting.Name}  (SS rank) — UP\n"
-                              + $"{sighting.MapPosition.X:F1}, {sighting.MapPosition.Y:F1}",
+                TexturePath = dots[dot],
+                Size = new Vector2(_config.SpawnDotSize * 1.35f, _config.SpawnDotSize * 1.35f),
+                TextTooltip = $"{sighting.Name}  ({sighting.Rank} rank) — UP\n"
+                              + $"{sighting.MapPosition.X:F1}, {sighting.MapPosition.Y:F1}\n"
+                              + "Not on a known spawn point.",
             });
             placed++;
         }
@@ -358,7 +378,7 @@ public sealed unsafe class HuntMapOverlay : IDisposable
     private string DrawSignature() =>
         $"{_config.ShowSpawnPointsOnMap}{_config.ShowARankPoints}{_config.ShowBRankPoints}"
         + $"{_config.ShowSRankPoints}{_config.ShowPlayerCircleOnMap}"
-        + $"{_config.ShowPlayerFacingOnMap}{_config.ShowSSRankOnMap}{_config.SpawnDotSize}";
+        + $"{_config.ShowPlayerFacingOnMap}{_config.SpawnDotSize}";
 
     /// <summary>
     /// The configured colours, as a string. Used both to name the files and to
@@ -369,7 +389,6 @@ public sealed unsafe class HuntMapOverlay : IDisposable
         + DotTextures.HexOf(_config.SpawnDotColourB) + "-"
         + DotTextures.HexOf(_config.SpawnDotColourA) + "-"
         + DotTextures.HexOf(_config.SpawnDotColourS) + "-"
-        + DotTextures.HexOf(_config.SpawnDotColourSS) + "-"
         + DotTextures.HexOf(_config.PlayerCircleColour) + "t"
         + ((int)_config.PlayerCircleThickness).ToString() + "-"
         + DotTextures.HexOf(_config.PlayerFacingColour);
@@ -413,8 +432,6 @@ public sealed unsafe class HuntMapOverlay : IDisposable
                 Texture("a", "dot", _config.SpawnDotColourA,
                     c => DotTextures.Render(c)),
                 Texture("s", "dot", _config.SpawnDotColourS,
-                    c => DotTextures.Render(c)),
-                Texture("ss", "dot", _config.SpawnDotColourSS,
                     c => DotTextures.Render(c)),
 
                 // Not dots: an outline stretched to the circle's width, and a
@@ -600,28 +617,13 @@ public sealed unsafe class HuntMapOverlay : IDisposable
 
             if (!_config.ShowSpawnPointsOnMap)
             {
-                var instanceOnly = MarkDetector.GetCurrentInstance();
-                var ssOnly = _detector.OtherRanks.Values
-                    .Where(o => o.TerritoryId == territory && o.Instance == instanceOnly
-                                && o.Rank == HuntRank.SS)
-                    .ToList();
-
-                var ssPlaced = DrawLiveSSMarks(mapId, dots, ssOnly);
-
-                Status = $"Spawn points off."
-                         + (ssPlaced > 0 ? $" {ssPlaced} SS up." : string.Empty)
-                         + (guides > 0 ? $" {guides} guide markers." : string.Empty);
+                Status = guides > 0
+                    ? $"{guides} guide markers shown; spawn points off."
+                    : "Player guides on, but nothing to draw yet.";
                 return;
             }
 
             var points = SpawnPointData.For(territory);
-            if (points.Length == 0)
-            {
-                Status = guides > 0
-                    ? $"No spawn point data for territory {territory}; {guides} guide markers shown."
-                    : $"No spawn point data for territory {territory}.";
-                return;
-            }
 
             // Live A-ranks come from the train list; B and S from the separate
             // sighting store, which never touches the train.
@@ -646,11 +648,6 @@ public sealed unsafe class HuntMapOverlay : IDisposable
             var bSightings = here.Where(o => o.Rank == HuntRank.B).ToList();
             var sSightings = here.Where(o => o.Rank == HuntRank.S).ToList();
 
-            // Not passed to Claim: an SS has no spawn points, so matching one to
-            // the nearest point would light a dot that means nothing. It is
-            // drawn at its own position instead, by DrawLiveSSMarks.
-            var ssSightings = here.Where(o => o.Rank == HuntRank.SS).ToList();
-
             var radius = Math.Max(0.5f, _config.SpawnPointMatchRadius);
 
             // Claim points per MARK rather than per point. Checking each point
@@ -658,6 +655,11 @@ public sealed unsafe class HuntMapOverlay : IDisposable
             // Chernobog filled four dots at once. Each mark now takes only its
             // single closest point.
             var claimed = new Dictionary<int, OtherRankSighting>();
+
+            // Whatever fails to claim a point is not lost — it gets drawn where
+            // it really is instead. An SS is always in here, because its spawn
+            // spot is not one of the points.
+            var unclaimed = new List<OtherRankSighting>();
 
             void Claim(List<OtherRankSighting> sightings)
             {
@@ -677,6 +679,8 @@ public sealed unsafe class HuntMapOverlay : IDisposable
                     // Higher ranks claim first, so don't overwrite them.
                     if (bestIndex >= 0 && !claimed.ContainsKey(bestIndex))
                         claimed[bestIndex] = sighting;
+                    else
+                        unclaimed.Add(sighting);
                 }
             }
 
@@ -737,10 +741,10 @@ public sealed unsafe class HuntMapOverlay : IDisposable
                 placed++;
             }
 
-            var ss = DrawLiveSSMarks(mapId, dots, ssSightings);
+            var offPoint = DrawMarksOffSpawnPoints(mapId, dots, unclaimed);
 
             Status = $"{placed} spawn points shown, {occupied} with a mark on them."
-                     + (ss > 0 ? $" {ss} SS up." : string.Empty)
+                     + (offPoint > 0 ? $" {offPoint} off-point." : string.Empty)
                      + (guides > 0 ? $" {guides} guide markers." : string.Empty);
         }
         catch (Exception ex)

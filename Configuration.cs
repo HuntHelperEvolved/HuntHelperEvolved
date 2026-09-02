@@ -238,19 +238,6 @@ public class Configuration : IPluginConfiguration
     public Vector4 SpawnDotColourS { get; set; } = new(0f, 0.827f, 0f, 1f);
 
     /// <summary>
-    /// Mark a live SS rank on the map, at wherever it actually is.
-    ///
-    /// Not a spawn point setting, which is why it is not among the rank filters
-    /// and is not switched off with them. An SS has no fixed spawn points, so
-    /// there is nothing to draw while it is dead — this dot appears when one is
-    /// up and disappears when it is not, which is the whole of its meaning.
-    /// </summary>
-    public bool ShowSSRankOnMap { get; set; } = true;
-
-    /// <summary>Magenta by default, so it reads as none of the ordinary ranks.</summary>
-    public Vector4 SpawnDotColourSS { get; set; } = new(1f, 0.15f, 0.9f, 1f);
-
-    /// <summary>
     /// Draw the detection ring around your character. Independent of the spawn
     /// points and of the facing guide — any of the three can be on by itself.
     ///
@@ -291,8 +278,7 @@ public class Configuration : IPluginConfiguration
 
     /// <summary>True when anything at all wants drawing on the map.</summary>
     public bool AnyMapOverlayEnabled =>
-        ShowSpawnPointsOnMap || ShowPlayerCircleOnMap || ShowPlayerFacingOnMap
-        || ShowSSRankOnMap;
+        ShowSpawnPointsOnMap || ShowPlayerCircleOnMap || ShowPlayerFacingOnMap;
 
     /// <summary>How close (in map units) a mark must be to count as "at" a spawn point.</summary>
     public float SpawnPointMatchRadius { get; set; } = 2.5f;
