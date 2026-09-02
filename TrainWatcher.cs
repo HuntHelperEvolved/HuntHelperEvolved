@@ -6,6 +6,22 @@ using System.Linq;
 
 namespace HuntTrainRelay;
 
+/// <summary>
+/// One counted kill as reported by the tally.
+///
+/// Kept as a flat primitive record even though the tally is now part of this
+/// same assembly: it was the payload of the old cross-plugin IPC contract, and
+/// it is still exactly what the train needs - an identity, a place and a time -
+/// without coupling the watcher to the tally's own richer kill type.
+/// </summary>
+public readonly record struct HuntTallyKill(
+    string Name,
+    uint NameId,
+    int Rank,
+    uint TerritoryId,
+    uint InstanceId,
+    long UnixSeconds);
+
 public class TrackedMark
 {
     public string Name = string.Empty;
@@ -36,21 +52,23 @@ public class TrainWatcher : IDisposable
 {
     private readonly IFramework _framework;
     private readonly HuntHelperIpc _ipc;
-    private readonly HuntTallyIpc _huntTally;
     private readonly MarkDetector _detector;
     private readonly Configuration _config;
 
     private readonly Dictionary<(uint ModelId, uint Instance), TrackedMark> _tracked = new();
 
-    // Kills arrive on Hunt Tally's thread, not the framework thread, so they're
-    // queued here and applied during Poll rather than mutating _tracked directly.
+    // Kills are queued rather than applied where they arrive, so a kill and a
+    // poll can never interleave halfway through updating _tracked. Since the
+    // merge these come from the tally on the framework thread rather than over
+    // IPC on its own one, so the queue no longer has to be concurrent - but it
+    // stays that way, because it costs nothing and the ordering guarantee it
+    // gives ApplyPendingKills is the point, not the thread safety.
     private readonly ConcurrentQueue<HuntTallyKill> _pendingKills = new();
 
-    // Cheap insurance against double-fires, per Hunt Tally's own suggested key.
+    // Cheap insurance against a death being reported twice.
     private readonly HashSet<(uint, uint, uint, long)> _seenKills = new();
 
     private double _secondsSinceLastPoll;
-    private double _secondsSinceConnectAttempt;
     private double _secondsSinceSave;
     private double _secondsSinceScan;
 
@@ -76,28 +94,28 @@ public class TrainWatcher : IDisposable
     /// <summary>Number of marks auto-marked dead by Hunt Tally this train.</summary>
     public int AutoMarkedCount { get; private set; }
 
-    public TrainWatcher(IFramework framework, HuntHelperIpc ipc, HuntTallyIpc huntTally, MarkDetector detector, Configuration config)
+    public TrainWatcher(IFramework framework, HuntHelperIpc ipc, MarkDetector detector, Configuration config)
     {
         _framework = framework;
         _ipc = ipc;
-        _huntTally = huntTally;
         _detector = detector;
         _config = config;
-        _huntTally.KillReceived += OnHuntTallyKill;
         _framework.Update += OnUpdate;
     }
 
     public void Dispose()
     {
-        _huntTally.KillReceived -= OnHuntTallyKill;
         _framework.Update -= OnUpdate;
     }
 
     /// <summary>
+    /// Takes a kill from the tally. Public because the tally is wired to this
+    /// from Plugin now; it used to arrive on this class's own IPC subscription.
+    ///
     /// Only queued while actively tracking — otherwise the queue would grow
     /// unbounded across a long session of ordinary hunting.
     /// </summary>
-    private void OnHuntTallyKill(HuntTallyKill kill)
+    public void OnHuntTallyKill(HuntTallyKill kill)
     {
         if (!_config.TrackingEnabled) return;
         if (!_config.AutoMarkDeadEnabled) return;
@@ -106,27 +124,17 @@ public class TrainWatcher : IDisposable
 
     private void OnUpdate(IFramework framework)
     {
-        // Retry the Hunt Tally connection regardless of tracking state. Plugin
-        // load order isn't guaranteed, so if Hunt Tally came up after us, the
-        // one attempt at construction would otherwise never be retried until
-        // someone happened to enable tracking.
         // Periodic save so a crash mid-train doesn't lose kill times. Ten
         // seconds keeps writes cheap while bounding the worst case loss.
+        //
+        // The tally connection used to be retried here as well, because plugin
+        // load order made it possible to start before it existed. It ships in
+        // this assembly now, so there is nothing left to wait for.
         _secondsSinceSave += framework.UpdateDelta.TotalSeconds;
         if (_secondsSinceSave >= 10)
         {
             _secondsSinceSave = 0;
             PersistRequested?.Invoke();
-        }
-
-        if (!_huntTally.Connected)
-        {
-            _secondsSinceConnectAttempt += framework.UpdateDelta.TotalSeconds;
-            if (_secondsSinceConnectAttempt >= 5)
-            {
-                _secondsSinceConnectAttempt = 0;
-                _huntTally.EnsureConnected();
-            }
         }
 
         // Detection runs regardless of tracking: the map wants to know about
@@ -252,13 +260,13 @@ public class TrainWatcher : IDisposable
     }
 
     /// <summary>
-    /// Applies any kills Hunt Tally reported since the last poll. Matching is a
+    /// Applies any kills the tally reported since the last poll. Matching is a
     /// direct equality check on (nameId, instanceId): Hunt Helper records a mob
-    /// using mob.NameId as what its IPC calls MobID, and Hunt Tally publishes
-    /// that same BNpcName row id — so the two line up exactly, with no name
-    /// matching (which would break on non-English clients) and no ID mapping.
+    /// using mob.NameId as what its IPC calls MobID, and the tally reports that
+    /// same BNpcName row id — so the two line up exactly, with no name matching
+    /// (which would break on non-English clients) and no ID mapping.
     ///
-    /// Most events won't match anything, and that's expected: Hunt Tally reports
+    /// Most events won't match anything, and that's expected: the tally reports
     /// every mark you're credited with, whether or not it's part of a tracked
     /// train. Unmatched kills are simply dropped.
     ///

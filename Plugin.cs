@@ -1,5 +1,4 @@
 using Dalamud.Bindings.ImGui;
-using Dalamud.Game.Command;
 using Dalamud.Interface;
 using Dalamud.Interface.Components;
 using Dalamud.Interface.Textures;
@@ -10,7 +9,12 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using System.Threading;
 using System.Threading.Tasks;
+using Dalamud.Game.Command;
+using Dalamud.Interface.Windowing;
+using HuntTally;
+using HuntTally.Windows;
 
 namespace HuntTrainRelay;
 
@@ -23,6 +27,13 @@ public sealed class Plugin : IDalamudPlugin
     private const string CounterCommand = "/htrc";
     private const string NextAetheryteCommand = "/htra";
     private const string MapCommand = "/htrm";
+
+    /// <summary>
+    /// The tally's original command, kept verbatim. It was a separate plugin
+    /// until this release and people have it in macros and muscle memory, so
+    /// merging must not be the thing that breaks it.
+    /// </summary>
+    private const string TallyCommand = "/hunttally";
     private const int MaxWebhooks = 5;
     private const int MaxAdditionalScouts = 3;
 
@@ -70,8 +81,44 @@ public sealed class Plugin : IDalamudPlugin
 
     private readonly Configuration _config;
     private readonly HuntHelperIpc _ipc;
-    private readonly HuntTallyIpc _huntTally;
     private readonly TrainWatcher _watcher;
+
+    // --- The tally, formerly the separate Hunt Tally plugin ---
+    //
+    // Its configuration is deliberately NOT this plugin's. It stays in
+    // HuntTally.json where the standalone plugin left it, so upgrading to the
+    // merged build keeps every existing kill count. See TallyConfigStore.
+    private readonly HuntTally.Configuration _tallyConfig;
+    private readonly WindowSystem _tallyWindows = new("HuntTally");
+    private readonly MainWindow _tallyWindow;
+    private readonly TallySettingsPanel _tallySettings;
+    private readonly KillTracker _tracker;
+    private readonly AchievementSeeder _seeder;
+    private readonly CharacterContext _characters;
+    private readonly DamageWatch _damage;
+    private readonly RewardWatch _reward;
+    private readonly IpcProvider _tallyIpc;
+    private readonly CancellationTokenSource _disposal = new();
+
+    /// <summary>
+    /// Achievement data is not ready the instant the login event fires, and the
+    /// seeder times out per request rather than hanging, so a late start is
+    /// safer than an early one.
+    /// </summary>
+    private static readonly TimeSpan LoginSeedDelay = TimeSpan.FromSeconds(10);
+
+    /// <summary>
+    /// Set when something asks for the Tally tab specifically — "/hunttally
+    /// config", which used to open the tally's own settings window. Consumed by
+    /// the tab on the next frame it draws.
+    /// </summary>
+    private bool _selectTallyTab;
+
+    /// <summary>
+    /// True when the standalone Hunt Tally plugin is also loaded, which the
+    /// merged build has to treat as an error rather than a duplicate.
+    /// </summary>
+    private bool _standaloneTallyPresent;
 
     private bool _configWindowVisible;
     private bool _trainPopoutVisible;
@@ -130,11 +177,77 @@ public sealed class Plugin : IDalamudPlugin
         _gameGui = gameGui;
         _textureProvider = textureProvider;
         _clientState = clientState;
-        _huntTally = new HuntTallyIpc(_pluginInterface, _log);
         _detector = new MarkDetector(objectTable, clientState, dataManager, _config);
         _teleport = new TeleportHelper(_pluginInterface, _log, dataManager);
         SyncBlacklist();
-        _watcher = new TrainWatcher(framework, _ipc, _huntTally, _detector, _config);
+        _watcher = new TrainWatcher(framework, _ipc, _detector, _config);
+
+        // The tally reaches Dalamud through its own injected service class
+        // rather than this constructor's parameters, which is how it was built
+        // as a standalone plugin. Left that way on purpose: it keeps the merge
+        // to a wiring change, so the counting code that people's existing
+        // totals were built by is the same code, untouched.
+        _pluginInterface.Create<HuntTally.Service>();
+        DetectStandaloneTally();
+        _tallyConfig = TallyConfigStore.Load(_pluginInterface);
+
+        _characters = new CharacterContext(_tallyConfig);
+        _seeder = new AchievementSeeder(_tallyConfig, _characters);
+
+        // Constructed before the tracker: the tracker asks it on every poll
+        // whether the precise signal is available.
+        _damage = new DamageWatch();
+        _reward = new RewardWatch();
+
+        _tallyWindow = new MainWindow(_tallyConfig, _characters);
+        _tallyWindows.AddWindow(_tallyWindow);
+
+        _tracker = new KillTracker(_tallyConfig, _characters, _damage, _reward);
+        _tallySettings = new TallySettingsPanel(
+            _tallyConfig, _seeder, _characters, _damage, _reward, _tracker);
+        _tallyIpc = new IpcProvider(_tallyConfig);
+
+        if (_standaloneTallyPresent)
+        {
+            // Unhooks the tracker's framework and territory events, so it never
+            // polls and nothing is counted. Standing the tally down has to mean
+            // this and not just declining to save: left running it would print a
+            // second kill line for every mark alongside the standalone plugin's,
+            // and show totals in its window that were never going to be kept.
+            //
+            // Disposing again in Dispose is harmless — it only unsubscribes.
+            _tracker.Dispose();
+        }
+        else
+        {
+            // Subscribed separately from the chat notice: a kill should reach
+            // the train and any other listening plugin whether or not the user
+            // wants it printed.
+            _tracker.OnKill += _tallyIpc.PublishCredited;
+            _tracker.OnMarkDeath += _tallyIpc.PublishMarkDeath;
+            _tracker.OnKill += AnnounceTallyKill;
+
+            // Off the publisher rather than the tracker, so the train sees
+            // exactly the feed an external subscriber would have seen over IPC —
+            // including the tally's own switch between credited kills and every
+            // mark death. That is what the auto-mark behaviour was built
+            // against, and keeping the same source is what stops the merge
+            // quietly changing it.
+            _tallyIpc.KillPublished += OnTallyKillPublished;
+
+            HuntTally.Service.ClientState.Login += OnTallyLogin;
+            HuntTally.Service.ClientState.Logout += OnTallyLogout;
+            HuntTally.Service.Framework.Update += OnTallyFrameworkUpdate;
+
+            // Resolving walks the whole Achievement sheet. One tick later costs
+            // nothing and keeps it off the plugin-load path.
+            HuntTally.Service.Framework.RunOnTick(
+                _seeder.ResolveAll, TimeSpan.Zero, 0, _disposal.Token);
+
+            if (HuntTally.Service.ClientState.IsLoggedIn && _tallyConfig.AutoSeedOnLogin)
+                ScheduleTallySeed();
+        }
+
         _zoneReminder = new SRankZoneReminder(clientState, chatGui, _log, _config, _detector);
         _counter = new HuntCounter(chatGui, objectTable, _config);
         _worldData = new WorldData(dataManager);
@@ -181,8 +294,142 @@ public sealed class Plugin : IDalamudPlugin
             HelpMessage = "Open the map dot filters.",
         });
 
+        _commandManager.AddHandler(TallyCommand, new CommandInfo(OnTallyCommand)
+        {
+            HelpMessage = "Open the hunt tally. \"/hunttally config\" for settings, "
+                          + "\"/hunttally ipc\" to test the IPC feed.",
+        });
+
         _pluginInterface.UiBuilder.Draw += DrawUI;
         _pluginInterface.UiBuilder.OpenConfigUi += OnOpenConfigUi;
+
+        // The tally's display window is the plugin's "main" UI, as it was when
+        // the tally was its own plugin. The gear opens settings, which are now
+        // a tab of this plugin's config window.
+        _pluginInterface.UiBuilder.OpenMainUi += ToggleTallyWindow;
+    }
+
+    // ---------------------------------------------------------------------
+    // Tally
+    // ---------------------------------------------------------------------
+
+    private void ToggleTallyWindow() => _tallyWindow.Toggle();
+
+    /// <summary>
+    /// Notices the standalone Hunt Tally plugin still being installed, and
+    /// stands the built-in tally down if it is.
+    ///
+    /// Both would otherwise count the same kills into the same file on their
+    /// own save timers, each overwriting whatever the other had written since
+    /// it last read — which loses counts rather than merely duplicating them.
+    /// So the file is left entirely to the plugin that has been keeping it.
+    ///
+    /// Detection is by asking its version gate before we register our own copy
+    /// of that gate: an answer means somebody else is already providing it.
+    /// This has to run before the IpcProvider is constructed, or the question
+    /// would be answered by us.
+    /// </summary>
+    private void DetectStandaloneTally()
+    {
+        try
+        {
+            _pluginInterface.GetIpcSubscriber<int>("HuntTally.ApiVersion").InvokeFunc();
+        }
+        catch
+        {
+            // Nothing answered, which is the normal case: the tally is ours.
+            return;
+        }
+
+        _standaloneTallyPresent = true;
+
+        TallyConfigStore.SuspendWrites(
+            "the standalone Hunt Tally plugin is still installed and is keeping that file.");
+
+        _chatGui.PrintError(
+            "[Hunt Train Relay] Hunt Tally is now built in, but the separate Hunt Tally "
+            + "plugin is still installed. Nothing is being counted here and your tally file "
+            + "is untouched — uninstall the separate plugin, then reload this one.");
+    }
+
+    /// <summary>
+    /// The tally's original command, behaving as it always did. "config" now
+    /// lands on the Tally tab of this plugin's config window rather than
+    /// opening a second settings window of its own.
+    /// </summary>
+    private void OnTallyCommand(string command, string args)
+    {
+        var arg = args.Trim();
+
+        if (arg.Equals("config", StringComparison.OrdinalIgnoreCase))
+        {
+            _configWindowVisible = true;
+            _selectTallyTab = true;
+        }
+        else if (arg.Equals("ipc", StringComparison.OrdinalIgnoreCase))
+        {
+            _chatGui.Print($"[Hunt Tally] {_tallyIpc.ToggleEcho()}");
+        }
+        else
+        {
+            ToggleTallyWindow();
+        }
+    }
+
+    /// <summary>Writes queued tally changes, at the interval Flush enforces.</summary>
+    private void OnTallyFrameworkUpdate(IFramework framework) => _tallyConfig.Flush();
+
+    private void OnTallyLogin()
+    {
+        if (_tallyConfig.AutoSeedOnLogin)
+            ScheduleTallySeed();
+    }
+
+    private void OnTallyLogout(int type, int code) => _tallyConfig.Flush(force: true);
+
+    /// <summary>
+    /// RunOnTick rather than Task.Delay: the continuation of a Task runs on a
+    /// thread-pool thread, and the seeder's state is read on the framework
+    /// thread. It is also cancelled on dispose, so a plugin unloaded inside the
+    /// delay does not start seeding afterwards.
+    /// </summary>
+    private void ScheduleTallySeed() =>
+        HuntTally.Service.Framework.RunOnTick(_seeder.Start, LoginSeedDelay, 0, _disposal.Token);
+
+    private void AnnounceTallyKill(KillDetail kill)
+    {
+        if (!_tallyConfig.ChatOnKill)
+            return;
+
+        var info = kill.Mark;
+
+        var profile = _characters.Current;
+        if (profile is null)
+            return;
+
+        var key = HuntTally.Configuration.CategoryKeyFor(info.Rank);
+        if (key is null)
+            return;
+
+        _chatGui.Print(
+            $"[Hunt Tally] {info.Name} ({MarkData.RankLabel(info.Rank)}) — "
+            + $"{profile.TotalFor(key)} {key} ranks on this character, "
+            + $"{_tallyConfig.AccountTotalFor(key)} across all.");
+    }
+
+    /// <summary>
+    /// Hands a counted kill to the train watcher, flattened to the same shape
+    /// it used to arrive in over IPC.
+    /// </summary>
+    private void OnTallyKillPublished(KillDetail kill)
+    {
+        _watcher.OnHuntTallyKill(new HuntTallyKill(
+            kill.Mark.Name,
+            kill.Mark.NameId,
+            (int)kill.Mark.Rank,
+            kill.TerritoryId,
+            kill.InstanceId,
+            new DateTimeOffset(kill.Time).ToUnixTimeSeconds()));
     }
 
     private void OnCommand(string command, string args) => _configWindowVisible = true;
@@ -366,6 +613,10 @@ public sealed class Plugin : IDalamudPlugin
         DrawCounterPopout();
         DrawMapPopout();
 
+        // Before the early return below: the tally's window is independent of
+        // the config window and has to keep drawing while that one is shut.
+        _tallyWindows.Draw();
+
         if (!_configWindowVisible) return;
 
         ImGui.SetNextWindowSize(new Vector2(620, 560), ImGuiCond.FirstUseEver);
@@ -404,6 +655,20 @@ public sealed class Plugin : IDalamudPlugin
                     ImGui.EndTabItem();
                 }
 
+                // The tally's settings, which were their own window until the
+                // two plugins merged. Flagged for selection only when something
+                // asked for it by name, so it does not steal focus otherwise.
+                var tallyFlags = _selectTallyTab
+                    ? ImGuiTabItemFlags.SetSelected
+                    : ImGuiTabItemFlags.None;
+                _selectTallyTab = false;
+
+                if (ImGui.BeginTabItem("Tally", tallyFlags))
+                {
+                    DrawTallyTab();
+                    ImGui.EndTabItem();
+                }
+
                 ImGui.EndTabBar();
             }
 
@@ -422,6 +687,46 @@ public sealed class Plugin : IDalamudPlugin
     /// Our own detected train list, with per-row teleport and map-flag actions.
     /// Drawn in both the Train tab and the standalone popout.
     /// </summary>
+
+    /// <summary>
+    /// The tally's settings, scrolled in their own region.
+    ///
+    /// The panel was written for a 500x600 window of its own and is taller than
+    /// the tab area, so it gets a child to scroll in rather than being
+    /// redesigned — the controls and their explanations are unchanged from the
+    /// standalone plugin.
+    /// </summary>
+    private void DrawTallyTab()
+    {
+        if (_standaloneTallyPresent)
+        {
+            ImGui.Spacing();
+            ImGui.PushStyleColor(ImGuiCol.Text, new Vector4(1f, 0.4f, 0.4f, 1f));
+            ImGui.TextWrapped(
+                "The separate Hunt Tally plugin is still installed, so this one is not "
+                + "counting anything and is not writing your tally file. Uninstall it from "
+                + "the plugin installer, then reload Hunt Train Relay.");
+            ImGui.PopStyleColor();
+            ImGui.Spacing();
+            ImGui.Separator();
+        }
+
+        ImGui.Spacing();
+        if (ImGui.Button("Open the tally"))
+            _tallyWindow.IsOpen = true;
+        ImGui.SameLine();
+        ImGui.TextDisabled("Also \"/hunttally\".");
+
+        ImGui.Spacing();
+        ImGui.Separator();
+        ImGui.Spacing();
+
+        if (ImGui.BeginChild("##tallysettings", new Vector2(0, 0), false))
+        {
+            _tallySettings.Draw();
+        }
+        ImGui.EndChild();
+    }
 
     /// <summary>The mark the pointer is on, or null if it's been cleared/removed.</summary>
     private DetectedMark? CurrentMark()
@@ -1487,8 +1792,8 @@ public sealed class Plugin : IDalamudPlugin
             _config.AutoMarkDeadEnabled = autoMark;
             _config.Save();
         }
-        ImGui.TextDisabled(_huntTally.Status);
-        ImGui.TextDisabled("Marks are recorded dead here automatically, with Hunt Tally's exact kill time. Your Hunt Helper list still needs clicking yourself for its own navigation.");
+        ImGui.TextDisabled(TallyFeedStatus());
+        ImGui.TextDisabled("Marks are recorded dead here automatically, with the tally's exact kill time. Your Hunt Helper list still needs clicking yourself for its own navigation.");
 
         ImGui.Spacing();
         ImGui.Separator();
@@ -2108,10 +2413,52 @@ public sealed class Plugin : IDalamudPlugin
         }
     }
 
+    /// <summary>
+    /// Which kill feed is driving auto-marking. The tally ships in this plugin
+    /// now, so there is no connection to report — but there is still a choice
+    /// of feed, and it is the thing that changes what shows up in the train.
+    /// </summary>
+    private string TallyFeedStatus() =>
+        _tallyConfig.PublishAllMarkDeaths
+            ? "Following every mark death, including ones killed by other people (Tally tab)."
+            : "Following the marks you were credited with (Tally tab).";
+
     public void Dispose()
     {
+        // The tally first: its tracker and seeder both run off framework
+        // events, and the cancellation token stops a queued seed starting up
+        // after everything it reads has been torn down.
+        _disposal.Cancel();
+
+        _tallyIpc.KillPublished -= OnTallyKillPublished;
+        _tracker.OnKill -= AnnounceTallyKill;
+        _tracker.OnKill -= _tallyIpc.PublishCredited;
+        _tracker.OnMarkDeath -= _tallyIpc.PublishMarkDeath;
+        _tracker.Dispose();
+        _tallyIpc.Dispose();
+
+        // After the tracker, which reads both on every poll.
+        _damage.Dispose();
+        _reward.Dispose();
+
+        HuntTally.Service.ClientState.Login -= OnTallyLogin;
+        HuntTally.Service.ClientState.Logout -= OnTallyLogout;
+        HuntTally.Service.Framework.Update -= OnTallyFrameworkUpdate;
+        _seeder.Dispose();
+
+        _pluginInterface.UiBuilder.OpenMainUi -= ToggleTallyWindow;
+        _tallyWindows.RemoveAllWindows();
+        _tallyWindow.Dispose();
+
+        // Saving is queued rather than immediate, so the last counts of the
+        // session only reach disk because of this. A no-op while the tally is
+        // stood down, which is the point of standing it down.
+        _tallyConfig.Flush(force: true);
+
+        _characters.Dispose();
+        _disposal.Dispose();
+
         _watcher.Dispose();
-        _huntTally.Dispose();
         _zoneReminder.Dispose();
         _counter.Dispose();
         _mapOverlay.Dispose();
@@ -2137,5 +2484,6 @@ public sealed class Plugin : IDalamudPlugin
         _commandManager.RemoveHandler(CounterCommand);
         _commandManager.RemoveHandler(NextAetheryteCommand);
         _commandManager.RemoveHandler(MapCommand);
+        _commandManager.RemoveHandler(TallyCommand);
     }
 }
