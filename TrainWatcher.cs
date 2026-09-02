@@ -316,7 +316,9 @@ public class TrainWatcher : IDisposable
 
                 // Its dot should go back to grey immediately rather than
                 // waiting for the proximity check to notice it's gone.
-                _detector.RemoveSighting(kill.NameId, kill.InstanceId);
+                // The kill happened where the player is.
+                _detector.RemoveSighting(
+                    kill.NameId, kill.InstanceId, _detector.CurrentWorldId());
             }
         }
     }

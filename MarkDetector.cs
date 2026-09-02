@@ -52,6 +52,13 @@ public class DetectedMark
 
     /// <summary>A scout intends to prep this mark before the train reaches it.</summary>
     public bool Spiced;
+
+    /// <summary>
+    /// What makes this mark this mark. Compare against it rather than picking
+    /// fields off by hand — the same mark is up on every world at once, and a
+    /// comparison that forgets to say which one silently matches the wrong row.
+    /// </summary>
+    public (uint NameId, uint Instance, uint WorldId) Key => (NameId, Instance, WorldId);
 }
 
 /// <summary>
@@ -85,6 +92,9 @@ public class OtherRankSighting
 
     /// <summary>Zone name, resolved once at first sighting.</summary>
     public string ZoneName = string.Empty;
+
+    /// <summary>As DetectedMark.Key, and for the same reason.</summary>
+    public (uint NameId, uint Instance, uint WorldId) Key => (NameId, Instance, WorldId);
 }
 
 public sealed class MarkDetector
@@ -219,7 +229,7 @@ public sealed class MarkDetector
         // interval plus a little slack: any shorter and a mark simply missed by
         // one pass would be wrongly dropped.
         var stale = Math.Max(2, _config.PollIntervalSeconds) + 1;
-        ExpireStaleSightings(territoryId, instance, stale);
+        ExpireStaleSightings(territoryId, instance, worldId, stale);
 
         foreach (var obj in _objectTable)
         {
@@ -352,9 +362,15 @@ public sealed class MarkDetector
     /// <summary>Clears all sightings.</summary>
     public void ClearOtherRanks() => _otherRanks.Clear();
 
-    /// <summary>Forgets one sighting, e.g. when a mark is known to be dead.</summary>
-    public void RemoveSighting(uint nameId, uint instance) =>
-        _otherRanks.Remove((nameId, instance, CurrentWorldId()));
+    /// <summary>
+    /// Forgets one sighting, e.g. when a mark is known to be dead.
+    ///
+    /// The world is a parameter rather than "wherever we are", because the row
+    /// being ticked dead is not necessarily on this world — and defaulting to
+    /// here quietly cleared the wrong world's dot.
+    /// </summary>
+    public void RemoveSighting(uint nameId, uint instance, uint worldId) =>
+        _otherRanks.Remove((nameId, instance, worldId));
 
     /// <summary>
     /// Drops sightings for marks that have gone from a spot we're still
@@ -371,13 +387,18 @@ public sealed class MarkDetector
     /// is remembered; this store is only what the map is showing, and the map
     /// should show what is actually there.
     /// </summary>
-    public void ExpireStaleSightings(uint territoryId, uint instance, double staleSeconds)
+    public void ExpireStaleSightings(uint territoryId, uint instance, uint worldId, double staleSeconds)
     {
         var now = DateTime.UtcNow;
         foreach (var (key, sighting) in _otherRanks.ToList())
         {
             if (sighting.TerritoryId != territoryId) continue;
             if (sighting.Instance != instance) continue;
+
+            // Only judge the world we are on. Somewhere else's sightings are
+            // not visible from here, and "not visible" would expire every one
+            // of them the moment you changed world.
+            if (sighting.WorldId != worldId) continue;
             if ((now - sighting.LastSeenUtc).TotalSeconds < staleSeconds) continue;
 
             _otherRanks.Remove(key);
