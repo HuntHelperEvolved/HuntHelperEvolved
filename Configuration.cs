@@ -259,6 +259,21 @@ public class Configuration : IPluginConfiguration
     public Vector4 PlayerCircleColour { get; set; } = new(1f, 1f, 0f, 0.9f);
 
     /// <summary>
+    /// Multiplier on the detection radius. 1.00 is the real range — two map
+    /// coordinates, the figure Hunt Helper draws — and is what this was fixed
+    /// at before it could be changed.
+    ///
+    /// Hunt Helper has the same knob, _detectionCircleModifier, defaulted the
+    /// same way. Worth knowing that anything other than 1.00 makes the ring
+    /// stop meaning detection range, which is the reason it is a multiplier of
+    /// a known figure rather than a radius you type in from nothing.
+    ///
+    /// The projected path takes its width from the ring, so this widens that
+    /// with it.
+    /// </summary>
+    public float PlayerCircleRadiusScale { get; set; } = 1.00f;
+
+    /// <summary>
     /// Ring line width, as a fraction of the ring texture's 256 pixels. It is
     /// drawn into the image rather than stroked on screen, so the line thickens
     /// and thins with the map's zoom along with the ring itself. 8 lands at

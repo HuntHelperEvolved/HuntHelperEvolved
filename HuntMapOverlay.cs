@@ -305,7 +305,9 @@ public sealed unsafe class HuntMapOverlay : IDisposable
     {
         var origin = MapCoordinates.ToWorld(_dataManager, mapId, 1f, 1f);
         var offset = MapCoordinates.ToWorld(_dataManager, mapId, 1f + DetectionRadiusCoords, 1f);
-        return MathF.Abs(offset.X - origin.X);
+        var radius = MathF.Abs(offset.X - origin.X);
+
+        return radius * Math.Clamp(_config.PlayerCircleRadiusScale, 0.25f, 4f);
     }
 
     /// <summary>
@@ -430,7 +432,7 @@ public sealed unsafe class HuntMapOverlay : IDisposable
     private string DrawSignature() =>
         $"{_config.ShowSpawnPointsOnMap}{_config.ShowARankPoints}{_config.ShowBRankPoints}"
         + $"{_config.ShowSRankPoints}{_config.ShowPlayerCircleOnMap}"
-        + $"{_config.ShowPlayerFacingOnMap}{_config.ShowSsEventOnMap}{_ssEvent.Pins.Count}{_ssEvent.Active}{_config.SpawnDotSize}";
+        + $"{_config.ShowPlayerFacingOnMap}{_config.ShowSsEventOnMap}{_ssEvent.Pins.Count}{_ssEvent.Active}{_config.SpawnDotSize}{_config.PlayerCircleRadiusScale}";
 
     /// <summary>
     /// The configured colours, as a string. Used both to name the files and to

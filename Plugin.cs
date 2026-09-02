@@ -1160,6 +1160,15 @@ public sealed class Plugin : IDalamudPlugin
                 _config.Save();
             }
 
+            var scale = _config.PlayerCircleRadiusScale;
+            ImGui.SetNextItemWidth(140);
+            if (ImGui.SliderFloat("Circle radius scale", ref scale, 0.25f, 4f, "%.2f"))
+            {
+                _config.PlayerCircleRadiusScale = Math.Clamp(scale, 0.25f, 4f);
+                _config.Save();
+            }
+            ImGui.TextDisabled("1.00 is the real detection range. Anything else is a circle you like the size of, not a range — and the path widens with it.");
+
             var thickness = _config.PlayerCircleThickness;
             ImGui.SetNextItemWidth(140);
             if (ImGui.SliderFloat("Circle line width", ref thickness, 1f, 40f, "%.0f"))
