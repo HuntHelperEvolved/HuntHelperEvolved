@@ -54,13 +54,35 @@ public static class SsMinionSpawns
     /// <summary>
     /// Where the mark itself appears once all four minions are down, per zone.
     ///
-    /// EMPTY for now — the minion spots came from Faloop and these did not, and
-    /// a star pointing at the wrong end of a zone is worse than no star. Add a
-    /// zone here and it is drawn; leave it out and only the minion spots are.
+    /// One spot each, fixed, the same way the minion spots are. From Faloop,
+    /// like those — and like those, not derivable from the game, so this is a
+    /// table to correct rather than a lookup that stays current.
     /// </summary>
     public static readonly Dictionary<uint, Vector2> MarkSpawnByTerritory = new()
     {
-        // [814] = new(00.0f, 00.0f),   // Kholusia — Forgiven Rebellion
+        // Forgiven Rebellion
+        [813] = new(23.3f, 22.1f),  // Lakeland
+        [814] = new(34.3f, 10.5f),  // Kholusia
+        [815] = new(27.5f, 35.2f),  // Amh Araeng
+        [816] = new(13.5f, 23.0f),  // Il Mheg
+        [817] = new(24.4f, 37.2f),  // The Rak'tika Greatwood
+        [818] = new(12.9f, 22.2f),  // The Tempest
+
+        // Ker
+        [956] = new(24.9f, 16.0f),  // Labyrinthos
+        [957] = new(24.3f, 16.8f),  // Thavnair
+        [958] = new(20.3f, 23.7f),  // Garlemald
+        [959] = new(18.6f, 30.2f),  // Mare Lamentorum
+        [960] = new(14.5f, 29.6f),  // Ultima Thule
+        [961] = new(22.7f, 19.5f),  // Elpis
+
+        // arch aethereater
+        [1187] = new(26.0f, 27.9f),  // Urqopacha
+        [1188] = new(13.8f, 14.8f),  // Kozama'uka
+        [1189] = new(29.7f, 19.0f),  // Yak T'el
+        [1190] = new(13.3f, 13.3f),  // Shaaloani
+        [1191] = new(17.5f, 20.4f),  // Heritage Found
+        [1192] = new(34.4f, 26.3f),  // Living Memory
     };
 
     /// <summary>Where the mark will appear, if that is known for this zone.</summary>
