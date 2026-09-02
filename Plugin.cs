@@ -1147,6 +1147,15 @@ public sealed class Plugin : IDalamudPlugin
                 _config.PlayerCircleColour = circleColour;
                 _config.Save();
             }
+
+            var thickness = _config.PlayerCircleThickness;
+            ImGui.SetNextItemWidth(140);
+            if (ImGui.SliderFloat("Circle line width", ref thickness, 1f, 40f, "%.0f"))
+            {
+                _config.PlayerCircleThickness = Math.Clamp(thickness, 1f, 40f);
+                _config.Save();
+            }
+            ImGui.TextDisabled("Drawn into the ring, so it thickens with the map's zoom rather than staying a flat number of pixels. 8 matches Hunt Helper.");
         }
 
         ImGui.Spacing();
