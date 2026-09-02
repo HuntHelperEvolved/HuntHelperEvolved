@@ -238,34 +238,31 @@ public class Configuration : IPluginConfiguration
     public Vector4 SpawnDotColourS { get; set; } = new(0f, 0.827f, 0f, 1f);
 
     /// <summary>
-    /// Draw a ring around your character on the map, at
-    /// <see cref="PlayerCircleRadius"/> yalms. Independent of the spawn points
-    /// and of the facing guide — any of the three can be on by itself.
+    /// Draw the detection ring around your character. Independent of the spawn
+    /// points and of the facing guide — any of the three can be on by itself.
+    ///
+    /// The radius is not configurable because it means something: it is the
+    /// range marks are actually detected at, which Hunt Helper draws at two map
+    /// coordinates. A ring you could resize would just be a circle.
     /// </summary>
     public bool ShowPlayerCircleOnMap { get; set; } = false;
 
+    public Vector4 PlayerCircleColour { get; set; } = new(1f, 1f, 0f, 0.9f);
+
     /// <summary>
-    /// Ring radius in yalms. Drawn in world units rather than screen pixels, so
-    /// it stays true to that distance at any map zoom.
+    /// Draw a line from your character showing which way you are facing. Its
+    /// length is taken from the ring rather than set here.
     /// </summary>
-    public float PlayerCircleRadius { get; set; } = 25f;
-
-    public Vector4 PlayerCircleColour { get; set; } = new(1f, 1f, 1f, 0.6f);
-
-    /// <summary>Draw a line from your character showing which way you are facing.</summary>
     public bool ShowPlayerFacingOnMap { get; set; } = false;
 
-    /// <summary>How far the facing guide reaches, in yalms.</summary>
-    public float PlayerFacingLength { get; set; } = 30f;
-
-    public Vector4 PlayerFacingColour { get; set; } = new(1f, 0.85f, 0.2f, 0.85f);
+    public Vector4 PlayerFacingColour { get; set; } = new(1f, 0.3f, 0.3f, 1f);
 
     /// <summary>
-    /// Dot size for the ring and facing guide, in pixels. Separate from
-    /// <see cref="SpawnDotSize"/> because these are made of many more dots and
-    /// want to be smaller than a spawn point to read as a line.
+    /// Dot size for the ring and facing guide, in pixels. Both are drawn as a
+    /// dense run of small dots — see HuntMapOverlay — so this is the thickness
+    /// of the resulting line rather than the size of a marker.
     /// </summary>
-    public float PlayerGuideDotSize { get; set; } = 7f;
+    public float PlayerGuideDotSize { get; set; } = 6f;
 
     /// <summary>True when anything at all wants drawing on the map.</summary>
     public bool AnyMapOverlayEnabled =>

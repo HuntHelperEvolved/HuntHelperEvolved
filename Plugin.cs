@@ -272,7 +272,7 @@ public sealed class Plugin : IDalamudPlugin
             _log.Error(ex, "KamiToolKit failed to initialise; the map overlay will stay off.");
         }
 
-        _mapOverlay = new HuntMapOverlay(framework, clientState, objectTable, dataManager, addonLifecycle, _log, _config, _detector, _pluginInterface);
+        _mapOverlay = new HuntMapOverlay(framework, clientState, objectTable, dataManager, addonLifecycle, gameGui, _log, _config, _detector, _pluginInterface);
         _detector.OtherRankDetected += OnSightingDetected;
         _watcher.PersistRequested += PersistTrain;
         RestoreSavedTrain();
@@ -1137,18 +1137,10 @@ public sealed class Plugin : IDalamudPlugin
             _config.ShowPlayerCircleOnMap = circle;
             _config.Save();
         }
-        ImGui.TextDisabled("A ring at a set distance from you. Drawn in yalms, so it stays true at any zoom.");
+        ImGui.TextDisabled("How far marks are actually picked up — two map coordinates, the same radius Hunt Helper draws. Fixed, because the number is the point.");
 
         if (_config.ShowPlayerCircleOnMap)
         {
-            var radius = _config.PlayerCircleRadius;
-            ImGui.SetNextItemWidth(90);
-            if (ImGui.InputFloat("Radius (yalms)", ref radius, 5f))
-            {
-                _config.PlayerCircleRadius = Math.Clamp(radius, 1f, 200f);
-                _config.Save();
-            }
-
             var circleColour = _config.PlayerCircleColour;
             if (ImGui.ColorEdit4("Circle colour", ref circleColour, flags))
             {
@@ -1165,18 +1157,10 @@ public sealed class Plugin : IDalamudPlugin
             _config.ShowPlayerFacingOnMap = facing;
             _config.Save();
         }
-        ImGui.TextDisabled("A line out from you in the direction you're looking.");
+        ImGui.TextDisabled("A line out from you in the direction you're looking, a diameter of the circle long.");
 
         if (_config.ShowPlayerFacingOnMap)
         {
-            var length = _config.PlayerFacingLength;
-            ImGui.SetNextItemWidth(90);
-            if (ImGui.InputFloat("Length (yalms)", ref length, 5f))
-            {
-                _config.PlayerFacingLength = Math.Clamp(length, 1f, 200f);
-                _config.Save();
-            }
-
             var facingColour = _config.PlayerFacingColour;
             if (ImGui.ColorEdit4("Facing colour", ref facingColour, flags))
             {
@@ -1194,7 +1178,7 @@ public sealed class Plugin : IDalamudPlugin
                 _config.PlayerGuideDotSize = Math.Clamp(guideDot, 3f, 24f);
                 _config.Save();
             }
-            ImGui.TextDisabled("Both guides are made of dots — there's no line to draw with on the game's map.");
+            ImGui.TextDisabled("Line thickness. Both guides are drawn as overlapping dots — the game's map has no line to draw with.");
         }
     }
 
