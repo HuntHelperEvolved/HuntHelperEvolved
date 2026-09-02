@@ -35,6 +35,7 @@ public sealed unsafe class HuntMapOverlay : IDisposable
     private readonly IObjectTable _objectTable;
     private readonly IDataManager _dataManager;
     private readonly IAddonLifecycle _addonLifecycle;
+    private readonly IGameGui _gameGui;
     private readonly IPluginLog _log;
     private readonly Configuration _config;
     private readonly MarkDetector _detector;
@@ -71,6 +72,7 @@ public sealed unsafe class HuntMapOverlay : IDisposable
         IObjectTable objectTable,
         IDataManager dataManager,
         IAddonLifecycle addonLifecycle,
+        IGameGui gameGui,
         IPluginLog log,
         Configuration config,
         MarkDetector detector,
@@ -81,6 +83,7 @@ public sealed unsafe class HuntMapOverlay : IDisposable
         _objectTable = objectTable;
         _dataManager = dataManager;
         _addonLifecycle = addonLifecycle;
+        _gameGui = gameGui;
         _log = log;
         _config = config;
         _detector = detector;
@@ -122,11 +125,35 @@ public sealed unsafe class HuntMapOverlay : IDisposable
         }
     }
 
-    /// <summary>Dots making up the ring. Enough that it reads as a circle.</summary>
-    private const int CircleSegments = 48;
+    /// <summary>
+    /// The detection ring's radius, in map coordinates.
+    ///
+    /// Hunt Helper draws its detection circle at "2 * SingleCoordSize", where
+    /// SingleCoordSize is one map coordinate — so two coordinates, and the same
+    /// figure is used here so the two plugins agree about what the ring means.
+    /// It is not a preference: it is the range marks are picked up at, which
+    /// also matches the tally's own 100 yalm default.
+    /// </summary>
+    private const float DetectionRadiusCoords = 2f;
 
-    /// <summary>Dots making up the facing guide.</summary>
-    private const int FacingSegments = 8;
+    /// <summary>
+    /// Roughly how far apart the ring's dots sit, in world units.
+    ///
+    /// The ring has to be drawn as a run of dots, because a map marker is a
+    /// texture at a position: there is no line to draw with. Positions scale
+    /// with the map's zoom but each marker is counter-scaled to a constant size
+    /// on screen, so spacing them evenly in world units and choosing a value
+    /// well under the dot's own width is what makes them overlap into a
+    /// continuous line instead of reading as beads.
+    /// </summary>
+    private const float GuideDotSpacing = 3.5f;
+
+    /// <summary>
+    /// Ceiling on how many dots one guide may use. The ring at its normal
+    /// radius wants a bit over 180; this stops a pathological map turning that
+    /// into thousands.
+    /// </summary>
+    private const int MaxGuideDots = 220;
 
     /// <summary>
     /// Whether the ring and facing guide have drifted far enough from where
@@ -140,6 +167,12 @@ public sealed unsafe class HuntMapOverlay : IDisposable
     private bool PlayerGuidesNeedRefresh(IFramework framework)
     {
         if (!_config.ShowPlayerCircleOnMap && !_config.ShowPlayerFacingOnMap)
+            return false;
+
+        // These are the only thing here that redraws because the player moved,
+        // and they are hundreds of markers. With the map shut nobody can see
+        // them, so nothing is rebuilt until it is open.
+        if (!IsMapOpen())
             return false;
 
         _secondsSincePlayerCheck += framework.UpdateDelta.TotalSeconds;
@@ -162,6 +195,22 @@ public sealed unsafe class HuntMapOverlay : IDisposable
         return moved || turned;
     }
 
+    /// <summary>Whether the map window is on screen.</summary>
+    private bool IsMapOpen()
+    {
+        try
+        {
+            var addon = _gameGui.GetAddonByName("AreaMap");
+            return !addon.IsNull && addon.IsVisible;
+        }
+        catch
+        {
+            // If we cannot tell, assume it is open rather than silently
+            // refusing to draw.
+            return true;
+        }
+    }
+
     private static float WrapAngle(float radians)
     {
         while (radians > MathF.PI) radians -= MathF.Tau;
@@ -179,6 +228,30 @@ public sealed unsafe class HuntMapOverlay : IDisposable
     /// the radius is in yalms and stays honest at any zoom rather than being a
     /// fixed number of screen pixels.
     /// </summary>
+    /// <summary>
+    /// The detection radius in world units, derived from the map itself rather
+    /// than assumed, by asking what two map coordinates are worth here.
+    /// </summary>
+    private float DetectionRadiusWorld(uint mapId)
+    {
+        var origin = MapCoordinates.ToWorld(_dataManager, mapId, 1f, 1f);
+        var offset = MapCoordinates.ToWorld(_dataManager, mapId, 1f + DetectionRadiusCoords, 1f);
+        return MathF.Abs(offset.X - origin.X);
+    }
+
+    /// <summary>
+    /// Places the detection ring and the facing guide, returning how many
+    /// markers went down.
+    ///
+    /// Both are runs of small overlapping dots rather than shapes. A map marker
+    /// is a texture at a position — KamiToolKit gives no line primitive, and
+    /// MapMarkerInfo has no rotation, so neither a circle nor a heading line can
+    /// be a single sprite. Drawing them from points is also what keeps them
+    /// honest: marker positions live in the map's own space and move with its
+    /// zoom, while a marker's size is counter-scaled to stay constant on screen,
+    /// so one stretched ring texture would claim a radius it did not have at
+    /// every zoom but one.
+    /// </summary>
     private int DrawPlayerGuides(uint mapId, Dictionary<string, string> dots)
     {
         if (_overlay == null) return 0;
@@ -191,16 +264,19 @@ public sealed unsafe class HuntMapOverlay : IDisposable
         _lastPlayerPos = centre;
         _lastPlayerRotation = player.Rotation;
 
+        var radius = DetectionRadiusWorld(mapId);
+        if (radius <= 0f) return 0;
+
         var size = new Vector2(_config.PlayerGuideDotSize, _config.PlayerGuideDotSize);
         var placed = 0;
 
         if (_config.ShowPlayerCircleOnMap)
         {
-            var radius = Math.Clamp(_config.PlayerCircleRadius, 1f, 200f);
+            var segments = DotsFor(MathF.Tau * radius);
 
-            for (var i = 0; i < CircleSegments; i++)
+            for (var i = 0; i < segments; i++)
             {
-                var angle = MathF.Tau * i / CircleSegments;
+                var angle = MathF.Tau * i / segments;
                 var at = centre + new Vector2(MathF.Cos(angle) * radius, MathF.Sin(angle) * radius);
 
                 _overlay.AddMarker(new MapMarkerInfo
@@ -210,7 +286,7 @@ public sealed unsafe class HuntMapOverlay : IDisposable
                     Position = at,
                     TexturePath = dots["circle"],
                     Size = size,
-                    Tooltip = $"{radius:F0} yalms",
+                    Tooltip = "Detection range",
                 });
                 placed++;
             }
@@ -218,7 +294,11 @@ public sealed unsafe class HuntMapOverlay : IDisposable
 
         if (_config.ShowPlayerFacingOnMap)
         {
-            var length = Math.Clamp(_config.PlayerFacingLength, 1f, 200f);
+            // A diameter's worth, so it runs the width of the ring and carries
+            // on far enough past it to be unmistakable at a glance. Hunt Helper
+            // stops its line at the rim, one radius out.
+            var length = radius * 2f;
+            var segments = DotsFor(length);
 
             // Rotation is radians about the vertical axis, and the game's own
             // convention puts forward at (sin, cos) in world X/Z — zero facing
@@ -226,12 +306,9 @@ public sealed unsafe class HuntMapOverlay : IDisposable
             // is the line to negate.
             var forward = new Vector2(MathF.Sin(player.Rotation), MathF.Cos(player.Rotation));
 
-            // Starts a little out from the character so the dots do not pile up
-            // underneath the player marker the game already draws.
-            for (var i = 1; i <= FacingSegments; i++)
+            for (var i = 1; i <= segments; i++)
             {
-                var distance = length * i / FacingSegments;
-                var at = centre + (forward * distance);
+                var at = centre + (forward * (length * i / segments));
 
                 _overlay.AddMarker(new MapMarkerInfo
                 {
@@ -248,6 +325,13 @@ public sealed unsafe class HuntMapOverlay : IDisposable
 
         return placed;
     }
+
+    /// <summary>
+    /// How many dots to spend on a run of the given length, so that spacing
+    /// stays even whatever the length is and the dots keep overlapping.
+    /// </summary>
+    private static int DotsFor(float worldLength) =>
+        Math.Clamp((int)MathF.Ceiling(worldLength / GuideDotSpacing), 8, MaxGuideDots);
 
     /// <summary>
     /// The configured colours, as a string. Used both to name the files and to
