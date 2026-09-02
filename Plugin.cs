@@ -170,7 +170,15 @@ public sealed class Plugin : IDalamudPlugin
         _objectTable = objectTable;
         _log = pluginLog;
 
-        _config = _pluginInterface.GetPluginConfig() as Configuration ?? new Configuration();
+        // The LoadDirect step is not redundant. When Dalamud's loader resolves
+        // the file's "$type" to a previous, not-yet-collected copy of this
+        // assembly — which is what a dev-plugin reload does — the cast above
+        // fails silently and the old code went straight to a fresh
+        // Configuration, whose first Save wiped every setting on disk. Reading
+        // the file ourselves has no assembly resolution to get wrong.
+        _config = _pluginInterface.GetPluginConfig() as Configuration
+                  ?? Configuration.LoadDirect(_pluginInterface)
+                  ?? new Configuration();
         _config.Initialize(_pluginInterface);
 
         _ipc = new HuntHelperIpc(_pluginInterface);
