@@ -150,6 +150,48 @@ public sealed unsafe class HuntMapOverlay : IDisposable
     private const float ProjectedPathLength = 4096f;
 
     /// <summary>
+    /// Marks live SS ranks where they actually are.
+    ///
+    /// Everything else on this map is a spawn point that changes colour when
+    /// something is standing on it. An SS has no spawn points, so there is no
+    /// dot to colour and nothing to show while it is dead — which is the point:
+    /// if this dot is on the map, one is up, and it is there.
+    ///
+    /// Drawn last so it sits over the spawn points and the path both. An SS
+    /// being up is the most important thing the map can be telling you.
+    /// </summary>
+    private int DrawLiveSSMarks(uint mapId, Dictionary<string, string> dots, List<OtherRankSighting> sightings)
+    {
+        if (_overlay == null || !_config.ShowSSRankOnMap || sightings.Count == 0)
+            return 0;
+
+        var placed = 0;
+
+        foreach (var sighting in sightings)
+        {
+            var world = MapCoordinates.ToWorld(
+                _dataManager, mapId, sighting.MapPosition.X, sighting.MapPosition.Y);
+
+            _overlay.AddMarker(new MapMarkerNode
+            {
+                AllowAnyMap = false,
+                MapId = mapId,
+                Position = world,
+                TexturePath = dots["ss"],
+
+                // A shade larger than a spawn point, because it is not one of
+                // them and should not be mistaken for one.
+                Size = new Vector2(_config.SpawnDotSize * 1.4f, _config.SpawnDotSize * 1.4f),
+                TextTooltip = $"{sighting.Name}  (SS rank) — UP\n"
+                              + $"{sighting.MapPosition.X:F1}, {sighting.MapPosition.Y:F1}",
+            });
+            placed++;
+        }
+
+        return placed;
+    }
+
+    /// <summary>
     /// The player's position on the map, or the last one known when they are
     /// briefly unavailable — better a marker that holds still for a frame than
     /// one that snaps to the middle of the map.
@@ -316,7 +358,7 @@ public sealed unsafe class HuntMapOverlay : IDisposable
     private string DrawSignature() =>
         $"{_config.ShowSpawnPointsOnMap}{_config.ShowARankPoints}{_config.ShowBRankPoints}"
         + $"{_config.ShowSRankPoints}{_config.ShowPlayerCircleOnMap}"
-        + $"{_config.ShowPlayerFacingOnMap}{_config.SpawnDotSize}";
+        + $"{_config.ShowPlayerFacingOnMap}{_config.ShowSSRankOnMap}{_config.SpawnDotSize}";
 
     /// <summary>
     /// The configured colours, as a string. Used both to name the files and to
@@ -327,6 +369,7 @@ public sealed unsafe class HuntMapOverlay : IDisposable
         + DotTextures.HexOf(_config.SpawnDotColourB) + "-"
         + DotTextures.HexOf(_config.SpawnDotColourA) + "-"
         + DotTextures.HexOf(_config.SpawnDotColourS) + "-"
+        + DotTextures.HexOf(_config.SpawnDotColourSS) + "-"
         + DotTextures.HexOf(_config.PlayerCircleColour) + "t"
         + ((int)_config.PlayerCircleThickness).ToString() + "-"
         + DotTextures.HexOf(_config.PlayerFacingColour);
@@ -370,6 +413,8 @@ public sealed unsafe class HuntMapOverlay : IDisposable
                 Texture("a", "dot", _config.SpawnDotColourA,
                     c => DotTextures.Render(c)),
                 Texture("s", "dot", _config.SpawnDotColourS,
+                    c => DotTextures.Render(c)),
+                Texture("ss", "dot", _config.SpawnDotColourSS,
                     c => DotTextures.Render(c)),
 
                 // Not dots: an outline stretched to the circle's width, and a
@@ -555,9 +600,17 @@ public sealed unsafe class HuntMapOverlay : IDisposable
 
             if (!_config.ShowSpawnPointsOnMap)
             {
-                Status = guides > 0
-                    ? $"{guides} guide markers shown; spawn points off."
-                    : "Player guides on, but nothing to draw yet.";
+                var instanceOnly = MarkDetector.GetCurrentInstance();
+                var ssOnly = _detector.OtherRanks.Values
+                    .Where(o => o.TerritoryId == territory && o.Instance == instanceOnly
+                                && o.Rank == HuntRank.SS)
+                    .ToList();
+
+                var ssPlaced = DrawLiveSSMarks(mapId, dots, ssOnly);
+
+                Status = $"Spawn points off."
+                         + (ssPlaced > 0 ? $" {ssPlaced} SS up." : string.Empty)
+                         + (guides > 0 ? $" {guides} guide markers." : string.Empty);
                 return;
             }
 
@@ -592,6 +645,11 @@ public sealed unsafe class HuntMapOverlay : IDisposable
             var aMarks = here.Where(o => o.Rank == HuntRank.A && !deadNameIds.Contains(o.NameId)).ToList();
             var bSightings = here.Where(o => o.Rank == HuntRank.B).ToList();
             var sSightings = here.Where(o => o.Rank == HuntRank.S).ToList();
+
+            // Not passed to Claim: an SS has no spawn points, so matching one to
+            // the nearest point would light a dot that means nothing. It is
+            // drawn at its own position instead, by DrawLiveSSMarks.
+            var ssSightings = here.Where(o => o.Rank == HuntRank.SS).ToList();
 
             var radius = Math.Max(0.5f, _config.SpawnPointMatchRadius);
 
@@ -667,19 +725,22 @@ public sealed unsafe class HuntMapOverlay : IDisposable
 
                 var world = MapCoordinates.ToWorld(_dataManager, mapId, point.X, point.Y);
 
-                _overlay.AddMarker(new MapMarkerInfo
+                _overlay.AddMarker(new MapMarkerNode
                 {
                     AllowAnyMap = false,
                     MapId = mapId,
                     Position = world,
                     TexturePath = dots[dot],
                     Size = new Vector2(_config.SpawnDotSize, _config.SpawnDotSize),
-                    Tooltip = tooltip,
+                    TextTooltip = tooltip,
                 });
                 placed++;
             }
 
+            var ss = DrawLiveSSMarks(mapId, dots, ssSightings);
+
             Status = $"{placed} spawn points shown, {occupied} with a mark on them."
+                     + (ss > 0 ? $" {ss} SS up." : string.Empty)
                      + (guides > 0 ? $" {guides} guide markers." : string.Empty);
         }
         catch (Exception ex)

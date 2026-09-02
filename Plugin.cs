@@ -452,6 +452,11 @@ public sealed class Plugin : IDalamudPlugin
         {
             HuntRank.B => _config.EchoBRanks,
             HuntRank.A => _config.EchoARanks,
+
+            // SS follows the S setting, which is what it did before it had a
+            // rank of its own. Spelled out rather than left to the fallthrough
+            // so it stays deliberate.
+            HuntRank.SS or HuntRank.S => _config.EchoSRanks,
             _ => _config.EchoSRanks,
         };
         if (!wanted) return;
@@ -1232,6 +1237,14 @@ public sealed class Plugin : IDalamudPlugin
             _config.Save();
         }
 
+        var ssRank = _config.SpawnDotColourSS;
+        if (ImGui.ColorEdit4("SS rank, live", ref ssRank, flags))
+        {
+            _config.SpawnDotColourSS = ssRank;
+            _config.Save();
+        }
+        ImGui.TextDisabled("Drawn where the SS actually is, not on a spawn point — an SS has none. Only visible while one is up.");
+
         if (ImGui.Button("Reset dot colours"))
         {
             var defaults = new Configuration();
@@ -1239,6 +1252,7 @@ public sealed class Plugin : IDalamudPlugin
             _config.SpawnDotColourB = defaults.SpawnDotColourB;
             _config.SpawnDotColourA = defaults.SpawnDotColourA;
             _config.SpawnDotColourS = defaults.SpawnDotColourS;
+            _config.SpawnDotColourSS = defaults.SpawnDotColourSS;
             _config.Save();
         }
         ImGui.SameLine();
@@ -1332,6 +1346,18 @@ public sealed class Plugin : IDalamudPlugin
                     _config.Save();
                 }
             }
+
+            // Outside the disabled block on purpose: an SS is a live mark, not a
+            // spawn point, so it does not follow the spawn point toggle.
+            ImGui.SameLine();
+            var showSS = _config.ShowSSRankOnMap;
+            if (ImGui.Checkbox("SS", ref showSS))
+            {
+                _config.ShowSSRankOnMap = showSS;
+                _config.Save();
+            }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Marks a live SS where it is. Nothing shows while one is dead.");
 
             ImGui.SameLine();
             ImGui.TextDisabled("|");
@@ -2474,6 +2500,13 @@ public sealed class Plugin : IDalamudPlugin
                     _config.Save();
                 }
                 ImGui.TextDisabled("Hover a dot on the map for what's there.");
+
+                var showSSSetting = _config.ShowSSRankOnMap;
+                if (ImGui.Checkbox("Mark a live SS rank", ref showSSSetting))
+                {
+                    _config.ShowSSRankOnMap = showSSSetting;
+                    _config.Save();
+                }
 
                 ImGui.Spacing();
                 DrawDotColours();

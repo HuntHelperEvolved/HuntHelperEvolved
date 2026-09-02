@@ -2,7 +2,12 @@ using System.Collections.Generic;
 
 namespace HuntTrainRelay;
 
-public enum HuntRank { B, A, S }
+/// <summary>
+/// SS sits apart from the rest: an SS mark has no spawn points of its own, so
+/// it is never matched to one and never leaves an empty dot behind. It is drawn
+/// where it actually is, and only while it is there.
+/// </summary>
+public enum HuntRank { B, A, S, SS }
 
 public record OtherRankMark(string Name, HuntRank Rank, string Expansion);
 
@@ -108,7 +113,7 @@ public static class OtherRankData
         [8900] = new("Tarchia", HuntRank.S, "Shadowbringers"),
         [8905] = new("Tyger", HuntRank.S, "Shadowbringers"),
         [8910] = new("Forgiven Pedantry", HuntRank.S, "Shadowbringers"),
-        [8915] = new("Forgiven Rebellion", HuntRank.S, "Shadowbringers"),
+        [8915] = new("Forgiven Rebellion", HuntRank.SS, "Shadowbringers"),
         [8916] = new("Forgiven Gossip", HuntRank.S, "Shadowbringers"),
         [10635] = new("Green Archon", HuntRank.B, "Endwalker"),
         [10636] = new("Ü-u-ü-u", HuntRank.B, "Endwalker"),
@@ -128,8 +133,8 @@ public static class OtherRankData
         [10620] = new("Ruminator", HuntRank.S, "Endwalker"),
         [10618] = new("Sphatika", HuntRank.S, "Endwalker"),
         [10617] = new("Burfurlur the Canny", HuntRank.S, "Endwalker"),
-        [10615] = new("Ker", HuntRank.S, "Endwalker"),
-        [10616] = new("Ker Shroud", HuntRank.S, "Endwalker"),
+        [10615] = new("Ker", HuntRank.SS, "Endwalker"),
+        [10616] = new("Ker Shroud", HuntRank.SS, "Endwalker"),
         [13144] = new("mad maguey", HuntRank.B, "Dawntrail"),
         [13145] = new("Chupacabra", HuntRank.B, "Dawntrail"),
         [13146] = new("the Slammer", HuntRank.B, "Dawntrail"),
