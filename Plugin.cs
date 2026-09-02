@@ -1,6 +1,7 @@
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface;
 using Dalamud.Interface.Components;
+using Dalamud.Interface.Utility.Raii;
 using Dalamud.Interface.Textures;
 using KamiToolKit;
 using Dalamud.Plugin;
@@ -123,7 +124,6 @@ public sealed class Plugin : IDalamudPlugin
     private bool _configWindowVisible;
     private bool _trainPopoutVisible;
     private bool _counterPopoutVisible;
-    private bool _mapPopoutVisible;
     private string _importCode = string.Empty;
     private string _customFlagLabel = string.Empty;
 
@@ -470,7 +470,17 @@ public sealed class Plugin : IDalamudPlugin
 
     private void OnCounterCommand(string command, string args) => _counterPopoutVisible = true;
 
-    private void OnMapCommand(string command, string args) => _mapPopoutVisible = true;
+    /// <summary>
+    /// The map controls live on a bar pinned to the map itself now, rather than
+    /// in a window of their own, so this toggles whether that bar is shown at
+    /// all. Kept as a command because it was one.
+    /// </summary>
+    private void OnMapCommand(string command, string args)
+    {
+        _config.ShowMapControlBar = !_config.ShowMapControlBar;
+        _config.Save();
+        _chatGui.Print($"[Hunt Train Relay] Map control bar {(_config.ShowMapControlBar ? "shown" : "hidden")}.");
+    }
 
     private void OnOpenConfigUi() => _configWindowVisible = true;
 
@@ -619,7 +629,7 @@ public sealed class Plugin : IDalamudPlugin
         UpdateAutoAdvance();
         DrawTrainPopout();
         DrawCounterPopout();
-        DrawMapPopout();
+        DrawMapControlBar();
 
         // Before the early return below: the tally's window is independent of
         // the config window and has to keep drawing while that one is shut.
@@ -1235,64 +1245,124 @@ public sealed class Plugin : IDalamudPlugin
         ImGui.TextDisabled("Back to the original grey/blue/red/green.");
     }
 
-    private void DrawMapPopout()
+    /// <summary>
+    /// The map controls, pinned to the top edge of the game's own map window
+    /// and shown only while that map is open.
+    ///
+    /// Deliberately one row tall. The map has a generous minimum width but no
+    /// spare height, so the controls spread sideways and stay out of the way
+    /// vertically. Anchored by its bottom-left corner to the map's top-left, so
+    /// it sits above the map without covering any of it — and without having to
+    /// know its own height first, which it could not until after it had drawn.
+    /// </summary>
+    /// <summary>
+    /// Roughly how tall the bar comes out: one row of checkboxes and its
+    /// padding. Only used to decide whether it will fit above the map, so a
+    /// close estimate is enough.
+    /// </summary>
+    private const float NominalMapBarHeight = 34f;
+
+    private void DrawMapControlBar()
     {
-        if (!_mapPopoutVisible) return;
+        if (!_config.ShowMapControlBar) return;
 
-        ImGui.SetNextWindowSize(new Vector2(230, 170), ImGuiCond.FirstUseEver);
-        if (ImGui.Begin("Hunt Map", ref _mapPopoutVisible))
+        var addon = _gameGui.GetAddonByName("AreaMap");
+        if (addon.IsNull || !addon.IsVisible) return;
+
+        var width = addon.ScaledWidth;
+        if (width <= 0) return;
+
+        // Pivot (0, 1) treats the given point as the window's bottom-left, which
+        // puts the bar above the map without needing to know its own height —
+        // which it cannot, until after it has drawn.
+        //
+        // Unless there is no room above, with the map pushed against the top of
+        // the screen. Then it anchors by its top-left instead and lies over the
+        // map's first few pixels, which is worth more than being off-screen.
+        var room = addon.Y >= NominalMapBarHeight;
+        ImGui.SetNextWindowPos(
+            new Vector2(addon.X, addon.Y),
+            ImGuiCond.Always,
+            room ? new Vector2(0f, 1f) : new Vector2(0f, 0f));
+        ImGui.SetNextWindowSize(new Vector2(width, 0f), ImGuiCond.Always);
+
+        // Tighter than the default, purely to keep the bar short.
+        ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, new Vector2(8f, 4f));
+
+        const ImGuiWindowFlags flags =
+            ImGuiWindowFlags.NoTitleBar | ImGuiWindowFlags.NoResize |
+            ImGuiWindowFlags.NoMove | ImGuiWindowFlags.NoScrollbar |
+            ImGuiWindowFlags.NoScrollWithMouse | ImGuiWindowFlags.NoCollapse |
+            ImGuiWindowFlags.NoSavedSettings | ImGuiWindowFlags.NoFocusOnAppearing |
+            ImGuiWindowFlags.NoNav;
+
+        if (ImGui.Begin("##HuntTrainRelayMapBar", flags))
         {
-            var enabled = _config.ShowSpawnPointsOnMap;
-            if (ImGui.Checkbox("Show spawn points", ref enabled))
+            var points = _config.ShowSpawnPointsOnMap;
+            if (ImGui.Checkbox("Spawn points", ref points))
             {
-                _config.ShowSpawnPointsOnMap = enabled;
+                _config.ShowSpawnPointsOnMap = points;
                 _config.Save();
             }
 
-            ImGui.Separator();
-
-            var showB = _config.ShowBRankPoints;
-            if (ImGui.Checkbox("B ranks", ref showB))
+            // The rank filters only mean anything while the points are drawn.
+            ImGui.SameLine();
+            using (ImRaii.Disabled(!_config.ShowSpawnPointsOnMap))
             {
-                _config.ShowBRankPoints = showB;
-                _config.Save();
+                var showB = _config.ShowBRankPoints;
+                if (ImGui.Checkbox("B", ref showB))
+                {
+                    _config.ShowBRankPoints = showB;
+                    _config.Save();
+                }
+
+                ImGui.SameLine();
+                var showA = _config.ShowARankPoints;
+                if (ImGui.Checkbox("A", ref showA))
+                {
+                    _config.ShowARankPoints = showA;
+                    _config.Save();
+                }
+
+                ImGui.SameLine();
+                var showS = _config.ShowSRankPoints;
+                if (ImGui.Checkbox("S", ref showS))
+                {
+                    _config.ShowSRankPoints = showS;
+                    _config.Save();
+                }
             }
 
-            var showA = _config.ShowARankPoints;
-            if (ImGui.Checkbox("A ranks", ref showA))
-            {
-                _config.ShowARankPoints = showA;
-                _config.Save();
-            }
+            ImGui.SameLine();
+            ImGui.TextDisabled("|");
 
-            var showS = _config.ShowSRankPoints;
-            if (ImGui.Checkbox("S ranks", ref showS))
-            {
-                _config.ShowSRankPoints = showS;
-                _config.Save();
-            }
-
-            ImGui.Separator();
-
-            // Not gated on the spawn points above — either guide works on its own.
+            // Not gated on the spawn points — either guide works on its own.
+            ImGui.SameLine();
             var circle = _config.ShowPlayerCircleOnMap;
-            if (ImGui.Checkbox("Range circle", ref circle))
+            if (ImGui.Checkbox("Range", ref circle))
             {
                 _config.ShowPlayerCircleOnMap = circle;
                 _config.Save();
             }
 
+            ImGui.SameLine();
             var facing = _config.ShowPlayerFacingOnMap;
-            if (ImGui.Checkbox("Facing guide", ref facing))
+            if (ImGui.Checkbox("Path", ref facing))
             {
                 _config.ShowPlayerFacingOnMap = facing;
                 _config.Save();
             }
 
-            ImGui.Separator();
-            ImGui.TextDisabled(_mapOverlay.Status);
+            // Status is a hover rather than a line of its own, so the bar stays
+            // one row tall.
+            ImGui.SameLine();
+            ImGui.TextDisabled("(?)");
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip($"{_mapOverlay.Status}\n\n/htrm hides this bar.");
         }
         ImGui.End();
+
+        ImGui.PopStyleVar();
     }
 
     private void DrawTrainControls()
@@ -2373,11 +2443,13 @@ public sealed class Plugin : IDalamudPlugin
             }
             ImGui.TextDisabled(_mapOverlay.Status);
 
-            if (ImGui.Button("Open map filter popout"))
+            var bar = _config.ShowMapControlBar;
+            if (ImGui.Checkbox("Show a control bar above the map", ref bar))
             {
-                _mapPopoutVisible = true;
+                _config.ShowMapControlBar = bar;
+                _config.Save();
             }
-            ImGui.TextDisabled("Also /htrm — quick rank toggles without opening Settings.");
+            ImGui.TextDisabled("These same toggles, pinned to the top of the game's map and shown with it. Also /htrm.");
 
             if (_config.ShowSpawnPointsOnMap)
             {
