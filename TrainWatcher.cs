@@ -292,8 +292,10 @@ public class TrainWatcher : IDisposable
             var killTime = DateTimeOffset.FromUnixTimeSeconds(kill.UnixSeconds).UtcDateTime;
             var matched = false;
 
-            // Our own detected list
-            if (_detector.Marks.TryGetValue((kill.NameId, kill.InstanceId), out var own) && !own.Dead)
+            // Our own detected list. Looked up on the world the player is on,
+            // because that is where the kill happened — the same mark is up on
+            // every other world too, and those are not this one.
+            if (_detector.TryGetCurrentWorldMark(kill.NameId, kill.InstanceId, out var own) && !own.Dead)
             {
                 own.Dead = true;
                 own.DeathObservedAtUtc = killTime;
