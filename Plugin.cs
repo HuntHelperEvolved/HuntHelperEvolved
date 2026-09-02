@@ -1152,34 +1152,23 @@ public sealed class Plugin : IDalamudPlugin
         ImGui.Spacing();
 
         var facing = _config.ShowPlayerFacingOnMap;
-        if (ImGui.Checkbox("Facing guide", ref facing))
+        if (ImGui.Checkbox("Projected path", ref facing))
         {
             _config.ShowPlayerFacingOnMap = facing;
             _config.Save();
         }
-        ImGui.TextDisabled("A line out from you in the direction you're looking, a diameter of the circle long.");
+        ImGui.TextDisabled("The swathe ahead of you that your detection range will sweep. As wide as the circle, and runs off the edge of the map. Keep it translucent — it covers everything under it.");
 
         if (_config.ShowPlayerFacingOnMap)
         {
             var facingColour = _config.PlayerFacingColour;
-            if (ImGui.ColorEdit4("Facing colour", ref facingColour, flags))
+            if (ImGui.ColorEdit4("Path colour", ref facingColour, flags))
             {
                 _config.PlayerFacingColour = facingColour;
                 _config.Save();
             }
         }
 
-        if (_config.ShowPlayerCircleOnMap || _config.ShowPlayerFacingOnMap)
-        {
-            var guideDot = _config.PlayerGuideDotSize;
-            ImGui.SetNextItemWidth(90);
-            if (ImGui.InputFloat("Guide dot size", ref guideDot, 1f))
-            {
-                _config.PlayerGuideDotSize = Math.Clamp(guideDot, 3f, 24f);
-                _config.Save();
-            }
-            ImGui.TextDisabled("Line thickness. Both guides are drawn as overlapping dots — the game's map has no line to draw with.");
-        }
     }
 
     /// <summary>

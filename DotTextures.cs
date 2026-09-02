@@ -89,6 +89,93 @@ public static class DotTextures
         return EncodePng(Size, Size, pixels);
     }
 
+    /// <summary>
+    /// A ring outline, for the detection circle. Drawn at a larger resolution
+    /// than the dots because it is stretched to the circle's full width on
+    /// screen rather than shown at icon size.
+    ///
+    /// <paramref name="strokePixels"/> is the line width within this texture,
+    /// so the on-screen thickness follows the map's zoom along with everything
+    /// else.
+    /// </summary>
+    public static byte[] RenderRing(Vector4 colour, int size = 256, float strokePixels = 8f)
+    {
+        var r = ToByte(colour.X);
+        var g = ToByte(colour.Y);
+        var b = ToByte(colour.Z);
+        var a = Math.Clamp(colour.W, 0f, 1f);
+
+        var pixels = new byte[size * size * 4];
+
+        var centre = (size - 1) / 2f;
+        var outer = size / 2f;
+        var inner = MathF.Max(0f, outer - strokePixels);
+        var outerSq = outer * outer;
+        var innerSq = inner * inner;
+
+        for (var y = 0; y < size; y++)
+        {
+            for (var x = 0; x < size; x++)
+            {
+                var inside = 0;
+
+                for (var sy = 0; sy < Samples; sy++)
+                {
+                    for (var sx = 0; sx < Samples; sx++)
+                    {
+                        var px = x + (sx + 0.5f) / Samples - 0.5f;
+                        var py = y + (sy + 0.5f) / Samples - 0.5f;
+                        var dx = px - centre;
+                        var dy = py - centre;
+                        var dSq = (dx * dx) + (dy * dy);
+                        if (dSq <= outerSq && dSq >= innerSq)
+                            inside++;
+                    }
+                }
+
+                if (inside == 0)
+                    continue;
+
+                var coverage = inside / (float)(Samples * Samples);
+                var offset = ((y * size) + x) * 4;
+                pixels[offset + 0] = r;
+                pixels[offset + 1] = g;
+                pixels[offset + 2] = b;
+                pixels[offset + 3] = ToByte(coverage * a);
+            }
+        }
+
+        return EncodePng(size, size, pixels);
+    }
+
+    /// <summary>
+    /// A flat block of colour, for the projected path band. The band is a
+    /// stretched quad, so the image only has to carry the colour — its shape
+    /// comes from the node it is drawn into.
+    ///
+    /// Deliberately one uniform rectangle rather than a run of overlapping
+    /// sprites: translucent shapes that overlap compound their alpha, so a band
+    /// built that way would be blotched where the pieces met.
+    /// </summary>
+    public static byte[] RenderSolid(Vector4 colour, int size = 8)
+    {
+        var pixels = new byte[size * size * 4];
+        var r = ToByte(colour.X);
+        var g = ToByte(colour.Y);
+        var b = ToByte(colour.Z);
+        var alpha = ToByte(colour.W);
+
+        for (var i = 0; i < size * size; i++)
+        {
+            pixels[(i * 4) + 0] = r;
+            pixels[(i * 4) + 1] = g;
+            pixels[(i * 4) + 2] = b;
+            pixels[(i * 4) + 3] = alpha;
+        }
+
+        return EncodePng(size, size, pixels);
+    }
+
     /// <summary>Six hex digits for a colour, for use in a file name.</summary>
     public static string HexOf(Vector4 colour) =>
         $"{ToByte(colour.X):x2}{ToByte(colour.Y):x2}{ToByte(colour.Z):x2}{ToByte(colour.W):x2}";

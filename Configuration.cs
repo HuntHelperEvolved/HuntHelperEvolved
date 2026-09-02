@@ -250,19 +250,17 @@ public class Configuration : IPluginConfiguration
     public Vector4 PlayerCircleColour { get; set; } = new(1f, 1f, 0f, 0.9f);
 
     /// <summary>
-    /// Draw a line from your character showing which way you are facing. Its
-    /// length is taken from the ring rather than set here.
+    /// Draw the projected path: the swathe ahead of you that your detection
+    /// range will sweep if you keep walking. Exactly as wide as the ring, and
+    /// long enough to leave the map, so neither is set here.
     /// </summary>
     public bool ShowPlayerFacingOnMap { get; set; } = false;
 
-    public Vector4 PlayerFacingColour { get; set; } = new(1f, 0.3f, 0.3f, 1f);
-
     /// <summary>
-    /// Dot size for the ring and facing guide, in pixels. Both are drawn as a
-    /// dense run of small dots — see HuntMapOverlay — so this is the thickness
-    /// of the resulting line rather than the size of a marker.
+    /// Translucent by default, and by intention — it lies over the map and
+    /// everything on it. Hunt Helper's own path colour.
     /// </summary>
-    public float PlayerGuideDotSize { get; set; } = 6f;
+    public Vector4 PlayerFacingColour { get; set; } = new(0.117647f, 0.5647f, 1f, 0.4f);
 
     /// <summary>True when anything at all wants drawing on the map.</summary>
     public bool AnyMapOverlayEnabled =>
