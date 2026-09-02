@@ -32,6 +32,7 @@ public sealed unsafe class HuntMapOverlay : IDisposable
 {
     private readonly IFramework _framework;
     private readonly IClientState _clientState;
+    private readonly IObjectTable _objectTable;
     private readonly IDataManager _dataManager;
     private readonly IAddonLifecycle _addonLifecycle;
     private readonly IPluginLog _log;
@@ -44,6 +45,13 @@ public sealed unsafe class HuntMapOverlay : IDisposable
     // The colours the files on disk were drawn in. A change means new files,
     // new paths, and markers that have to be re-placed to pick them up.
     private string _dotSignature = string.Empty;
+
+    // Where the player was when the guides were last drawn. They follow the
+    // character, so something has to decide when that is worth redoing — see
+    // PlayerGuidesNeedRefresh.
+    private Vector2 _lastPlayerPos;
+    private float _lastPlayerRotation;
+    private double _secondsSincePlayerCheck;
 
     private MapOverlayController? _overlay;
     private bool _enabled;
@@ -60,6 +68,7 @@ public sealed unsafe class HuntMapOverlay : IDisposable
     public HuntMapOverlay(
         IFramework framework,
         IClientState clientState,
+        IObjectTable objectTable,
         IDataManager dataManager,
         IAddonLifecycle addonLifecycle,
         IPluginLog log,
@@ -69,6 +78,7 @@ public sealed unsafe class HuntMapOverlay : IDisposable
     {
         _framework = framework;
         _clientState = clientState;
+        _objectTable = objectTable;
         _dataManager = dataManager;
         _addonLifecycle = addonLifecycle;
         _log = log;
@@ -112,6 +122,133 @@ public sealed unsafe class HuntMapOverlay : IDisposable
         }
     }
 
+    /// <summary>Dots making up the ring. Enough that it reads as a circle.</summary>
+    private const int CircleSegments = 48;
+
+    /// <summary>Dots making up the facing guide.</summary>
+    private const int FacingSegments = 8;
+
+    /// <summary>
+    /// Whether the ring and facing guide have drifted far enough from where
+    /// they were drawn to be worth re-placing.
+    ///
+    /// These follow the character, so without a check they would rebuild every
+    /// marker on the map on every frame. Sampled ten times a second, and only
+    /// acted on once the player has actually moved half a yalm or turned about
+    /// three degrees — standing still costs nothing at all.
+    /// </summary>
+    private bool PlayerGuidesNeedRefresh(IFramework framework)
+    {
+        if (!_config.ShowPlayerCircleOnMap && !_config.ShowPlayerFacingOnMap)
+            return false;
+
+        _secondsSincePlayerCheck += framework.UpdateDelta.TotalSeconds;
+        if (_secondsSincePlayerCheck < 0.1)
+            return false;
+        _secondsSincePlayerCheck = 0;
+
+        var player = _objectTable.LocalPlayer;
+        if (player is null)
+            return false;
+
+        var pos = new Vector2(player.Position.X, player.Position.Z);
+        var moved = Vector2.Distance(pos, _lastPlayerPos) > 0.5f;
+
+        // Only meaningful for the facing guide; the ring looks the same however
+        // the character is turned.
+        var turned = _config.ShowPlayerFacingOnMap
+                     && MathF.Abs(WrapAngle(player.Rotation - _lastPlayerRotation)) > 0.05f;
+
+        return moved || turned;
+    }
+
+    private static float WrapAngle(float radians)
+    {
+        while (radians > MathF.PI) radians -= MathF.Tau;
+        while (radians < -MathF.PI) radians += MathF.Tau;
+        return radians;
+    }
+
+    /// <summary>
+    /// Places the ring and the facing guide, returning how many markers went
+    /// down. Both are built from the same small dots as everything else, since
+    /// a map marker is a texture at a position — there is no line to draw with
+    /// and no way to rotate one, so a line has to be made of points.
+    ///
+    /// Positions are world coordinates, which is what MapMarkerInfo wants, so
+    /// the radius is in yalms and stays honest at any zoom rather than being a
+    /// fixed number of screen pixels.
+    /// </summary>
+    private int DrawPlayerGuides(uint mapId, Dictionary<string, string> dots)
+    {
+        if (_overlay == null) return 0;
+        if (!_config.ShowPlayerCircleOnMap && !_config.ShowPlayerFacingOnMap) return 0;
+
+        var player = _objectTable.LocalPlayer;
+        if (player is null) return 0;
+
+        var centre = new Vector2(player.Position.X, player.Position.Z);
+        _lastPlayerPos = centre;
+        _lastPlayerRotation = player.Rotation;
+
+        var size = new Vector2(_config.PlayerGuideDotSize, _config.PlayerGuideDotSize);
+        var placed = 0;
+
+        if (_config.ShowPlayerCircleOnMap)
+        {
+            var radius = Math.Clamp(_config.PlayerCircleRadius, 1f, 200f);
+
+            for (var i = 0; i < CircleSegments; i++)
+            {
+                var angle = MathF.Tau * i / CircleSegments;
+                var at = centre + new Vector2(MathF.Cos(angle) * radius, MathF.Sin(angle) * radius);
+
+                _overlay.AddMarker(new MapMarkerInfo
+                {
+                    AllowAnyMap = false,
+                    MapId = mapId,
+                    Position = at,
+                    TexturePath = dots["circle"],
+                    Size = size,
+                    Tooltip = $"{radius:F0} yalms",
+                });
+                placed++;
+            }
+        }
+
+        if (_config.ShowPlayerFacingOnMap)
+        {
+            var length = Math.Clamp(_config.PlayerFacingLength, 1f, 200f);
+
+            // Rotation is radians about the vertical axis, and the game's own
+            // convention puts forward at (sin, cos) in world X/Z — zero facing
+            // south, which is +Z. If the guide ever points the wrong way, this
+            // is the line to negate.
+            var forward = new Vector2(MathF.Sin(player.Rotation), MathF.Cos(player.Rotation));
+
+            // Starts a little out from the character so the dots do not pile up
+            // underneath the player marker the game already draws.
+            for (var i = 1; i <= FacingSegments; i++)
+            {
+                var distance = length * i / FacingSegments;
+                var at = centre + (forward * distance);
+
+                _overlay.AddMarker(new MapMarkerInfo
+                {
+                    AllowAnyMap = false,
+                    MapId = mapId,
+                    Position = at,
+                    TexturePath = dots["facing"],
+                    Size = size,
+                    Tooltip = "Facing",
+                });
+                placed++;
+            }
+        }
+
+        return placed;
+    }
+
     /// <summary>
     /// The configured colours, as a string. Used both to name the files and to
     /// notice when they need drawing again.
@@ -120,7 +257,9 @@ public sealed unsafe class HuntMapOverlay : IDisposable
         DotTextures.HexOf(_config.SpawnDotColourEmpty) + "-"
         + DotTextures.HexOf(_config.SpawnDotColourB) + "-"
         + DotTextures.HexOf(_config.SpawnDotColourA) + "-"
-        + DotTextures.HexOf(_config.SpawnDotColourS);
+        + DotTextures.HexOf(_config.SpawnDotColourS) + "-"
+        + DotTextures.HexOf(_config.PlayerCircleColour) + "-"
+        + DotTextures.HexOf(_config.PlayerFacingColour);
 
     /// <summary>
     /// Draws the dots in the configured colours and writes them to the
@@ -149,6 +288,8 @@ public sealed unsafe class HuntMapOverlay : IDisposable
                 ["b"] = _config.SpawnDotColourB,
                 ["a"] = _config.SpawnDotColourA,
                 ["s"] = _config.SpawnDotColourS,
+                ["circle"] = _config.PlayerCircleColour,
+                ["facing"] = _config.PlayerFacingColour,
             };
 
             var paths = new Dictionary<string, string>();
@@ -230,7 +371,7 @@ public sealed unsafe class HuntMapOverlay : IDisposable
 
             if (!EnsureOverlay() || _overlay == null) return;
 
-            if (!_config.ShowSpawnPointsOnMap)
+            if (!_config.AnyMapOverlayEnabled)
             {
                 if (_enabled)
                 {
@@ -274,17 +415,13 @@ public sealed unsafe class HuntMapOverlay : IDisposable
             if (DotSignature() != _dotSignature)
                 _needsRefresh = true;
 
+            if (PlayerGuidesNeedRefresh(framework))
+                _needsRefresh = true;
+
             if (!_needsRefresh) return;
             _needsRefresh = false;
 
             _overlay.RemoveAllMarkers();
-
-            var points = SpawnPointData.For(territory);
-            if (points.Length == 0)
-            {
-                Status = $"No spawn point data for territory {territory}.";
-                return;
-            }
 
             var dots = EnsureDotFiles();
             if (dots == null)
@@ -298,6 +435,25 @@ public sealed unsafe class HuntMapOverlay : IDisposable
             if (mapId == 0)
             {
                 Status = "Could not resolve the map id for this zone.";
+                return;
+            }
+
+            var guides = DrawPlayerGuides(mapId, dots);
+
+            if (!_config.ShowSpawnPointsOnMap)
+            {
+                Status = guides > 0
+                    ? $"{guides} guide markers shown; spawn points off."
+                    : "Player guides on, but nothing to draw yet.";
+                return;
+            }
+
+            var points = SpawnPointData.For(territory);
+            if (points.Length == 0)
+            {
+                Status = guides > 0
+                    ? $"No spawn point data for territory {territory}; {guides} guide markers shown."
+                    : $"No spawn point data for territory {territory}.";
                 return;
             }
 
@@ -410,7 +566,8 @@ public sealed unsafe class HuntMapOverlay : IDisposable
                 placed++;
             }
 
-            Status = $"{placed} spawn points shown, {occupied} with a mark on them.";
+            Status = $"{placed} spawn points shown, {occupied} with a mark on them."
+                     + (guides > 0 ? $" {guides} guide markers." : string.Empty);
         }
         catch (Exception ex)
         {
