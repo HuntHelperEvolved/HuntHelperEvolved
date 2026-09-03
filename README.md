@@ -52,6 +52,12 @@ grey / blue / red / green as a B, A or S rank turns up on one. A mark that
 isn't on a known spawn point — an SS, or one that spawned somewhere unlisted —
 is drawn slightly larger at its real position rather than being left off.
 
+**Mark names.** Every mark that is actually up gets its name and remaining
+health written beside its dot, so a glance at the map says which are still
+untouched and which somebody is already pulling. The health keeps counting down
+while you watch. Colour, outline and text size are all settable, and the
+**Names** toggle on the control bar turns the lot off.
+
 **Around you.** Four pieces, each with its own toggle and colour, which
 together reproduce Hunt Helper's map:
 
@@ -67,6 +73,21 @@ zoom. There's a scale if you want it bigger than life, and a line-width setting.
 announcement goes out, the four minion spots for that zone are marked, along
 with a star on the spot the mark itself will spawn. They stay until the mark
 appears or you leave the zone. All 18 ShB, EW and DT hunt zones are covered.
+
+## When a mark turns up
+
+Three ways to be told, each with its own B / A / S switches, and all of them
+local — nothing is sent to anyone else.
+
+- **Chat**, as a line you write yourself. `<name>`, `<rank>`, `<hpp>` and a
+  clickable `<flag>`, plus a dozen game icons like `<goldstar>`.
+- **Fly text** on your character, in the channel a crit lands in, which is the
+  one thing here you cannot miss while running.
+- **Spoken**, on a voice and volume you pick. Windows only — everywhere else
+  the settings screen says so, and the other two carry on regardless.
+
+These are Hunt Helper's own placeholders, defaults and colours, so a message
+pasted across from it produces the same line.
 
 ## The train
 

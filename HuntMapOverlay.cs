@@ -279,10 +279,51 @@ public sealed unsafe class HuntMapOverlay : IDisposable
                               + "Not on a known spawn point.",
             });
             placed++;
+
+            AddMarkLabel(mapId, sighting.MapPosition, sighting, _config.SpawnDotSize * 1.35f);
         }
 
         return placed;
     }
+
+    /// <summary>
+    /// Writes a live mark's name and health next to it.
+    ///
+    /// The sighting is captured rather than copied out of, because the detector
+    /// keeps updating that same object on every scan — so the label reads the
+    /// current health each frame without anything having to be rebuilt.
+    /// </summary>
+    /// <param name="dotSize">
+    /// The dot this label belongs to, so the text clears it. Off-point marks
+    /// are drawn larger than spawn points and their labels have to drop
+    /// further to match.
+    /// </param>
+    private void AddMarkLabel(uint mapId, Vector2 mapPosition, OtherRankSighting sighting, float dotSize)
+    {
+        if (_overlay == null || !_config.ShowMarkLabelsOnMap) return;
+
+        var world = MapCoordinates.ToWorld(_dataManager, mapId, mapPosition.X, mapPosition.Y);
+
+        _overlay.AddMarker(new MarkLabelMarker(
+            _config.MarkLabelColour,
+            _config.MarkLabelOutlineColour,
+            _config.MarkLabelFontSize,
+            LabelWidth,
+            (dotSize / 2f) + 2f)
+        {
+            AllowAnyMap = false,
+            MapId = mapId,
+            Position = world,
+            TextProvider = () => $"{sighting.Name}\n{sighting.HealthPercent:0.#}%",
+        });
+    }
+
+    /// <summary>
+    /// How wide a label's box is. The text is centred in it and never wraps, so
+    /// this only has to be wider than the longest mark name — "Sanu Vali of
+    /// Dancing Wings" — at the largest font size on offer.
+    /// </summary>
+    private const float LabelWidth = 320f;
 
     /// <summary>
     /// The player's position on the map, or the last one known when they are
@@ -512,7 +553,8 @@ public sealed unsafe class HuntMapOverlay : IDisposable
     private string DrawSignature() =>
         $"{_config.ShowSpawnPointsOnMap}{_config.ShowARankPoints}{_config.ShowBRankPoints}"
         + $"{_config.ShowSRankPoints}{_config.ShowPlayerCircleOnMap}"
-        + $"{_config.ShowPlayerGuides}{_config.ShowPlayerFacingOnMap}{_config.ShowPlayerDirectionLine}{_config.ShowPlayerPositionDot}{_config.ShowSsEventOnMap}{_ssEvent.Pins.Count}{_ssEvent.Active}{_config.SpawnDotSize}{_config.PlayerCircleRadiusScale}{_config.PlayerDirectionLineThickness}{_config.PlayerPositionDotSize}";
+        + $"{_config.ShowPlayerGuides}{_config.ShowPlayerFacingOnMap}{_config.ShowPlayerDirectionLine}{_config.ShowPlayerPositionDot}{_config.ShowSsEventOnMap}{_ssEvent.Pins.Count}{_ssEvent.Active}{_config.SpawnDotSize}{_config.PlayerCircleRadiusScale}{_config.PlayerDirectionLineThickness}{_config.PlayerPositionDotSize}"
+        + $"{_config.ShowMarkLabelsOnMap}{DotTextures.HexOf(_config.MarkLabelColour)}{DotTextures.HexOf(_config.MarkLabelOutlineColour)}{_config.MarkLabelFontSize}";
 
     /// <summary>
     /// The configured colours, as a string. Used both to name the files and to
@@ -889,6 +931,8 @@ public sealed unsafe class HuntMapOverlay : IDisposable
                     };
                     tooltip = $"{mark.Name}  ({mark.Rank} rank)\n{point.X:F1}, {point.Y:F1}";
                     occupied++;
+
+                    AddMarkLabel(mapId, new Vector2(point.X, point.Y), mark, _config.SpawnDotSize);
                 }
                 else
                 {
