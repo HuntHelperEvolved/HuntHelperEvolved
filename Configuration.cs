@@ -156,6 +156,51 @@ public class Configuration : IPluginConfiguration
     public bool EchoARanks { get; set; } = true;
     public bool EchoSRanks { get; set; } = true;
 
+    /// <summary>
+    /// What the detection line says, per rank.
+    ///
+    /// These are Hunt Helper's own default messages, placeholders and all, so
+    /// someone arriving from it can paste in the message they already use and
+    /// get the line they already know. See MarkNotifier for the full list of
+    /// placeholders; the short version is &lt;name&gt;, &lt;rank&gt;,
+    /// &lt;hpp&gt;, &lt;flag&gt; and a dozen game icons.
+    /// </summary>
+    public string DetectionChatMessageA { get; set; } = "FOUND: <name> @ <flag> ---  <rank>  --  <hpp>";
+    public string DetectionChatMessageB { get; set; } = "FOUND: <name> @ <flag> ---  <rank>  --  <hpp>";
+    public string DetectionChatMessageS { get; set; } = "FOUND: <name> @ <flag> ---  <rank>  --  <hpp>";
+
+    /// <summary>
+    /// Say a detected mark out loud. Off by default, and unavailable anywhere
+    /// without a Windows speech engine — MarkNotifier reports that rather than
+    /// leaving a toggle that quietly does nothing.
+    /// </summary>
+    public bool DetectionTtsEnabled { get; set; } = false;
+
+    public bool TtsBRanks { get; set; } = false;
+    public bool TtsARanks { get; set; } = true;
+    public bool TtsSRanks { get; set; } = true;
+
+    /// <summary>Hunt Helper's own spoken defaults: nearby for a B or an A, in zone for an S.</summary>
+    public string DetectionTtsMessageA { get; set; } = "<rank> Nearby";
+    public string DetectionTtsMessageB { get; set; } = "<rank> Nearby";
+    public string DetectionTtsMessageS { get; set; } = "<rank> in zone";
+
+    /// <summary>Which installed voice to use. Empty means the system default.</summary>
+    public string TtsVoiceName { get; set; } = string.Empty;
+
+    public int TtsVolume { get; set; } = 100;
+
+    /// <summary>
+    /// Throw the mark's name up as fly text on your character — the channel a
+    /// crit lands in, which is why it is the one thing here you cannot miss
+    /// while running. Hunt Helper's third notification channel.
+    /// </summary>
+    public bool DetectionFlyTextEnabled { get; set; } = false;
+
+    public bool FlyTextBRanks { get; set; } = false;
+    public bool FlyTextARanks { get; set; } = true;
+    public bool FlyTextSRanks { get; set; } = true;
+
     /// <summary>Teleporting to a mark also drops the map flag on it.</summary>
     public bool TeleportAlsoFlags { get; set; } = true;
 
@@ -243,6 +288,29 @@ public class Configuration : IPluginConfiguration
 
     /// <summary>Colour when an S rank is sitting on the point.</summary>
     public Vector4 SpawnDotColourS { get; set; } = new(0f, 0.827f, 0f, 1f);
+
+    /// <summary>
+    /// Write each live mark's name and remaining health on the map beside its
+    /// dot, rather than leaving both in a tooltip you have to go and find.
+    ///
+    /// Only marks that are actually up get one — an empty spawn point has
+    /// nothing to say — so this follows the rank filters rather than having its
+    /// own. On by default: it is the thing the dots were always standing in for.
+    /// </summary>
+    public bool ShowMarkLabelsOnMap { get; set; } = true;
+
+    /// <summary>
+    /// Label colour, and the outline drawn behind it. White on black is what
+    /// the game's own map labels use, and the outline is not decoration: the
+    /// map runs from near-white snow to near-black caverns, and unoutlined text
+    /// disappears into one end or the other.
+    /// </summary>
+    public Vector4 MarkLabelColour { get; set; } = new(1f, 1f, 1f, 1f);
+
+    public Vector4 MarkLabelOutlineColour { get; set; } = new(0f, 0f, 0f, 1f);
+
+    /// <summary>Label text size. 12 is close to the game's own map lettering.</summary>
+    public float MarkLabelFontSize { get; set; } = 12f;
 
     /// <summary>
     /// Mark where an SS event's minions were found, from the announcement until
