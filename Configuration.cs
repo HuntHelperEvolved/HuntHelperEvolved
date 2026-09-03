@@ -289,6 +289,16 @@ public class Configuration : IPluginConfiguration
     public float PlayerCircleThickness { get; set; } = 8f;
 
     /// <summary>
+    /// Master switch for everything drawn around your character — the range
+    /// circle, the projected path, the heading line and the position dot.
+    ///
+    /// The four keep their own settings while it is off, the same way the rank
+    /// filters keep theirs when the spawn points are switched off, so turning
+    /// the lot off and back on returns exactly what was there.
+    /// </summary>
+    public bool ShowPlayerGuides { get; set; } = true;
+
+    /// <summary>
     /// Draw the heading line: a short line from you to the edge of the ring.
     ///
     /// Hunt Helper's direction line, which is a separate thing from its
@@ -339,10 +349,15 @@ public class Configuration : IPluginConfiguration
     /// </summary>
     public bool ShowMapControlBar { get; set; } = true;
 
+    /// <summary>True when any of the four player guides would be drawn.</summary>
+    public bool AnyPlayerGuideEnabled =>
+        ShowPlayerGuides
+        && (ShowPlayerCircleOnMap || ShowPlayerFacingOnMap
+            || ShowPlayerDirectionLine || ShowPlayerPositionDot);
+
     /// <summary>True when anything at all wants drawing on the map.</summary>
     public bool AnyMapOverlayEnabled =>
-        ShowSpawnPointsOnMap || ShowPlayerCircleOnMap || ShowPlayerFacingOnMap
-        || ShowSsEventOnMap || ShowPlayerDirectionLine || ShowPlayerPositionDot;
+        ShowSpawnPointsOnMap || ShowSsEventOnMap || AnyPlayerGuideEnabled;
 
     /// <summary>How close (in map units) a mark must be to count as "at" a spawn point.</summary>
     public float SpawnPointMatchRadius { get; set; } = 2.5f;

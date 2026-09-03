@@ -1147,6 +1147,17 @@ public sealed class Plugin : IDalamudPlugin
         const ImGuiColorEditFlags flags =
             ImGuiColorEditFlags.AlphaBar | ImGuiColorEditFlags.AlphaPreviewHalf;
 
+        var guides = _config.ShowPlayerGuides;
+        if (ImGui.Checkbox("Show these at all", ref guides))
+        {
+            _config.ShowPlayerGuides = guides;
+            _config.Save();
+        }
+        ImGui.TextDisabled("One switch for the four below. They keep their own settings while it's off.");
+
+        ImGui.Spacing();
+        using var guideGroup = ImRaii.Disabled(!_config.ShowPlayerGuides);
+
         var circle = _config.ShowPlayerCircleOnMap;
         if (ImGui.Checkbox("Range circle", ref circle))
         {
@@ -1456,49 +1467,63 @@ public sealed class Plugin : IDalamudPlugin
     /// </summary>
     private void DrawMapBarPlayerRow()
     {
-        ImGui.TextDisabled("Around you:");
-        ImGui.SameLine();
-
-        var circle = _config.ShowPlayerCircleOnMap;
-        if (ImGui.Checkbox("Range", ref circle))
+        var guides = _config.ShowPlayerGuides;
+        if (ImGui.Checkbox("Around you", ref guides))
         {
-            _config.ShowPlayerCircleOnMap = circle;
+            _config.ShowPlayerGuides = guides;
             _config.Save();
         }
         if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("The detection range circle.");
+            ImGui.SetTooltip("Everything drawn around your character. The four keep their settings while this is off.");
 
-        ImGui.SameLine();
-        var facing = _config.ShowPlayerFacingOnMap;
-        if (ImGui.Checkbox("Path", ref facing))
+        // Scoped rather than disposed by hand: the status below has to sit
+        // outside it, and a block says where it ends without depending on
+        // ImRaii tolerating a second Dispose.
+        using (ImRaii.Disabled(!_config.ShowPlayerGuides))
         {
-            _config.ShowPlayerFacingOnMap = facing;
-            _config.Save();
-        }
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("The projected path: the swathe ahead that your range will sweep.");
+            ImGui.SameLine();
+            var circle = _config.ShowPlayerCircleOnMap;
+            if (ImGui.Checkbox("Range", ref circle))
+            {
+                _config.ShowPlayerCircleOnMap = circle;
+                _config.Save();
+            }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("The detection range circle.");
 
-        ImGui.SameLine();
-        var dirLine = _config.ShowPlayerDirectionLine;
-        if (ImGui.Checkbox("Line", ref dirLine))
-        {
-            _config.ShowPlayerDirectionLine = dirLine;
-            _config.Save();
-        }
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("Heading line, out to the edge of the range circle.");
+            ImGui.SameLine();
+            var facing = _config.ShowPlayerFacingOnMap;
+            if (ImGui.Checkbox("Path", ref facing))
+            {
+                _config.ShowPlayerFacingOnMap = facing;
+                _config.Save();
+            }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("The projected path: the swathe ahead that your range will sweep.");
 
-        ImGui.SameLine();
-        var posDot = _config.ShowPlayerPositionDot;
-        if (ImGui.Checkbox("Dot", ref posDot))
-        {
-            _config.ShowPlayerPositionDot = posDot;
-            _config.Save();
-        }
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("A dot on exactly where you are.");
+            ImGui.SameLine();
+            var dirLine = _config.ShowPlayerDirectionLine;
+            if (ImGui.Checkbox("Line", ref dirLine))
+            {
+                _config.ShowPlayerDirectionLine = dirLine;
+                _config.Save();
+            }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Heading line, out to the edge of the range circle.");
 
-        // Status is a hover rather than a line of its own, so two rows stay two.
+            ImGui.SameLine();
+            var posDot = _config.ShowPlayerPositionDot;
+            if (ImGui.Checkbox("Dot", ref posDot))
+            {
+                _config.ShowPlayerPositionDot = posDot;
+                _config.Save();
+            }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("A dot on exactly where you are.");
+        }
+
+        // Worth reading whether or not the guides are switched on, so it is
+        // outside the block above.
         ImGui.SameLine();
         ImGui.TextDisabled("(?)");
         if (ImGui.IsItemHovered())
