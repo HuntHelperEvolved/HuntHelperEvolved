@@ -8,7 +8,7 @@ namespace HuntTally;
 
 /// <summary>
 /// Loads and saves the tally from Hunt Tally's own configuration file, not
-/// Hunt Train Relay's.
+/// Hunt Helper Evolved's.
 ///
 /// The tally used to be a separate plugin, so its data already sits in
 /// pluginConfigs/HuntTally.json — hundreds of kilobytes of per-character kill
@@ -104,7 +104,7 @@ public static class TallyConfigStore
     /// </summary>
     public static Configuration Load(IDalamudPluginInterface pluginInterface)
     {
-        // ConfigFile is <pluginConfigs>/HuntTrainRelay.json, so its directory is
+        // ConfigFile is <pluginConfigs>/HuntHelperEvolved.json, so its directory is
         // the shared pluginConfigs folder the standalone plugin also wrote into.
         var directory = pluginInterface.ConfigFile.Directory;
         if (directory is null)

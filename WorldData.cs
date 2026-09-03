@@ -4,7 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
-namespace HuntTrainRelay;
+namespace HuntHelperEvolved;
 
 public readonly record struct WorldEntry(uint RowId, string Name, uint DataCenterId);
 

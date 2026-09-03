@@ -6,7 +6,7 @@ using System.IO.Compression;
 using System.Linq;
 using System.Text;
 
-namespace HuntTrainRelay;
+namespace HuntHelperEvolved;
 
 public static class ScoutingReport
 {

@@ -7,7 +7,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 
-namespace HuntTrainRelay;
+namespace HuntHelperEvolved;
 
 public readonly record struct AetheryteData(uint AetheryteId, byte SubIndex, uint TerritoryId, float X, float Y, string Name)
 {

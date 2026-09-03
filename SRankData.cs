@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace HuntTrainRelay;
+namespace HuntHelperEvolved;
 
 public record SRankInfo(string Name, string Expansion, int Order);
 

@@ -10,7 +10,7 @@ using System.IO;
 using System.Numerics;
 using MapMarkerInfo = KamiToolKit.Classes.MapMarkerInfo;
 
-namespace HuntTrainRelay;
+namespace HuntHelperEvolved;
 
 /// <summary>
 /// Draws A-rank spawn points onto the real in-game map, rather than in a

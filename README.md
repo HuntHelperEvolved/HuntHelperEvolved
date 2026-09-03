@@ -1,151 +1,133 @@
-# Hunt Train Relay
+# Hunt Helper Evolved
 
-Connects Hunt Helper to Discord. Records the exact moment each mark dies in the
-background, then — when you click **End Train Now** — posts a report sorted by
-the order things actually died, with each mark's estimated respawn window shown
-in every Discord reader's own local time. Also tracks a small, fixed set of
-S-rank checks the group actually cares about, and can post an on-demand
-scouting report with a code that pastes straight into anyone else's Hunt Helper.
+A hunting plugin for FFXIV, built from two that came before it. It scouts and
+records a train with exact kill times, posts a Discord report sorted by the
+order marks actually died, draws spawn points, your detection range and SS
+event locations on the **in-game map**, counts S-rank trigger mobs, and keeps a
+lifetime per-mark kill tally for every character you play.
 
-As of 1.16 it also includes **Hunt Tally**, the lifetime per-mark kill counter
-that used to be a separate plugin. See [The tally](#the-tally) below — including
-the one thing you have to do when upgrading.
+> **v0.1** — first release under this name. See
+> [Where this came from](#where-this-came-from) if you are arriving from Hunt
+> Train Relay or Hunt Tally; your settings and your tally carry over.
 
 ## Install
 
 1. In-game, type `/xlsettings`, go to the **Experimental** tab, and find
    **Custom Plugin Repositories** near the bottom.
 2. Paste this into the empty box and click the **+**:
-   `https://raw.githubusercontent.com/MusicManBowls/HuntTrainRelay/main/repo.json`
+   `https://raw.githubusercontent.com/HuntHelperEvolved/HuntHelperEvolved/main/repo.json`
 3. Click **Save and Close**.
-4. Type `/xlplugins`, search for **Hunt Train Relay**, and click **Install**.
+4. Type `/xlplugins`, search for **Hunt Helper Evolved**, and click **Install**.
 
-Updates show up as a normal **Update** button in `/xlplugins` — no reinstalling needed.
+Updates show up as a normal **Update** button in `/xlplugins`.
 
-## Getting started
+## Commands
 
-1. Get a Discord webhook URL: in your server, right-click the channel you want
-   reports posted to → Edit Channel → Integrations → Webhooks → New Webhook →
-   Copy Webhook URL.
-2. Type `/htr` in-game to open the settings window.
-3. Go to the **Settings** tab, paste the webhook URL in, and click **Send test
-   message** to confirm it posted.
-4. Whoever is actively conducting a train ticks **Tracking this train** on the
-   **Conductor** tab — everyone else leaves it off.
-5. When the train is genuinely finished, click **End Train Now**. Nothing posts
-   on its own — this is the only thing that sends a report.
+| | |
+|---|---|
+| `/htr` | the main window — Conductor, Train, Scout, Marks Slain, Settings, Tally |
+| `/htrt` | the train list, as a popout |
+| `/htrc` | the trigger-mob counter popout |
+| `/htra` | name the closest aetheryte to the next mark |
+| `/htrm` | show or hide the control bar above the map |
+| `/hunttally` | the kill tally. `/hunttally config` for its settings |
 
-Treat the webhook URL like a password — anyone who has it can post to that channel.
+## The map
 
-## What each tab does
+Everything here draws on the game's own map, not in a separate window, and only
+in zones marks actually occur in. A two-row control bar sits above the map and
+appears and disappears with it.
 
-**Conductor**
-- *Tracking this train (records exact kill times)*: turns on background
-  tracking. While it's on, the plugin watches Hunt Helper and remembers the
-  exact moment each mark flips to dead — it doesn't post anything by itself.
-  Only the person actually running Hunt Helper's train recorder should have
-  this on.
-- *Status*: a live line showing what tracking currently sees.
-- *End Train Now*: the only way a report gets sent. Posts every mark tracked
-  this train — including ones cleared away mid-train with Hunt Helper's own
-  "Remove Dead" — sorted by the order they actually died, plus any S-rank
-  check results, then clears everything for the next train. Deliberately
-  manual: for multi-expansion trains, auto-firing the moment "everything
-  currently tracked is dead" would fire after the *first* leg, not the real end.
-- *Reset train tracking now*: clears tracking and S-rank watches without
-  posting anything — use if you need to abandon a train.
-- *S-Rank Watches*: three quick buttons — Ophioneus, Tyger, and Narrow-rift
-  (with a dropdown of its 9 known spawn spots, since it doesn't have one fixed
-  location like the other two). Each watch gets Spawned / Didn't Spawn
-  checkboxes and shows up on the eventual Discord report either way. Clears
-  when the train ends, same as tracking.
+**Spawn points.** Every known spawn point in the zone, filtered by rank, going
+grey / blue / red / green as a B, A or S rank turns up on one. A mark that
+isn't on a known spawn point — an SS, or one that spawned somewhere unlisted —
+is drawn slightly larger at its real position rather than being left off.
 
-**Scout**
-- *Send Scouting Report*: posts a paste-able Hunt Helper import code, plus how
-  many marks are currently up per expansion — including which specific marks
-  were found already dead ("sniped") and which haven't been scouted at all yet.
-- *Additional scouts*: credit anyone else whose scouting you folded into this
-  report (e.g. they sent you their own Hunt Helper export code privately).
+**Around you.** Four pieces, each with its own toggle and colour, which
+together reproduce Hunt Helper's map:
 
-**Marks Slain**
-- Live preview of exactly what End Train Now would post right now, in your
-  own local time — a way to sanity-check before actually sending it.
+- a **range circle** at the real detection radius, two map coordinates
+- a **projected path**, the swathe ahead that your range will sweep
+- a **heading line** out to the edge of the circle
+- a **position dot** on exactly where you are
 
-**Settings**
-- *Send test message*: posts to every **enabled** webhook below.
-- *Webhooks*: one row per Discord server or channel — a checkbox to enable/
-  disable it (handy for a testing channel you don't want to delete), an
-  optional short label, and the URL itself. Add up to 5.
-- *Check interval (seconds)*: how often (while "Tracking this train" is on) it
-  checks Hunt Helper for changes. 3 seconds is fine for most people.
+The circle is in yalms rather than screen pixels, so it stays honest at every
+zoom. There's a scale if you want it bigger than life, and a line-width setting.
 
-**Tally**
-- The hunt tally's settings — kill credit detection, which ranks to track,
-  seeding baselines from your achievements, and the reset. These were the
-  standalone plugin's own settings window; nothing about them has changed
-  except where they live.
-- *Open the tally* opens the tally's own window, which stays separate.
+**SS events.** When the *"minions of an extraordinarily powerful mark"*
+announcement goes out, the four minion spots for that zone are marked, along
+with a star on the spot the mark itself will spawn. They stay until the mark
+appears or you leave the zone. All 18 ShB, EW and DT hunt zones are covered.
+
+## The train
+
+Turn on **Tracking this train** on the Conductor tab and the plugin records the
+exact moment each mark dies. Nothing posts on its own — **End Train Now** is the
+only thing that sends a report, deliberately, because a multi-expansion train
+looks "finished" the moment you leave the first leg.
+
+Marks are recorded per world, so the same mark on Mateus and on Goblin are two
+marks and can't overwrite each other.
+
+The **Scout** tab posts a report with a Hunt Helper import code and a per-
+expansion count of what's up, including what was found already dead.
 
 ## The tally
 
-Hunt Tally is built in from 1.16. It counts every hunt mark you get kill credit
-for, permanently and per character, broken down by rank and expansion — so the
-number survives finishing the achievement, which stops reporting a running
-total once it's complete.
+Every mark you get kill credit for, permanently, per character, broken down by
+rank and expansion — so the number survives finishing the achievement, which
+stops reporting a running total once it's complete. Credit is read from your own
+actions rather than guessed from combat state, and A and S ranks are only
+counted once the game confirms it rewarded you.
 
-**If you were running the standalone Hunt Tally plugin, uninstall it** in
-`/xlplugins` after updating, then reload Hunt Train Relay. Until you do, this
-plugin deliberately counts nothing and doesn't touch your tally file: both
-would otherwise be writing the same file on their own timers and each save
-would wipe out whatever the other had recorded since it last read. You'll get a
-red warning in chat and on the Tally tab while that's the case.
+`/hunttally` opens it. Its settings live on the **Tally** tab of the main window.
 
-**Your existing counts carry over untouched.** The tally still reads and writes
-`HuntTally.json`, exactly where the standalone plugin kept it, so there's no
-import step and nothing to migrate. Your characters, per-mark records, kill
-history, achievement baselines and settings are all just there.
+## Where this came from
 
-- `/hunttally` opens the tally window — marks, by expansion, statistics and
-  characters — same as it always did.
-- `/hunttally config` opens the **Tally** tab of this plugin's settings window.
-  The tally's settings used to be a window of their own; they're a tab here
-  now, with the same controls.
-- `/hunttally ipc` is the same self-test as before.
+This is a merger and continuation of two plugins, and the map work is modelled
+closely on a third:
 
-The tally still publishes its kills over Dalamud IPC on the `HuntTally.OnKill`
-gate, so any other plugin that was listening carries on working unchanged.
+- **[Hunt Train Relay](https://github.com/MusicManBowls/HuntTrainRelay)** by
+  MusicManBowls — the train recording, Discord reports, scouting, trigger-mob
+  counters and the first version of the map overlay. This plugin is that one,
+  renamed and carried on.
+- **Hunt Tally** by kihtli — the lifetime kill counter, now built in rather than
+  a separate install talking over IPC.
+- **[Hunt Helper](https://github.com/img02/HuntHelper)** by img02 (MIT) — the
+  spawn point data, the territory ids, and the map's design, which the range
+  circle, projected path, heading line and position dot follow deliberately.
+  Hunt Helper is still a fine plugin and this one reads its train over IPC.
 
-Auto-marking on the **Conductor** tab now reads the tally directly instead of
-going through IPC. It follows the same feed it always did — the marks you were
-credited with, or every mark death if you turn that on in the Tally tab.
+SS minion and mark spawn coordinates are from [Faloop](https://faloop.app/).
 
-## Known limitations (by design)
+### Coming from Hunt Train Relay
 
-- Only A-rank marks get a computed respawn window. B-rank and S-rank marks
-  still get listed if they're in Hunt Helper's train, just without a timer.
-- Respawn windows are calculated from when *your own client* saw a mark flip
-  to dead, not an exact server-side kill timestamp — accurate to within the
-  check interval.
-- "Assumed Sniped" (on End Train Now) and "Not yet scouted" (on Scouting
-  Report) both check whether a named mark was seen at all, not whether every
-  concurrent instance of its zone was checked.
-- S-rank watches are a fixed, small set (Ophioneus, Tyger, Narrow-rift) rather
-  than a general system — this was deliberately cut back after an earlier,
-  more flexible "Rally Flag" design turned out to be more trouble than it was
-  worth. A general reusable-location or map-flag system is not planned.
+Uninstall it. Your settings carry over on first load — Dalamud names a config
+file after the plugin, so the old file is read once and written out under the
+new name. Nothing to export.
 
-## For whoever maintains this (build from source)
+### Coming from Hunt Tally
 
-`dotnet build -c Release`, zip `HuntTrainRelay.dll` + `HuntTrainRelay.json`
-from `bin\Release\`, attach that zip to a GitHub Release, and update the
-version + download links in `repo.json`.
+Uninstall it too. The tally still reads and writes `HuntTally.json` exactly
+where the standalone plugin kept it, so every character, mark record, kill and
+achievement baseline is simply there. If the standalone plugin is still
+installed, this one deliberately counts nothing and leaves the file alone rather
+than both writing it — you'll get a warning saying so.
 
-On macOS or Linux, run `./build-macos.sh` instead — the Dalamud SDK needs to be
-pointed at `Dalamud.dll` via `DALAMUD_HOME`, which it only finds by itself on
-Windows. The script looks in the usual XIV on Mac and XIVLauncher.Core places.
+## Building
 
-The tally lives in `Tally/`, in its original `HuntTally` namespace. That's
-deliberate: it keeps the merge to a wiring change, so the code people's
-existing totals were built by is the same code. `Tally/TallyConfigStore.cs` is
-the one genuinely new piece — it reads and writes `HuntTally.json` directly,
-because Dalamud only ever hands a plugin the config file named after it.
+`dotnet build -c Release`. The release artifact is
+`bin/Release/HuntHelperEvolved/latest.zip`.
+
+On macOS or Linux run `./build-macos.sh` instead — the Dalamud SDK only finds
+`Dalamud.dll` by itself on Windows, and the script points `DALAMUD_HOME` at the
+usual XIV on Mac and XIVLauncher.Core locations.
+
+The tally lives in `Tally/`, still in its original `HuntTally` namespace and
+still keeping its own config file. That's deliberate: it keeps the merge to a
+wiring change, so the code people's existing totals were built by is the same
+code.
+
+## Licence
+
+Spawn point data and territory ids adapted from Hunt Helper, MIT licensed.

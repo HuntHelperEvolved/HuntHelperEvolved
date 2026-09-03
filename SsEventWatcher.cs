@@ -4,7 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Numerics;
 
-namespace HuntTrainRelay;
+namespace HuntHelperEvolved;
 
 /// <summary>Somewhere an SS event's minions were seen, kept after they are gone.</summary>
 public sealed class SsMinionPin

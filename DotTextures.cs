@@ -4,7 +4,7 @@ using System.IO;
 using System.IO.Compression;
 using System.Numerics;
 
-namespace HuntTrainRelay;
+namespace HuntHelperEvolved;
 
 /// <summary>
 /// Draws the spawn point dots, as 32x32 RGBA PNGs written to the plugin's own
