@@ -1185,6 +1185,46 @@ public sealed class Plugin : IDalamudPlugin
 
         ImGui.Spacing();
 
+        var dirLine = _config.ShowPlayerDirectionLine;
+        if (ImGui.Checkbox("Heading line", ref dirLine))
+        {
+            _config.ShowPlayerDirectionLine = dirLine;
+            _config.Save();
+        }
+        ImGui.TextDisabled("A short line from you to the edge of the circle. Always the circle's radius long.");
+
+        if (_config.ShowPlayerDirectionLine)
+        {
+            var dirColour = _config.PlayerDirectionLineColour;
+            if (ImGui.ColorEdit4("Heading line colour", ref dirColour, flags))
+            {
+                _config.PlayerDirectionLineColour = dirColour;
+                _config.Save();
+            }
+        }
+
+        ImGui.Spacing();
+
+        var posDot = _config.ShowPlayerPositionDot;
+        if (ImGui.Checkbox("Position dot", ref posDot))
+        {
+            _config.ShowPlayerPositionDot = posDot;
+            _config.Save();
+        }
+        ImGui.TextDisabled("A dot on exactly where you are, inside the circle.");
+
+        if (_config.ShowPlayerPositionDot)
+        {
+            var dotColour = _config.PlayerPositionDotColour;
+            if (ImGui.ColorEdit4("Position dot colour", ref dotColour, flags))
+            {
+                _config.PlayerPositionDotColour = dotColour;
+                _config.Save();
+            }
+        }
+
+        ImGui.Spacing();
+
         var facing = _config.ShowPlayerFacingOnMap;
         if (ImGui.Checkbox("Projected path", ref facing))
         {
@@ -1375,6 +1415,26 @@ public sealed class Plugin : IDalamudPlugin
                 _config.ShowPlayerFacingOnMap = facing;
                 _config.Save();
             }
+
+            ImGui.SameLine();
+            var dirLine = _config.ShowPlayerDirectionLine;
+            if (ImGui.Checkbox("Line", ref dirLine))
+            {
+                _config.ShowPlayerDirectionLine = dirLine;
+                _config.Save();
+            }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Heading line, out to the edge of the range circle.");
+
+            ImGui.SameLine();
+            var posDot = _config.ShowPlayerPositionDot;
+            if (ImGui.Checkbox("Dot", ref posDot))
+            {
+                _config.ShowPlayerPositionDot = posDot;
+                _config.Save();
+            }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("A dot on exactly where you are.");
 
             // Status is a hover rather than a line of its own, so the bar stays
             // one row tall.

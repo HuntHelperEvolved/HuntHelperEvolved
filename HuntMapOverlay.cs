@@ -153,6 +153,23 @@ public sealed unsafe class HuntMapOverlay : IDisposable
     private const float ProjectedPathLength = 4096f;
 
     /// <summary>
+    /// Direction line thickness, as a fraction of the detection radius.
+    ///
+    /// Hunt Helper draws it at 3 pixels against a radius of two map
+    /// coordinates, which in its own window is about 24 pixels — so an eighth
+    /// of the radius. Kept as a proportion rather than a pixel count so it
+    /// holds at any zoom, and at any radius scale.
+    /// </summary>
+    private const float DirectionLineThickness = 0.125f;
+
+    /// <summary>
+    /// Position dot diameter, likewise. Hunt Helper's player icon has a radius
+    /// of 0.125 map coordinates against a detection radius of 2, so its
+    /// diameter is an eighth of that radius.
+    /// </summary>
+    private const float PositionDotDiameter = 0.125f;
+
+    /// <summary>
     /// Marks where an SS event's minions were found.
     ///
     /// These outlive the minions themselves, which is the whole point — see
@@ -384,7 +401,9 @@ public sealed unsafe class HuntMapOverlay : IDisposable
     private int DrawPlayerGuides(uint mapId, Dictionary<string, string> dots)
     {
         if (_overlay == null) return 0;
-        if (!_config.ShowPlayerCircleOnMap && !_config.ShowPlayerFacingOnMap) return 0;
+        if (!_config.ShowPlayerCircleOnMap && !_config.ShowPlayerFacingOnMap
+            && !_config.ShowPlayerDirectionLine && !_config.ShowPlayerPositionDot)
+            return 0;
 
         var player = _objectTable.LocalPlayer;
         if (player is null) return 0;
@@ -441,6 +460,48 @@ public sealed unsafe class HuntMapOverlay : IDisposable
             placed++;
         }
 
+        // Hunt Helper's order from here: direction line, then the player dot,
+        // then the detection circle over the top of both.
+        if (_config.ShowPlayerDirectionLine)
+        {
+            // Exactly the radius, so it runs from the middle of the ring to its
+            // edge and no further.
+            var length = radius;
+
+            var line = new WorldSizedMarker(MarkerPositionScaling)
+            {
+                AllowAnyMap = false,
+                MapId = mapId,
+                TexturePath = dots["dirline"],
+                WorldSize = new Vector2(length, radius * DirectionLineThickness),
+                TextTooltip = "Facing",
+
+                PositionProvider = () => PlayerPosition() + (PlayerForward() * (length / 2f)),
+                RotationProvider = () => (MathF.PI / 2f) - PlayerRotation(),
+            };
+
+            _overlay.AddMarker(line);
+            placed++;
+        }
+
+        if (_config.ShowPlayerPositionDot)
+        {
+            var diameter = radius * PositionDotDiameter;
+
+            var dot = new WorldSizedMarker(MarkerPositionScaling)
+            {
+                AllowAnyMap = false,
+                MapId = mapId,
+                TexturePath = dots["posdot"],
+                WorldSize = new Vector2(diameter, diameter),
+                TextTooltip = "You",
+                PositionProvider = PlayerPosition,
+            };
+
+            _overlay.AddMarker(dot);
+            placed++;
+        }
+
         if (_config.ShowPlayerCircleOnMap)
         {
             var ring = new WorldSizedMarker(MarkerPositionScaling)
@@ -467,7 +528,7 @@ public sealed unsafe class HuntMapOverlay : IDisposable
     private string DrawSignature() =>
         $"{_config.ShowSpawnPointsOnMap}{_config.ShowARankPoints}{_config.ShowBRankPoints}"
         + $"{_config.ShowSRankPoints}{_config.ShowPlayerCircleOnMap}"
-        + $"{_config.ShowPlayerFacingOnMap}{_config.ShowSsEventOnMap}{_ssEvent.Pins.Count}{_ssEvent.Active}{_config.SpawnDotSize}{_config.PlayerCircleRadiusScale}";
+        + $"{_config.ShowPlayerFacingOnMap}{_config.ShowPlayerDirectionLine}{_config.ShowPlayerPositionDot}{_config.ShowSsEventOnMap}{_ssEvent.Pins.Count}{_ssEvent.Active}{_config.SpawnDotSize}{_config.PlayerCircleRadiusScale}";
 
     /// <summary>
     /// The configured colours, as a string. Used both to name the files and to
@@ -481,7 +542,9 @@ public sealed unsafe class HuntMapOverlay : IDisposable
         + DotTextures.HexOf(_config.SsMinionColour) + "-"
         + DotTextures.HexOf(_config.PlayerCircleColour) + "t"
         + ((int)_config.PlayerCircleThickness).ToString() + "-"
-        + DotTextures.HexOf(_config.PlayerFacingColour);
+        + DotTextures.HexOf(_config.PlayerFacingColour) + "-"
+        + DotTextures.HexOf(_config.PlayerDirectionLineColour) + "-"
+        + DotTextures.HexOf(_config.PlayerPositionDotColour);
 
     /// <summary>
     /// Draws the dots in the configured colours and writes them to the
@@ -547,6 +610,11 @@ public sealed unsafe class HuntMapOverlay : IDisposable
                 // it belongs with; the shape is what tells them apart.
                 Texture("ssmark", "star", _config.SsMinionColour,
                     c => DotTextures.RenderStar(c)),
+
+                Texture("dirline", "band", _config.PlayerDirectionLineColour,
+                    c => DotTextures.RenderSolid(c)),
+                Texture("posdot", "disc", _config.PlayerPositionDotColour,
+                    c => DotTextures.Render(c, 256)),
             };
 
             var paths = new Dictionary<string, string>();
