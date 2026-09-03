@@ -1345,6 +1345,21 @@ public sealed class Plugin : IDalamudPlugin
             _config.Save();
         }
 
+        var labelColour = _config.MarkLabelColour;
+        if (ImGui.ColorEdit4("Mark name text", ref labelColour, flags))
+        {
+            _config.MarkLabelColour = labelColour;
+            _config.Save();
+        }
+
+        var labelOutline = _config.MarkLabelOutlineColour;
+        if (ImGui.ColorEdit4("Mark name outline", ref labelOutline, flags))
+        {
+            _config.MarkLabelOutlineColour = labelOutline;
+            _config.Save();
+        }
+        ImGui.TextDisabled("The outline is what keeps the text readable over a pale map. Dropping its alpha to nothing removes it.");
+
         if (ImGui.Button("Reset dot colours"))
         {
             var defaults = new Configuration();
@@ -1353,6 +1368,8 @@ public sealed class Plugin : IDalamudPlugin
             _config.SpawnDotColourA = defaults.SpawnDotColourA;
             _config.SpawnDotColourS = defaults.SpawnDotColourS;
             _config.SsMinionColour = defaults.SsMinionColour;
+            _config.MarkLabelColour = defaults.MarkLabelColour;
+            _config.MarkLabelOutlineColour = defaults.MarkLabelOutlineColour;
             _config.Save();
         }
         ImGui.SameLine();
@@ -1465,6 +1482,16 @@ public sealed class Plugin : IDalamudPlugin
                 _config.ShowSRankPoints = showS;
                 _config.Save();
             }
+
+            ImGui.SameLine();
+            var labels = _config.ShowMarkLabelsOnMap;
+            if (ImGui.Checkbox("Names", ref labels))
+            {
+                _config.ShowMarkLabelsOnMap = labels;
+                _config.Save();
+            }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Each live mark's name and remaining health, written beside its dot.");
         }
 
         // Not a spawn point, so not behind that toggle.
@@ -2682,6 +2709,25 @@ public sealed class Plugin : IDalamudPlugin
                 }
                 ImGui.TextDisabled("From the \"minions of an extraordinarily powerful mark\" announcement until the mark spawns or you leave the zone. The spot is learned from the minions themselves — nothing in the game's data holds it.");
                 ImGui.TextDisabled(_ssEvent.Status);
+
+                var labels = _config.ShowMarkLabelsOnMap;
+                if (ImGui.Checkbox("Write mark names and health on the map", ref labels))
+                {
+                    _config.ShowMarkLabelsOnMap = labels;
+                    _config.Save();
+                }
+                ImGui.TextDisabled("Only marks that are actually up get one, so this follows the rank filters above. Health updates as the mark is pulled.");
+
+                if (_config.ShowMarkLabelsOnMap)
+                {
+                    var fontSize = _config.MarkLabelFontSize;
+                    ImGui.SetNextItemWidth(90);
+                    if (ImGui.InputFloat("Name text size", ref fontSize, 1f))
+                    {
+                        _config.MarkLabelFontSize = Math.Clamp(fontSize, 6f, 48f);
+                        _config.Save();
+                    }
+                }
 
                 ImGui.Spacing();
                 DrawDotColours();

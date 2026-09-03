@@ -245,6 +245,29 @@ public class Configuration : IPluginConfiguration
     public Vector4 SpawnDotColourS { get; set; } = new(0f, 0.827f, 0f, 1f);
 
     /// <summary>
+    /// Write each live mark's name and remaining health on the map beside its
+    /// dot, rather than leaving both in a tooltip you have to go and find.
+    ///
+    /// Only marks that are actually up get one — an empty spawn point has
+    /// nothing to say — so this follows the rank filters rather than having its
+    /// own. On by default: it is the thing the dots were always standing in for.
+    /// </summary>
+    public bool ShowMarkLabelsOnMap { get; set; } = true;
+
+    /// <summary>
+    /// Label colour, and the outline drawn behind it. White on black is what
+    /// the game's own map labels use, and the outline is not decoration: the
+    /// map runs from near-white snow to near-black caverns, and unoutlined text
+    /// disappears into one end or the other.
+    /// </summary>
+    public Vector4 MarkLabelColour { get; set; } = new(1f, 1f, 1f, 1f);
+
+    public Vector4 MarkLabelOutlineColour { get; set; } = new(0f, 0f, 0f, 1f);
+
+    /// <summary>Label text size. 12 is close to the game's own map lettering.</summary>
+    public float MarkLabelFontSize { get; set; } = 12f;
+
+    /// <summary>
     /// Mark where an SS event's minions were found, from the announcement until
     /// the mark appears or you leave the zone. See SsEventWatcher.
     /// </summary>

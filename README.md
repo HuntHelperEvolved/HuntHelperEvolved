@@ -52,6 +52,12 @@ grey / blue / red / green as a B, A or S rank turns up on one. A mark that
 isn't on a known spawn point — an SS, or one that spawned somewhere unlisted —
 is drawn slightly larger at its real position rather than being left off.
 
+**Mark names.** Every mark that is actually up gets its name and remaining
+health written beside its dot, so a glance at the map says which are still
+untouched and which somebody is already pulling. The health keeps counting down
+while you watch. Colour, outline and text size are all settable, and the
+**Names** toggle on the control bar turns the lot off.
+
 **Around you.** Four pieces, each with its own toggle and colour, which
 together reproduce Hunt Helper's map:
 

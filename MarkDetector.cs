@@ -90,6 +90,16 @@ public class OtherRankSighting
     public Vector2 MapPosition;
     public DateTime LastSeenUtc;
 
+    /// <summary>
+    /// How much of its health the mark has left, as a percentage.
+    ///
+    /// Refreshed on every scan alongside the position, because it is the same
+    /// kind of fact: what is true of this mark now. A mark well below full is
+    /// one somebody is already on, which is the thing a scout wants to know
+    /// before walking to it.
+    /// </summary>
+    public float HealthPercent = 100f;
+
     /// <summary>Zone name, resolved once at first sighting.</summary>
     public string ZoneName = string.Empty;
 
@@ -337,6 +347,7 @@ public sealed class MarkDetector
         {
             existing.LastSeenUtc = now;
             existing.MapPosition = MapCoordinates.FromWorld(_dataManager, mapId, mob.Position.X, mob.Position.Z);
+            existing.HealthPercent = HealthPercentOf(mob);
             return;
         }
 
@@ -352,11 +363,25 @@ public sealed class MarkDetector
             Instance = instance,
             MapPosition = MapCoordinates.FromWorld(_dataManager, mapId, mob.Position.X, mob.Position.Z),
             LastSeenUtc = now,
+            HealthPercent = HealthPercentOf(mob),
             ZoneName = GetZoneName(territoryId),
         };
 
         _otherRanks[key] = sighting;
         OtherRankDetected?.Invoke(sighting);
+    }
+
+    /// <summary>
+    /// A mark's remaining health as a percentage.
+    ///
+    /// MaxHp reads as zero for an object the game has not finished filling in,
+    /// which would divide to infinity; an unknown mark is reported as untouched
+    /// rather than as a mark on the point of dying.
+    /// </summary>
+    private static float HealthPercentOf(Dalamud.Game.ClientState.Objects.Types.IBattleNpc mob)
+    {
+        if (mob.MaxHp == 0) return 100f;
+        return Math.Clamp(mob.CurrentHp / (float)mob.MaxHp * 100f, 0f, 100f);
     }
 
     /// <summary>Clears all sightings.</summary>
