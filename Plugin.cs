@@ -1201,6 +1201,16 @@ public sealed class Plugin : IDalamudPlugin
                 _config.PlayerDirectionLineColour = dirColour;
                 _config.Save();
             }
+
+            // Shown as a percentage of the circle's radius, which is what it
+            // is — a proportion, so it holds at any zoom.
+            var dirThickness = _config.PlayerDirectionLineThickness * 100f;
+            ImGui.SetNextItemWidth(140);
+            if (ImGui.SliderFloat("Heading line thickness", ref dirThickness, 1f, 40f, "%.0f%%"))
+            {
+                _config.PlayerDirectionLineThickness = Math.Clamp(dirThickness / 100f, 0.01f, 0.4f);
+                _config.Save();
+            }
         }
 
         ImGui.Spacing();
@@ -1221,6 +1231,15 @@ public sealed class Plugin : IDalamudPlugin
                 _config.PlayerPositionDotColour = dotColour;
                 _config.Save();
             }
+
+            var dotSize = _config.PlayerPositionDotSize * 100f;
+            ImGui.SetNextItemWidth(140);
+            if (ImGui.SliderFloat("Position dot size", ref dotSize, 1f, 50f, "%.0f%%"))
+            {
+                _config.PlayerPositionDotSize = Math.Clamp(dotSize / 100f, 0.01f, 0.5f);
+                _config.Save();
+            }
+            ImGui.TextDisabled("Both are a percentage of the circle's radius, so they keep their proportions at any zoom.");
         }
 
         ImGui.Spacing();
