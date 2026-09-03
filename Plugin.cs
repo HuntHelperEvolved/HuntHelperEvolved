@@ -1338,11 +1338,11 @@ public sealed class Plugin : IDalamudPlugin
     /// know its own height first, which it could not until after it had drawn.
     /// </summary>
     /// <summary>
-    /// Roughly how tall the bar comes out: one row of checkboxes and its
-    /// padding. Only used to decide whether it will fit above the map, so a
-    /// close estimate is enough.
+    /// How tall the bar measured on its last draw, used to decide whether it
+    /// fits above the map. Seeded with a two-row guess for the first frame,
+    /// then always the real figure.
     /// </summary>
-    private const float NominalMapBarHeight = 34f;
+    private float _mapBarHeight = 56f;
 
     private void DrawMapControlBar()
     {
@@ -1355,21 +1355,25 @@ public sealed class Plugin : IDalamudPlugin
         if (width <= 0) return;
 
         // Pivot (0, 1) treats the given point as the window's bottom-left, which
-        // puts the bar above the map without needing to know its own height —
-        // which it cannot, until after it has drawn.
+        // puts the bar above the map.
         //
         // Unless there is no room above, with the map pushed against the top of
         // the screen. Then it anchors by its top-left instead and lies over the
-        // map's first few pixels, which is worth more than being off-screen.
-        var room = addon.Y >= NominalMapBarHeight;
+        // map's first rows, which is worth more than being off-screen.
+        //
+        // The height comes from what the bar actually measured last frame
+        // rather than a constant. It was a constant, and adding a second row of
+        // toggles made it wrong — this cannot go stale.
+        var room = addon.Y >= _mapBarHeight;
         ImGui.SetNextWindowPos(
             new Vector2(addon.X, addon.Y),
             ImGuiCond.Always,
             room ? new Vector2(0f, 1f) : new Vector2(0f, 0f));
         ImGui.SetNextWindowSize(new Vector2(width, 0f), ImGuiCond.Always);
 
-        // Tighter than the default, purely to keep the bar short.
+        // Tighter than the default, to keep two rows from becoming a slab.
         ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, new Vector2(8f, 4f));
+        ImGui.PushStyleVar(ImGuiStyleVar.ItemSpacing, new Vector2(8f, 2f));
 
         const ImGuiWindowFlags flags =
             ImGuiWindowFlags.NoTitleBar | ImGuiWindowFlags.NoResize |
@@ -1380,91 +1384,125 @@ public sealed class Plugin : IDalamudPlugin
 
         if (ImGui.Begin("##HuntTrainRelayMapBar", flags))
         {
-            var points = _config.ShowSpawnPointsOnMap;
-            if (ImGui.Checkbox("Spawn points", ref points))
-            {
-                _config.ShowSpawnPointsOnMap = points;
-                _config.Save();
-            }
+            DrawMapBarZoneRow();
+            DrawMapBarPlayerRow();
 
-            // The rank filters only mean anything while the points are drawn.
-            ImGui.SameLine();
-            using (ImRaii.Disabled(!_config.ShowSpawnPointsOnMap))
-            {
-                var showB = _config.ShowBRankPoints;
-                if (ImGui.Checkbox("B", ref showB))
-                {
-                    _config.ShowBRankPoints = showB;
-                    _config.Save();
-                }
-
-                ImGui.SameLine();
-                var showA = _config.ShowARankPoints;
-                if (ImGui.Checkbox("A", ref showA))
-                {
-                    _config.ShowARankPoints = showA;
-                    _config.Save();
-                }
-
-                ImGui.SameLine();
-                var showS = _config.ShowSRankPoints;
-                if (ImGui.Checkbox("S", ref showS))
-                {
-                    _config.ShowSRankPoints = showS;
-                    _config.Save();
-                }
-            }
-
-            ImGui.SameLine();
-            ImGui.TextDisabled("|");
-
-            // Not gated on the spawn points — either guide works on its own.
-            ImGui.SameLine();
-            var circle = _config.ShowPlayerCircleOnMap;
-            if (ImGui.Checkbox("Range", ref circle))
-            {
-                _config.ShowPlayerCircleOnMap = circle;
-                _config.Save();
-            }
-
-            ImGui.SameLine();
-            var facing = _config.ShowPlayerFacingOnMap;
-            if (ImGui.Checkbox("Path", ref facing))
-            {
-                _config.ShowPlayerFacingOnMap = facing;
-                _config.Save();
-            }
-
-            ImGui.SameLine();
-            var dirLine = _config.ShowPlayerDirectionLine;
-            if (ImGui.Checkbox("Line", ref dirLine))
-            {
-                _config.ShowPlayerDirectionLine = dirLine;
-                _config.Save();
-            }
-            if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("Heading line, out to the edge of the range circle.");
-
-            ImGui.SameLine();
-            var posDot = _config.ShowPlayerPositionDot;
-            if (ImGui.Checkbox("Dot", ref posDot))
-            {
-                _config.ShowPlayerPositionDot = posDot;
-                _config.Save();
-            }
-            if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("A dot on exactly where you are.");
-
-            // Status is a hover rather than a line of its own, so the bar stays
-            // one row tall.
-            ImGui.SameLine();
-            ImGui.TextDisabled("(?)");
-            if (ImGui.IsItemHovered())
-                ImGui.SetTooltip($"{_mapOverlay.Status}\n\n/htrm hides this bar.");
+            _mapBarHeight = ImGui.GetWindowHeight();
         }
         ImGui.End();
 
-        ImGui.PopStyleVar();
+        ImGui.PopStyleVar(2);
+    }
+
+    /// <summary>
+    /// First row: what is drawn about the zone — the spawn points, which ranks
+    /// of them, and the SS event.
+    /// </summary>
+    private void DrawMapBarZoneRow()
+    {
+        var points = _config.ShowSpawnPointsOnMap;
+        if (ImGui.Checkbox("Spawn points", ref points))
+        {
+            _config.ShowSpawnPointsOnMap = points;
+            _config.Save();
+        }
+
+        // The rank filters only mean anything while the points are drawn.
+        ImGui.SameLine();
+        using (ImRaii.Disabled(!_config.ShowSpawnPointsOnMap))
+        {
+            var showB = _config.ShowBRankPoints;
+            if (ImGui.Checkbox("B", ref showB))
+            {
+                _config.ShowBRankPoints = showB;
+                _config.Save();
+            }
+
+            ImGui.SameLine();
+            var showA = _config.ShowARankPoints;
+            if (ImGui.Checkbox("A", ref showA))
+            {
+                _config.ShowARankPoints = showA;
+                _config.Save();
+            }
+
+            ImGui.SameLine();
+            var showS = _config.ShowSRankPoints;
+            if (ImGui.Checkbox("S", ref showS))
+            {
+                _config.ShowSRankPoints = showS;
+                _config.Save();
+            }
+        }
+
+        // Not a spawn point, so not behind that toggle.
+        ImGui.SameLine();
+        ImGui.TextDisabled("|");
+        ImGui.SameLine();
+
+        var ssEvent = _config.ShowSsEventOnMap;
+        if (ImGui.Checkbox("SS event", ref ssEvent))
+        {
+            _config.ShowSsEventOnMap = ssEvent;
+            _config.Save();
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("The four minion spots and where the mark will spawn, while an event is running.");
+    }
+
+    /// <summary>
+    /// Second row: the four pieces drawn around your character. Each stands
+    /// alone, so all four are here rather than one toggle for the lot.
+    /// </summary>
+    private void DrawMapBarPlayerRow()
+    {
+        ImGui.TextDisabled("Around you:");
+        ImGui.SameLine();
+
+        var circle = _config.ShowPlayerCircleOnMap;
+        if (ImGui.Checkbox("Range", ref circle))
+        {
+            _config.ShowPlayerCircleOnMap = circle;
+            _config.Save();
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("The detection range circle.");
+
+        ImGui.SameLine();
+        var facing = _config.ShowPlayerFacingOnMap;
+        if (ImGui.Checkbox("Path", ref facing))
+        {
+            _config.ShowPlayerFacingOnMap = facing;
+            _config.Save();
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("The projected path: the swathe ahead that your range will sweep.");
+
+        ImGui.SameLine();
+        var dirLine = _config.ShowPlayerDirectionLine;
+        if (ImGui.Checkbox("Line", ref dirLine))
+        {
+            _config.ShowPlayerDirectionLine = dirLine;
+            _config.Save();
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Heading line, out to the edge of the range circle.");
+
+        ImGui.SameLine();
+        var posDot = _config.ShowPlayerPositionDot;
+        if (ImGui.Checkbox("Dot", ref posDot))
+        {
+            _config.ShowPlayerPositionDot = posDot;
+            _config.Save();
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("A dot on exactly where you are.");
+
+        // Status is a hover rather than a line of its own, so two rows stay two.
+        ImGui.SameLine();
+        ImGui.TextDisabled("(?)");
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip($"{_mapOverlay.Status}\n\n/htrm hides this bar.");
     }
 
     private void DrawTrainControls()
