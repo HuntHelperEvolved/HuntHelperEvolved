@@ -423,16 +423,36 @@ public sealed unsafe class HuntMapOverlay : IDisposable
     /// band built from pieces that only touch would be scalloped along its
     /// edges. A single quad is flat, which is what Hunt Helper's AddLine gives.
     /// </summary>
-    private int DrawPlayerGuides(uint mapId, Dictionary<string, string> dots)
+    /// <param name="waiting">
+    /// Set when the guides were wanted but could not be built on this pass —
+    /// there is no player object yet, or the radius did not come out. The
+    /// caller has to ask for another pass, because nothing else will: the
+    /// player arriving is not part of any signature, so a refresh spent on a
+    /// frame like this would otherwise be the last one until the map happened
+    /// to refresh again. That is the teleport bug — the map left open refreshes
+    /// mid-transition, this pass runs before the player exists, and the ring
+    /// and path stay missing until the map is closed and opened.
+    /// </param>
+    private int DrawPlayerGuides(uint mapId, Dictionary<string, string> dots, out bool waiting)
     {
+        waiting = false;
+
         if (_overlay == null) return 0;
         if (!_config.AnyPlayerGuideEnabled) return 0;
 
         var player = _objectTable.LocalPlayer;
-        if (player is null) return 0;
+        if (player is null)
+        {
+            waiting = true;
+            return 0;
+        }
 
         var radius = DetectionRadiusWorld(mapId);
-        if (radius <= 0f) return 0;
+        if (radius <= 0f)
+        {
+            waiting = true;
+            return 0;
+        }
 
         var placed = 0;
 
@@ -809,6 +829,10 @@ public sealed unsafe class HuntMapOverlay : IDisposable
             var dots = EnsureDotFiles();
             if (dots == null)
             {
+                // The markers are already gone and the refresh already spent,
+                // so leaving it here would leave the map bare for good. Ask
+                // for another pass instead.
+                _needsRefresh = true;
                 Status = "Could not prepare the dot images — see /xllog.";
                 return;
             }
@@ -817,11 +841,14 @@ public sealed unsafe class HuntMapOverlay : IDisposable
                 .GetRowOrDefault(territory)?.Map.RowId ?? 0;
             if (mapId == 0)
             {
+                // Transient during a zone change. Same reasoning as above.
+                _needsRefresh = true;
                 Status = "Could not resolve the map id for this zone.";
                 return;
             }
 
-            var guides = DrawPlayerGuides(mapId, dots);
+            var guides = DrawPlayerGuides(mapId, dots, out var guidesWaiting);
+            if (guidesWaiting) _needsRefresh = true;
 
             if (!_config.ShowSpawnPointsOnMap)
             {
