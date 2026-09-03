@@ -66,6 +66,7 @@ public sealed class Plugin : IDalamudPlugin
     // (Umbra.Game/src/Travel/TravelDestination.cs: IconAetheryte = 60453).
     private const uint AetheryteIconId = 60453;
     private readonly HuntCounter _counter;
+    private readonly SpawnWatchCounters _spawnWatch;
     private readonly WorldData _worldData;
     private readonly HuntMapOverlay _mapOverlay;
     private readonly SsEventWatcher _ssEvent;
@@ -165,6 +166,7 @@ public sealed class Plugin : IDalamudPlugin
         IGameGui gameGui,
         ITextureProvider textureProvider,
         IAddonLifecycle addonLifecycle,
+        IFateTable fateTable,
         IPluginLog pluginLog)
     {
         _pluginInterface = pluginInterface;
@@ -282,6 +284,7 @@ public sealed class Plugin : IDalamudPlugin
 
         _zoneReminder = new SRankZoneReminder(clientState, chatGui, _log, _config, _detector);
         _counter = new HuntCounter(chatGui, clientState, objectTable, _config);
+        _spawnWatch = new SpawnWatchCounters(framework, clientState, objectTable, fateTable, _log);
         _worldData = new WorldData(dataManager);
 
         // KamiToolKit needs one-time initialisation before any of its
@@ -2173,6 +2176,8 @@ public sealed class Plugin : IDalamudPlugin
         ImGui.SetNextWindowSize(new Vector2(300, 400), ImGuiCond.FirstUseEver);
         if (ImGui.Begin("Hunt Counter", ref _counterPopoutVisible))
         {
+            DrawSpawnWatchForCurrentZone();
+
             DrawCounterList(
                 currentZoneOnly: true,
                 worldId: _counter.CurrentWorldId(),
@@ -2180,6 +2185,72 @@ public sealed class Plugin : IDalamudPlugin
                 worldName: _counter.CurrentWorldName());
         }
         ImGui.End();
+    }
+
+    /// <summary>
+    /// The two live-state S-rank counters — Narrow-rift's Wee Ea headcount and
+    /// Nunyunuwi's quiet-hour clock — shown only in the zone each applies to.
+    /// Everything here is read straight off <see cref="_spawnWatch"/>, which
+    /// keeps running regardless of whether this window is open.
+    /// </summary>
+    private void DrawSpawnWatchForCurrentZone()
+    {
+        var territory = _clientState.TerritoryType;
+
+        if (territory == SpawnWatchCounters.UltimaThuleTerritory)
+        {
+            var count = _spawnWatch.WeeEaLoaded();
+            var enough = count >= SpawnWatchCounters.NarrowRiftRequiredWeeEa;
+
+            ImGui.TextUnformatted("Narrow-rift — Ultima Thule");
+            ImGui.TextColored(
+                enough ? new Vector4(0f, 1f, 0f, 1f) : new Vector4(1f, 1f, 1f, 1f),
+                $"    Wee Ea nearby: {count} / {SpawnWatchCounters.NarrowRiftRequiredWeeEa}");
+            ImGui.TextDisabled("    Only minions your client has loaded — stand on the spawn point with the group.");
+            ImGui.Separator();
+        }
+
+        if (territory == SpawnWatchCounters.SouthernThanalanTerritory)
+        {
+            var remaining = _spawnWatch.NunyunuwiRemaining;
+            var ready = remaining == TimeSpan.Zero;
+
+            ImGui.TextUnformatted("Nunyunuwi — Southern Thanalan");
+            ImGui.TextUnformatted(
+                $"    Clean since {_spawnWatch.NunyunuwiSince:HH:mm:ss}, "
+                + $"eligible {_spawnWatch.NunyunuwiEta:HH:mm:ss}");
+            ImGui.TextColored(
+                ready ? new Vector4(0f, 1f, 0f, 1f) : new Vector4(1f, 1f, 1f, 1f),
+                ready
+                    ? "    Quiet hour complete — Nunyunuwi can spawn."
+                    : $"    Quiet hour: {(int)remaining.TotalMinutes:00}:{remaining.Seconds:00} left");
+
+            if (ImGui.SmallButton("Reset clock"))
+                _spawnWatch.ResetNunyunuwiClock();
+            ImGui.SameLine();
+            ImGui.TextDisabled("if a FATE failed before you arrived");
+
+            if (!string.IsNullOrEmpty(_spawnWatch.NunyunuwiLastFailure))
+                ImGui.TextColored(new Vector4(1f, 0.4f, 0.4f, 1f), $"    {_spawnWatch.NunyunuwiLastFailure}");
+
+            var active = _spawnWatch.ActiveFates;
+            if (active.Count == 0)
+            {
+                ImGui.TextDisabled("    No FATEs active.");
+            }
+            else
+            {
+                ImGui.TextDisabled($"    Active FATEs ({active.Count}) — don't let any fail:");
+                foreach (var fate in active)
+                {
+                    var time = fate.AwaitingActivation
+                        ? "awaiting activation"
+                        : $"{(int)fate.TimeRemaining.TotalMinutes:00}:{fate.TimeRemaining.Seconds:00}";
+                    ImGui.TextUnformatted($"      {fate.Name}  {fate.ProgressPercent}%  {time}");
+                }
+            }
+            ImGui.Separator();
+        }
     }
 
     private void DrawConductorTab()
@@ -2368,6 +2439,9 @@ public sealed class Plugin : IDalamudPlugin
             _counter.Reset();
         }
         ImGui.TextDisabled("Counts trigger-mob kills for S-ranks that need them (also /htrc).");
+
+        ImGui.Spacing();
+        DrawSpawnWatchForCurrentZone();
 
         // World picker — the popout always shows where you're standing, but a
         // scout may want to check counts for another world entirely.
@@ -2893,6 +2967,7 @@ public sealed class Plugin : IDalamudPlugin
         _watcher.Dispose();
         _zoneReminder.Dispose();
         _counter.Dispose();
+        _spawnWatch.Dispose();
         _mapOverlay.Dispose();
         _ssEvent.Dispose();
 

@@ -36,7 +36,7 @@ why.
 |---|---|
 | `/htr` | the main window — Conductor, Train, Scout, Marks Slain, Settings, Tally |
 | `/htrt` | the train list, as a popout |
-| `/htrc` | the trigger-mob counter popout |
+| `/htrc` | the trigger-mob counter popout — also Narrow-rift's Wee Ea headcount in Ultima Thule and Nunyunuwi's no-FATE-failed clock in Southern Thanalan |
 | `/htra` | name the closest aetheryte to the next mark |
 | `/htrm` | show or hide the control bar above the map |
 | `/hunttally` | the kill tally. `/hunttally config` for its settings |
