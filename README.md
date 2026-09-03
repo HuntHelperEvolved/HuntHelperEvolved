@@ -6,20 +6,29 @@ order marks actually died, draws spawn points, your detection range and SS
 event locations on the **in-game map**, counts S-rank trigger mobs, and keeps a
 lifetime per-mark kill tally for every character you play.
 
-> **v0.1** — first release under this name. See
-> [Where this came from](#where-this-came-from) if you are arriving from Hunt
-> Train Relay or Hunt Tally; your settings and your tally carry over.
+> **v0.1 — a testing build.** It is not finished, and it is published as a
+> testing-only release on purpose: you will not see it in the plugin installer
+> unless you have opted into testing builds. Expect rough edges and expect to
+> report them.
+>
+> See [Where this came from](#where-this-came-from) if you are arriving from
+> Hunt Train Relay or Hunt Tally; your settings and your tally carry over.
 
 ## Install
 
-1. In-game, type `/xlsettings`, go to the **Experimental** tab, and find
-   **Custom Plugin Repositories** near the bottom.
-2. Paste this into the empty box and click the **+**:
+1. In-game, type `/xlsettings`, go to the **Experimental** tab.
+2. Tick **Get plugin testing builds**. Without this the plugin will not appear
+   at all — this release is testing-only.
+3. Find **Custom Plugin Repositories** near the bottom of the same tab, paste
+   this into the empty box and click the **+**:
    `https://raw.githubusercontent.com/HuntHelperEvolved/HuntHelperEvolved/main/repo.json`
-3. Click **Save and Close**.
-4. Type `/xlplugins`, search for **Hunt Helper Evolved**, and click **Install**.
+4. Click **Save and Close**.
+5. Type `/xlplugins`, search for **Hunt Helper Evolved**, and click **Install**.
 
 Updates show up as a normal **Update** button in `/xlplugins`.
+
+If you cannot find it after adding the repository, step 2 is almost certainly
+why.
 
 ## Commands
 
