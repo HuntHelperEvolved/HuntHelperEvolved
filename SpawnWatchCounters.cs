@@ -39,6 +39,10 @@ public sealed class SpawnWatchCounters : IDisposable
     /// <summary>Players-with-minions the spawn point needs.</summary>
     public const int NarrowRiftRequiredWeeEa = 10;
 
+    /// <summary>True in a zone one of these watches covers.</summary>
+    public static bool AppliesTo(uint territory) =>
+        territory is SouthernThanalanTerritory or UltimaThuleTerritory;
+
     private static readonly TimeSpan NunyunuwiQuietWindow = TimeSpan.FromHours(1);
 
     /// <summary>A FATE as the counter window wants to show it.</summary>
