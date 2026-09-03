@@ -156,6 +156,51 @@ public class Configuration : IPluginConfiguration
     public bool EchoARanks { get; set; } = true;
     public bool EchoSRanks { get; set; } = true;
 
+    /// <summary>
+    /// What the detection line says, per rank.
+    ///
+    /// These are Hunt Helper's own default messages, placeholders and all, so
+    /// someone arriving from it can paste in the message they already use and
+    /// get the line they already know. See MarkNotifier for the full list of
+    /// placeholders; the short version is &lt;name&gt;, &lt;rank&gt;,
+    /// &lt;hpp&gt;, &lt;flag&gt; and a dozen game icons.
+    /// </summary>
+    public string DetectionChatMessageA { get; set; } = "FOUND: <name> @ <flag> ---  <rank>  --  <hpp>";
+    public string DetectionChatMessageB { get; set; } = "FOUND: <name> @ <flag> ---  <rank>  --  <hpp>";
+    public string DetectionChatMessageS { get; set; } = "FOUND: <name> @ <flag> ---  <rank>  --  <hpp>";
+
+    /// <summary>
+    /// Say a detected mark out loud. Off by default, and unavailable anywhere
+    /// without a Windows speech engine — MarkNotifier reports that rather than
+    /// leaving a toggle that quietly does nothing.
+    /// </summary>
+    public bool DetectionTtsEnabled { get; set; } = false;
+
+    public bool TtsBRanks { get; set; } = false;
+    public bool TtsARanks { get; set; } = true;
+    public bool TtsSRanks { get; set; } = true;
+
+    /// <summary>Hunt Helper's own spoken defaults: nearby for a B or an A, in zone for an S.</summary>
+    public string DetectionTtsMessageA { get; set; } = "<rank> Nearby";
+    public string DetectionTtsMessageB { get; set; } = "<rank> Nearby";
+    public string DetectionTtsMessageS { get; set; } = "<rank> in zone";
+
+    /// <summary>Which installed voice to use. Empty means the system default.</summary>
+    public string TtsVoiceName { get; set; } = string.Empty;
+
+    public int TtsVolume { get; set; } = 100;
+
+    /// <summary>
+    /// Throw the mark's name up as fly text on your character — the channel a
+    /// crit lands in, which is why it is the one thing here you cannot miss
+    /// while running. Hunt Helper's third notification channel.
+    /// </summary>
+    public bool DetectionFlyTextEnabled { get; set; } = false;
+
+    public bool FlyTextBRanks { get; set; } = false;
+    public bool FlyTextARanks { get; set; } = true;
+    public bool FlyTextSRanks { get; set; } = true;
+
     /// <summary>Teleporting to a mark also drops the map flag on it.</summary>
     public bool TeleportAlsoFlags { get; set; } = true;
 

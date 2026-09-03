@@ -5,6 +5,7 @@ using Dalamud.Interface.Utility.Raii;
 using Dalamud.Interface.Textures;
 using KamiToolKit;
 using Dalamud.Plugin;
+using Dalamud.Game.Gui.FlyText;
 using Dalamud.Plugin.Services;
 using System;
 using System.Collections.Generic;
@@ -61,6 +62,10 @@ public sealed class Plugin : IDalamudPlugin
     private readonly TeleportHelper _teleport;
     private readonly IGameGui _gameGui;
     private readonly ITextureProvider _textureProvider;
+    private readonly MarkNotifier _notifier;
+
+    // Asked for once; enumerating voices constructs a synthesiser.
+    private string[]? _voices;
 
     // The game's own aetheryte crystal icon. ID confirmed from Umbra's source
     // (Umbra.Game/src/Travel/TravelDestination.cs: IconAetheryte = 60453).
@@ -165,6 +170,7 @@ public sealed class Plugin : IDalamudPlugin
         IGameGui gameGui,
         ITextureProvider textureProvider,
         IAddonLifecycle addonLifecycle,
+        IFlyTextGui flyTextGui,
         IPluginLog pluginLog)
     {
         _pluginInterface = pluginInterface;
@@ -280,6 +286,7 @@ public sealed class Plugin : IDalamudPlugin
                 ScheduleTallySeed();
         }
 
+        _notifier = new MarkNotifier(chatGui, flyTextGui, _log, _config);
         _zoneReminder = new SRankZoneReminder(clientState, chatGui, _log, _config, _detector);
         _counter = new HuntCounter(chatGui, objectTable, _config);
         _worldData = new WorldData(dataManager);
@@ -465,24 +472,190 @@ public sealed class Plugin : IDalamudPlugin
             new DateTimeOffset(kill.Time).ToUnixTimeSeconds()));
     }
 
+    /// <summary>
+    /// Hunt Helper's Notifications tab: three channels, each with its own
+    /// per-rank switches and its own message.
+    ///
+    /// Laid out by channel rather than by rank — Hunt Helper puts a tab per
+    /// rank and repeats all three channels inside each, which means changing
+    /// "how loud is chat" is three tabs' worth of clicking. The settings
+    /// themselves are the same ones under the same names, so a message pasted
+    /// across from it behaves identically.
+    /// </summary>
+    private void DrawDetectionNotificationSettings()
+    {
+        ImGui.TextWrapped("What happens the moment a mark is first spotted. All of it is local — nothing here is sent to anyone else.");
+        ImGui.Spacing();
+
+        // ---- Chat ----
+        var chat = _config.EchoOnDetection;
+        if (ImGui.Checkbox("Announce in chat", ref chat))
+        {
+            _config.EchoOnDetection = chat;
+            _config.Save();
+        }
+
+        if (_config.EchoOnDetection)
+        {
+            ImGui.Indent();
+
+            var cB = _config.EchoBRanks;
+            if (ImGui.Checkbox("B##chatrank", ref cB)) { _config.EchoBRanks = cB; _config.Save(); }
+            ImGui.SameLine();
+            var cA = _config.EchoARanks;
+            if (ImGui.Checkbox("A##chatrank", ref cA)) { _config.EchoARanks = cA; _config.Save(); }
+            ImGui.SameLine();
+            var cS = _config.EchoSRanks;
+            if (ImGui.Checkbox("S##chatrank", ref cS)) { _config.EchoSRanks = cS; _config.Save(); }
+            ImGui.SameLine();
+            ImGui.TextDisabled("which ranks");
+
+            DrawMessageBox("B message##chat", _config.DetectionChatMessageB, v => _config.DetectionChatMessageB = v);
+            DrawMessageBox("A message##chat", _config.DetectionChatMessageA, v => _config.DetectionChatMessageA = v);
+            DrawMessageBox("S message##chat", _config.DetectionChatMessageS, v => _config.DetectionChatMessageS = v);
+
+            DrawPlaceholderHelp();
+            ImGui.Unindent();
+        }
+
+        ImGui.Spacing();
+
+        // ---- Fly text ----
+        var fly = _config.DetectionFlyTextEnabled;
+        if (ImGui.Checkbox("Throw it up as fly text", ref fly))
+        {
+            _config.DetectionFlyTextEnabled = fly;
+            _config.Save();
+        }
+        ImGui.TextDisabled("On your own character, in the channel a crit lands in — the one thing here you can't miss while running.");
+
+        if (_config.DetectionFlyTextEnabled)
+        {
+            ImGui.Indent();
+            var fB = _config.FlyTextBRanks;
+            if (ImGui.Checkbox("B##flyrank", ref fB)) { _config.FlyTextBRanks = fB; _config.Save(); }
+            ImGui.SameLine();
+            var fA = _config.FlyTextARanks;
+            if (ImGui.Checkbox("A##flyrank", ref fA)) { _config.FlyTextARanks = fA; _config.Save(); }
+            ImGui.SameLine();
+            var fS = _config.FlyTextSRanks;
+            if (ImGui.Checkbox("S##flyrank", ref fS)) { _config.FlyTextSRanks = fS; _config.Save(); }
+            ImGui.SameLine();
+            ImGui.TextDisabled("which ranks");
+            ImGui.TextDisabled("The rank and the name are drawn in Hunt Helper's own two colours; there is nothing to set.");
+            ImGui.Unindent();
+        }
+
+        ImGui.Spacing();
+
+        // ---- Speech ----
+        var tts = _config.DetectionTtsEnabled;
+        if (ImGui.Checkbox("Say it out loud", ref tts))
+        {
+            _config.DetectionTtsEnabled = tts;
+            _config.Save();
+        }
+
+        if (_config.DetectionTtsEnabled)
+        {
+            ImGui.Indent();
+
+            var tB = _config.TtsBRanks;
+            if (ImGui.Checkbox("B##ttsrank", ref tB)) { _config.TtsBRanks = tB; _config.Save(); }
+            ImGui.SameLine();
+            var tA = _config.TtsARanks;
+            if (ImGui.Checkbox("A##ttsrank", ref tA)) { _config.TtsARanks = tA; _config.Save(); }
+            ImGui.SameLine();
+            var tS = _config.TtsSRanks;
+            if (ImGui.Checkbox("S##ttsrank", ref tS)) { _config.TtsSRanks = tS; _config.Save(); }
+            ImGui.SameLine();
+            ImGui.TextDisabled("which ranks");
+
+            DrawMessageBox("B message##tts", _config.DetectionTtsMessageB, v => _config.DetectionTtsMessageB = v);
+            DrawMessageBox("A message##tts", _config.DetectionTtsMessageA, v => _config.DetectionTtsMessageA = v);
+            DrawMessageBox("S message##tts", _config.DetectionTtsMessageS, v => _config.DetectionTtsMessageS = v);
+
+            ImGui.TextDisabled("<name>, <rank> and <hpp> are spoken. Everything else — flags and icons — is dropped rather than read out.");
+
+            DrawVoicePicker();
+            ImGui.Unindent();
+        }
+    }
+
+    /// <summary>One message template, saved when the box is left rather than per keystroke.</summary>
+    private void DrawMessageBox(string label, string current, Action<string> apply)
+    {
+        var value = current;
+        ImGui.SetNextItemWidth(320);
+        if (ImGui.InputText(label, ref value, 512))
+            apply(value);
+
+        if (ImGui.IsItemDeactivatedAfterEdit())
+            _config.Save();
+    }
+
+    private static void DrawPlaceholderHelp()
+    {
+        if (!ImGui.TreeNode("What can go in a message"))
+            return;
+
+        ImGui.TextDisabled("<name>   the mark, coloured by rank");
+        ImGui.TextDisabled("<rank>   A-Rank / B-Rank / S-Rank");
+        ImGui.TextDisabled("<hpp>    health, green above 99% down to red below 70%");
+        ImGui.TextDisabled("<flag>   a clickable map link to where it was found");
+        ImGui.Spacing();
+        ImGui.TextDisabled("Icons: <goldstar> <silverstar> <warning> <nocircle> <alarm>");
+        ImGui.TextDisabled("<notoriousmonster> <exclamationrectangle> <priorityworld>");
+        ImGui.TextDisabled("<elementallevel> <fanfestival> <controllerbutton0> <controllerbutton1>");
+        ImGui.Spacing();
+        ImGui.TextDisabled("Same names Hunt Helper uses, so a message pasted from it reads the same.");
+
+        ImGui.TreePop();
+    }
+
+    /// <summary>
+    /// Voice and volume, plus a way to hear it. The voice list is asked for
+    /// once and kept: enumerating them builds a synthesiser, which is not
+    /// something to do every frame the settings window is open.
+    /// </summary>
+    private void DrawVoicePicker()
+    {
+        _voices ??= _notifier.InstalledVoices();
+
+        if (_voices.Length == 0)
+        {
+            ImGui.TextDisabled(_notifier.SpeechStatus);
+            ImGui.TextDisabled("Chat and fly text are unaffected.");
+            return;
+        }
+
+        var index = Array.IndexOf(_voices, _config.TtsVoiceName);
+        if (index < 0) index = 0;
+
+        ImGui.SetNextItemWidth(220);
+        if (ImGui.Combo("Voice", ref index, _voices, _voices.Length))
+        {
+            _config.TtsVoiceName = _voices[index];
+            _config.Save();
+        }
+
+        var volume = _config.TtsVolume;
+        ImGui.SetNextItemWidth(220);
+        if (ImGui.SliderInt("Volume", ref volume, 0, 100))
+        {
+            _config.TtsVolume = Math.Clamp(volume, 0, 100);
+            _config.Save();
+        }
+
+        if (ImGui.Button("Test"))
+            _notifier.Speak("A-Rank Nearby");
+    }
+
     private void OnCommand(string command, string args) => _configWindowVisible = true;
 
     private void OnTrainCommand(string command, string args) => _trainPopoutVisible = true;
 
-    private void OnSightingDetected(OtherRankSighting sighting)
-    {
-        if (!_config.EchoOnDetection) return;
-
-        var wanted = sighting.Rank switch
-        {
-            HuntRank.B => _config.EchoBRanks,
-            HuntRank.A => _config.EchoARanks,
-            _ => _config.EchoSRanks,
-        };
-        if (!wanted) return;
-
-        TrainChatEcho.SendSighting(_chatGui, sighting);
-    }
+    private void OnSightingDetected(OtherRankSighting sighting) => _notifier.Announce(sighting);
 
     /// <summary>Compact "how long ago was this last seen" label, e.g. 5m / 1h 12m.</summary>
     private static string FormatAge(DateTime lastSeenUtc)
@@ -2550,29 +2723,7 @@ public sealed class Plugin : IDalamudPlugin
             }
             ImGui.TextDisabled("Off still flags the mark on your map — it just doesn't post the chat line.");
 
-            var echoDetect = _config.EchoOnDetection;
-            if (ImGui.Checkbox("Echo each new mark as it's detected", ref echoDetect))
-            {
-                _config.EchoOnDetection = echoDetect;
-                _config.Save();
-            }
-            ImGui.TextDisabled("Useful while scouting with the window closed.");
-
-            if (_config.EchoOnDetection)
-            {
-                ImGui.Indent();
-                var eB = _config.EchoBRanks;
-                if (ImGui.Checkbox("B##echo", ref eB)) { _config.EchoBRanks = eB; _config.Save(); }
-                ImGui.SameLine();
-                var eA = _config.EchoARanks;
-                if (ImGui.Checkbox("A##echo", ref eA)) { _config.EchoARanks = eA; _config.Save(); }
-                ImGui.SameLine();
-                var eS = _config.EchoSRanks;
-                if (ImGui.Checkbox("S##echo", ref eS)) { _config.EchoSRanks = eS; _config.Save(); }
-                ImGui.SameLine();
-                ImGui.TextDisabled("which ranks to announce");
-                ImGui.Unindent();
-            }
+            ImGui.TextDisabled("Announcing marks as they're detected has its own section below.");
 
             var teleFlags = _config.TeleportAlsoFlags;
             if (ImGui.Checkbox("Teleport also drops the map flag", ref teleFlags))
@@ -2756,6 +2907,11 @@ public sealed class Plugin : IDalamudPlugin
             ImGui.Spacing();
             DrawPlayerGuideSettings();
             ImGui.Spacing();
+        }
+
+        if (ImGui.CollapsingHeader("Detection notifications"))
+        {
+            DrawDetectionNotificationSettings();
         }
 
         if (ImGui.CollapsingHeader("Teleport"))

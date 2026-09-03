@@ -74,6 +74,21 @@ announcement goes out, the four minion spots for that zone are marked, along
 with a star on the spot the mark itself will spawn. They stay until the mark
 appears or you leave the zone. All 18 ShB, EW and DT hunt zones are covered.
 
+## When a mark turns up
+
+Three ways to be told, each with its own B / A / S switches, and all of them
+local — nothing is sent to anyone else.
+
+- **Chat**, as a line you write yourself. `<name>`, `<rank>`, `<hpp>` and a
+  clickable `<flag>`, plus a dozen game icons like `<goldstar>`.
+- **Fly text** on your character, in the channel a crit lands in, which is the
+  one thing here you cannot miss while running.
+- **Spoken**, on a voice and volume you pick. Windows only — everywhere else
+  the settings screen says so, and the other two carry on regardless.
+
+These are Hunt Helper's own placeholders, defaults and colours, so a message
+pasted across from it produces the same line.
+
 ## The train
 
 Turn on **Tracking this train** on the Conductor tab and the plugin records the
