@@ -3,7 +3,7 @@
   <PropertyGroup>
     <Authors>MusicManBowls</Authors>
     <Company></Company>
-    <Version>0.1.0.0</Version>
+    <Version>0.2.0.0</Version>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <Description>Hunt tracking for FFXIV. Detects marks and records a train with exact kill times, posts Discord reports sorted by the order marks actually died, draws spawn points, your detection range and SS event locations on the in-game map, counts S-rank trigger mobs, and keeps a lifetime per-mark kill tally per character.</Description>
     <PackageProjectUrl></PackageProjectUrl>
