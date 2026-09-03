@@ -281,7 +281,7 @@ public sealed class Plugin : IDalamudPlugin
         }
 
         _zoneReminder = new SRankZoneReminder(clientState, chatGui, _log, _config, _detector);
-        _counter = new HuntCounter(chatGui, objectTable, _config);
+        _counter = new HuntCounter(chatGui, clientState, objectTable, _config);
         _worldData = new WorldData(dataManager);
 
         // KamiToolKit needs one-time initialisation before any of its
