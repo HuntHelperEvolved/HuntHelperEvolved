@@ -1,4 +1,4 @@
-namespace HuntTrainRelay;
+namespace HuntHelperEvolved;
 
 /// <summary>
 /// Builds a ready-to-paste chat message using FFXIV's own built-in <c>&lt;flag&gt;</c>

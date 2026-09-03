@@ -1,6 +1,6 @@
 using FFXIVClientStructs.FFXIV.Client.UI.Agent;
 
-namespace HuntTrainRelay;
+namespace HuntHelperEvolved;
 
 /// <summary>
 /// Reads the player's currently-placed map flag (the one Ctrl+Right-Click

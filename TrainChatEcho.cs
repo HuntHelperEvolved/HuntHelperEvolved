@@ -3,7 +3,7 @@ using Dalamud.Game.Text.SeStringHandling.Payloads;
 using Dalamud.Plugin.Services;
 using System.Numerics;
 
-namespace HuntTrainRelay;
+namespace HuntHelperEvolved;
 
 /// <summary>
 /// Prints a train mark to the local echo log in Hunt Helper's own format —

@@ -4,7 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
-namespace HuntTrainRelay;
+namespace HuntHelperEvolved;
 
 /// <summary>
 /// Prints a local reminder (and optionally plays a sound) when the player

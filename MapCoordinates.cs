@@ -3,7 +3,7 @@ using Lumina.Excel.Sheets;
 using System;
 using System.Numerics;
 
-namespace HuntTrainRelay;
+namespace HuntHelperEvolved;
 
 /// <summary>
 /// World position to in-game map coordinates (the 1-42ish numbers on the map).

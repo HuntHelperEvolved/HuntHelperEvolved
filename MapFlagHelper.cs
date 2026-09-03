@@ -3,7 +3,7 @@ using Dalamud.Game.Text.SeStringHandling.Payloads;
 using Dalamud.Plugin.Services;
 using System.Linq;
 
-namespace HuntTrainRelay;
+namespace HuntHelperEvolved;
 
 /// <summary>
 /// Opens the player's map with a flag on a detected mark, which also sets their

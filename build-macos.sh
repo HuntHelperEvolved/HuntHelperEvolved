@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build Hunt Train Relay on macOS.
+# Build Hunt Helper Evolved on macOS.
 #
 # The Dalamud SDK needs to reference Dalamud.dll. On Windows it finds it
 # automatically; everywhere else you point it there with DALAMUD_HOME.
@@ -30,4 +30,4 @@ fi
 dotnet build -c Release
 
 echo
-echo "Built to: $(pwd)/bin/Release/HuntTrainRelay/"
+echo "Built to: $(pwd)/bin/Release/HuntHelperEvolved/"

@@ -6,7 +6,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Numerics;
 
-namespace HuntTrainRelay;
+namespace HuntHelperEvolved;
 
 public enum SpawnStatus { Unknown, Spawned, NotSpawned }
 
@@ -426,7 +426,7 @@ public class Configuration : IPluginConfiguration
     /// something this assembly cannot use.
     ///
     /// GetPluginConfig resolves the "$type" line in the file —
-    /// "HuntTrainRelay.Configuration, HuntTrainRelay" — by assembly name. On a
+    /// "HuntHelperEvolved.Configuration, HuntHelperEvolved" — by assembly name. On a
     /// dev-plugin reload the previous copy of this assembly is unloaded but not
     /// yet collected, and it can win that lookup. The object handed back is then
     /// the OLD assembly's Configuration: same name, same shape, different type
@@ -444,16 +444,43 @@ public class Configuration : IPluginConfiguration
     /// Dictionary&lt;string, int&gt;, so it would fail converting "$type"'s value
     /// to an int and take the whole load down.
     /// </summary>
-    public static Configuration? LoadDirect(IDalamudPluginInterface pluginInterface)
+    public static Configuration? LoadDirect(IDalamudPluginInterface pluginInterface) =>
+        LoadFromFile(pluginInterface.ConfigFile?.FullName);
+
+    /// <summary>
+    /// The config file this plugin used under its previous name.
+    ///
+    /// Dalamud names a plugin's config after its InternalName, so renaming the
+    /// plugin moves the file and a returning user would start from defaults
+    /// with everything they had configured still sitting on disk under the old
+    /// name. Read once, only when there is no file under the new name, so it
+    /// can never overwrite newer settings with older ones.
+    /// </summary>
+    private const string PreviousConfigFileName = "HuntTrainRelay.json";
+
+    public static Configuration? LoadFromPreviousName(IDalamudPluginInterface pluginInterface)
+    {
+        var directory = pluginInterface.ConfigFile?.Directory;
+        if (directory is null)
+            return null;
+
+        // Never when the current name already has a file — that one is the
+        // truth, and this is only ever a one-time hand-over.
+        if (pluginInterface.ConfigFile?.Exists == true)
+            return null;
+
+        return LoadFromFile(Path.Combine(directory.FullName, PreviousConfigFileName));
+    }
+
+    private static Configuration? LoadFromFile(string? fullPath)
     {
         try
         {
-            var file = pluginInterface.ConfigFile;
-            if (file is null || !file.Exists)
+            if (fullPath is null || !File.Exists(fullPath))
                 return null;
 
             return JsonConvert.DeserializeObject<Configuration>(
-                File.ReadAllText(file.FullName),
+                File.ReadAllText(fullPath),
                 new JsonSerializerSettings
                 {
                     TypeNameHandling = TypeNameHandling.None,

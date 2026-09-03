@@ -2,7 +2,7 @@ using KamiToolKit.MapOverlay;
 using System;
 using System.Numerics;
 
-namespace HuntTrainRelay;
+namespace HuntHelperEvolved;
 
 /// <summary>
 /// A map marker measured in world units instead of screen pixels.

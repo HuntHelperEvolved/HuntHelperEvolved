@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace HuntTrainRelay;
+namespace HuntHelperEvolved;
 
 public enum HuntRank { B, A, S }
 

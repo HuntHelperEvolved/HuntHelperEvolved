@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace HuntTrainRelay;
+namespace HuntHelperEvolved;
 
 /// <summary>
 /// Mark name, expansion, home zone, respawn window (hours after death), the

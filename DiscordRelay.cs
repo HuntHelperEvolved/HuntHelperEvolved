@@ -6,7 +6,7 @@ using System.Net.Http;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace HuntTrainRelay;
+namespace HuntHelperEvolved;
 
 public static class DiscordRelay
 {
@@ -23,7 +23,7 @@ public static class DiscordRelay
             {
                 new
                 {
-                    title = "🚂 Hunt Train Relay — test message",
+                    title = "🚂 Hunt Helper Evolved — test message",
                     description = $"If you can see this, your webhook is working.\nPosted <t:{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}:F>",
                     color = EmbedColor,
                 },

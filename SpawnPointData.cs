@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace HuntTrainRelay;
+namespace HuntHelperEvolved;
 
 [Flags]
 public enum SpawnRanks { None = 0, B = 1, A = 2, S = 4 }

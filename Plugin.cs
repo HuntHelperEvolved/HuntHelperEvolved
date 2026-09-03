@@ -17,11 +17,11 @@ using Dalamud.Interface.Windowing;
 using HuntTally;
 using HuntTally.Windows;
 
-namespace HuntTrainRelay;
+namespace HuntHelperEvolved;
 
 public sealed class Plugin : IDalamudPlugin
 {
-    public string Name => "Hunt Train Relay";
+    public string Name => "Hunt Helper Evolved";
 
     private const string ConfigCommand = "/htr";
     private const string TrainCommand = "/htrt";
@@ -179,10 +179,31 @@ public sealed class Plugin : IDalamudPlugin
         // fails silently and the old code went straight to a fresh
         // Configuration, whose first Save wiped every setting on disk. Reading
         // the file ourselves has no assembly resolution to get wrong.
-        _config = _pluginInterface.GetPluginConfig() as Configuration
-                  ?? Configuration.LoadDirect(_pluginInterface)
-                  ?? new Configuration();
+        // Third in the chain is the rename hand-over: this plugin was Hunt
+        // Train Relay, and Dalamud names a config file after the InternalName,
+        // so everything a returning user had configured is sitting under the
+        // old name. It is only read when there is no file under the new one.
+        var loaded = _pluginInterface.GetPluginConfig() as Configuration
+                     ?? Configuration.LoadDirect(_pluginInterface);
+
+        var migrated = false;
+        if (loaded is null)
+        {
+            loaded = Configuration.LoadFromPreviousName(_pluginInterface);
+            migrated = loaded is not null;
+        }
+
+        _config = loaded ?? new Configuration();
         _config.Initialize(_pluginInterface);
+
+        if (migrated)
+        {
+            // Write it out under the new name straight away, so the hand-over
+            // happens once rather than on every load until something else
+            // saves.
+            _config.Save();
+            _log.Information("Carried settings over from the Hunt Train Relay config file.");
+        }
 
         _ipc = new HuntHelperIpc(_pluginInterface);
         _gameGui = gameGui;
@@ -268,7 +289,7 @@ public sealed class Plugin : IDalamudPlugin
         // throws a null reference on every frame.
         try
         {
-            KamiToolKitLibrary.Initialize(_pluginInterface, "Hunt Train Relay");
+            KamiToolKitLibrary.Initialize(_pluginInterface, "Hunt Helper Evolved");
         }
         catch (Exception ex)
         {
@@ -283,17 +304,17 @@ public sealed class Plugin : IDalamudPlugin
 
         _commandManager.AddHandler(ConfigCommand, new CommandInfo(OnCommand)
         {
-            HelpMessage = "Open Hunt Train Relay settings.",
+            HelpMessage = "Open Hunt Helper Evolved settings.",
         });
 
         _commandManager.AddHandler(TrainCommand, new CommandInfo(OnTrainCommand)
         {
-            HelpMessage = "Open the Hunt Train Relay train list popout.",
+            HelpMessage = "Open the Hunt Helper Evolved train list popout.",
         });
 
         _commandManager.AddHandler(CounterCommand, new CommandInfo(OnCounterCommand)
         {
-            HelpMessage = "Open the Hunt Train Relay mob counter popout.",
+            HelpMessage = "Open the Hunt Helper Evolved mob counter popout.",
         });
 
         _commandManager.AddHandler(NextAetheryteCommand, new CommandInfo(OnNextAetheryteCommand)
@@ -359,7 +380,7 @@ public sealed class Plugin : IDalamudPlugin
             "the standalone Hunt Tally plugin is still installed and is keeping that file.");
 
         _chatGui.PrintError(
-            "[Hunt Train Relay] Hunt Tally is now built in, but the separate Hunt Tally "
+            "[Hunt Helper Evolved] Hunt Tally is now built in, but the separate Hunt Tally "
             + "plugin is still installed. Nothing is being counted here and your tally file "
             + "is untouched — uninstall the separate plugin, then reload this one.");
     }
@@ -483,7 +504,7 @@ public sealed class Plugin : IDalamudPlugin
     {
         _config.ShowMapControlBar = !_config.ShowMapControlBar;
         _config.Save();
-        _chatGui.Print($"[Hunt Train Relay] Map control bar {(_config.ShowMapControlBar ? "shown" : "hidden")}.");
+        _chatGui.Print($"[Hunt Helper Evolved] Map control bar {(_config.ShowMapControlBar ? "shown" : "hidden")}.");
     }
 
     private void OnOpenConfigUi() => _configWindowVisible = true;
@@ -541,7 +562,7 @@ public sealed class Plugin : IDalamudPlugin
     {
         var (success, message) = await DiscordRelay.PostTestAsync(_config.Webhooks);
         _lastPostResult = message;
-        if (!success) _log.Error($"Hunt Train Relay test post failed: {message}");
+        if (!success) _log.Error($"Hunt Helper Evolved test post failed: {message}");
     }
 
     private async Task SendScoutingReportAsync()
@@ -574,7 +595,7 @@ public sealed class Plugin : IDalamudPlugin
 
         var (success, message) = await DiscordRelay.PostScoutingReportAsync(_config.Webhooks, list, names, ownCode);
         _lastPostResult = message;
-        if (!success) _log.Error($"Hunt Train Relay scouting report failed: {message}");
+        if (!success) _log.Error($"Hunt Helper Evolved scouting report failed: {message}");
     }
 
     /// <summary>
@@ -606,7 +627,7 @@ public sealed class Plugin : IDalamudPlugin
 
         if (success)
         {
-            _chatGui.Print($"[Hunt Train Relay] Posted train summary to Discord ({marks.Count} marks).");
+            _chatGui.Print($"[Hunt Helper Evolved] Posted train summary to Discord ({marks.Count} marks).");
             _watcher.ResetNow();
             _config.Flags.Clear();
             _config.Save();
@@ -614,8 +635,8 @@ public sealed class Plugin : IDalamudPlugin
         }
         else
         {
-            _chatGui.PrintError($"[Hunt Train Relay] Failed to post to Discord: {message}");
-            _log.Error($"Hunt Train Relay manual end-train post failed: {message}");
+            _chatGui.PrintError($"[Hunt Helper Evolved] Failed to post to Discord: {message}");
+            _log.Error($"Hunt Helper Evolved manual end-train post failed: {message}");
         }
     }
 
@@ -643,9 +664,9 @@ public sealed class Plugin : IDalamudPlugin
 
         ImGui.SetNextWindowSize(new Vector2(620, 560), ImGuiCond.FirstUseEver);
         ImGui.SetNextWindowSizeConstraints(new Vector2(420, 240), new Vector2(float.MaxValue, float.MaxValue));
-        if (ImGui.Begin("Hunt Train Relay", ref _configWindowVisible))
+        if (ImGui.Begin("Hunt Helper Evolved", ref _configWindowVisible))
         {
-            if (ImGui.BeginTabBar("HuntTrainRelayTabs"))
+            if (ImGui.BeginTabBar("HuntHelperEvolvedTabs"))
             {
                 if (ImGui.BeginTabItem("Conductor"))
                 {
@@ -727,7 +748,7 @@ public sealed class Plugin : IDalamudPlugin
             ImGui.TextWrapped(
                 "The separate Hunt Tally plugin is still installed, so this one is not "
                 + "counting anything and is not writing your tally file. Uninstall it from "
-                + "the plugin installer, then reload Hunt Train Relay.");
+                + "the plugin installer, then reload Hunt Helper Evolved.");
             ImGui.PopStyleColor();
             ImGui.Spacing();
             ImGui.Separator();
@@ -854,14 +875,14 @@ public sealed class Plugin : IDalamudPlugin
         var next = NextLiveMark();
         if (next == null)
         {
-            _chatGui.Print("[Hunt Train Relay] No live marks left in the train.");
+            _chatGui.Print("[Hunt Helper Evolved] No live marks left in the train.");
             return;
         }
 
         var aetheryte = TeleportHelper.NearestTo(next.TerritoryId, next.MapPosition);
         if (aetheryte is not { } aeth)
         {
-            _chatGui.Print($"[Hunt Train Relay] No known aetheryte near {next.Name}.");
+            _chatGui.Print($"[Hunt Helper Evolved] No known aetheryte near {next.Name}.");
             return;
         }
 
@@ -873,7 +894,7 @@ public sealed class Plugin : IDalamudPlugin
 
         var sb = new Dalamud.Game.Text.SeStringHandling.SeStringBuilder();
         sb.AddUiForeground(TrainChatEcho.GoldColour);
-        sb.AddText("[Hunt Train Relay] ");
+        sb.AddText("[Hunt Helper Evolved] ");
         sb.AddUiForegroundOff();
         sb.AddText(line);
         _chatGui.Print(sb.BuiltString);
@@ -943,7 +964,7 @@ public sealed class Plugin : IDalamudPlugin
 
         var dead = _config.SavedTrain.Count(m => m.Dead);
         _chatGui.Print(
-            $"[Hunt Train Relay] Restored train from {age} ago — " +
+            $"[Hunt Helper Evolved] Restored train from {age} ago — " +
             $"{_config.SavedTrain.Count} marks, {dead} dead. Use Reset if this is stale.");
     }
 
@@ -961,7 +982,7 @@ public sealed class Plugin : IDalamudPlugin
     private void ReportProblem(string message)
     {
         _lastPostResult = message;
-        _chatGui.PrintError($"[Hunt Train Relay] {message}");
+        _chatGui.PrintError($"[Hunt Helper Evolved] {message}");
         _log.Warning(message);
     }
 
@@ -1393,7 +1414,7 @@ public sealed class Plugin : IDalamudPlugin
             ImGuiWindowFlags.NoSavedSettings | ImGuiWindowFlags.NoFocusOnAppearing |
             ImGuiWindowFlags.NoNav;
 
-        if (ImGui.Begin("##HuntTrainRelayMapBar", flags))
+        if (ImGui.Begin("##HuntHelperEvolvedMapBar", flags))
         {
             DrawMapBarZoneRow();
             DrawMapBarPlayerRow();
