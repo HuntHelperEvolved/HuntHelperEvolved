@@ -2101,6 +2101,12 @@ public sealed class Plugin : IDalamudPlugin
         var list = defs.ToList();
         if (list.Count == 0)
         {
+            // Narrow-rift and Nunyunuwi are counted S-ranks too, just drawn by
+            // DrawSpawnWatches rather than from Definitions - don't claim the
+            // zone has nothing when one of them is showing right above.
+            if (currentZoneOnly && SpawnWatchCounters.AppliesTo(_clientTerritory))
+                return;
+
             ImGui.TextDisabled(currentZoneOnly
                 ? "No counted S-rank in this zone."
                 : "No counters available.");
@@ -2198,38 +2204,35 @@ public sealed class Plugin : IDalamudPlugin
     private static readonly Vector4 _counterRed = new(1f, 0.4f, 0.4f, 1f);
 
     /// <summary>
-    /// The two live-state S-rank counters — Narrow-rift's Wee Ea headcount and
-    /// Nunyunuwi's quiet-hour clock. Both rows always show so the feature is
-    /// findable; the live numbers only fill in while you are in the zone each
-    /// applies to, since that is the only place <see cref="_spawnWatch"/> has
-    /// anything real to report.
+    /// The live-state S-rank counter for the current zone — Narrow-rift's Wee
+    /// Ea headcount in Ultima Thule, Nunyunuwi's quiet-hour clock in Southern
+    /// Thanalan, nothing anywhere else. Returns whether it drew a row, so the
+    /// caller can suppress its "nothing here" line.
     /// </summary>
-    private void DrawSpawnWatches()
+    private bool DrawSpawnWatches()
     {
         var territory = _clientState.TerritoryType;
 
-        ImGui.TextUnformatted("Narrow-rift — Ultima Thule");
         if (territory == SpawnWatchCounters.UltimaThuleTerritory)
         {
             var count = _spawnWatch.WeeEaLoaded();
             var enough = count >= SpawnWatchCounters.NarrowRiftRequiredWeeEa;
+
+            ImGui.TextUnformatted("Narrow-rift — Ultima Thule");
             ImGui.TextColored(
                 enough ? _counterGreen : _counterWhite,
                 $"    Wee Ea nearby: {count} / {SpawnWatchCounters.NarrowRiftRequiredWeeEa}");
             ImGui.TextDisabled("    Only minions your client has loaded — stand on the spawn point with the group.");
+            ImGui.Separator();
+            return true;
         }
-        else
-        {
-            ImGui.TextDisabled("    Enter Ultima Thule to count Wee Ea minions on the spawn point.");
-        }
-        ImGui.Separator();
 
-        ImGui.TextUnformatted("Nunyunuwi — Southern Thanalan");
         if (territory == SpawnWatchCounters.SouthernThanalanTerritory)
         {
             var remaining = _spawnWatch.NunyunuwiRemaining;
             var ready = remaining == TimeSpan.Zero;
 
+            ImGui.TextUnformatted("Nunyunuwi — Southern Thanalan");
             ImGui.TextUnformatted(
                 $"    Clean since {_spawnWatch.NunyunuwiSince:HH:mm:ss}, "
                 + $"eligible {_spawnWatch.NunyunuwiEta:HH:mm:ss}");
@@ -2263,12 +2266,11 @@ public sealed class Plugin : IDalamudPlugin
                     ImGui.TextUnformatted($"      {fate.Name}  {fate.ProgressPercent}%  {time}");
                 }
             }
+            ImGui.Separator();
+            return true;
         }
-        else
-        {
-            ImGui.TextDisabled("    Enter Southern Thanalan to run the no-FATE-failed clock.");
-        }
-        ImGui.Separator();
+
+        return false;
     }
 
     private void DrawConductorTab()
