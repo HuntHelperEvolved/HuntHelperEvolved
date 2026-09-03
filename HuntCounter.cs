@@ -20,16 +20,34 @@ public sealed class CounterDefinition
     public string Zone { get; init; } = string.Empty;
     public uint TerritoryId { get; init; }
     public string[] MobNames { get; init; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Full battle-log regexes, index-aligned with <see cref="MobNames"/>, for
+    /// marks whose trigger is not a kill and so never produces a "defeats the X"
+    /// line: gathering yields (Forgiven Pedantry, Gandarewa), item discards
+    /// (Salt and Light) and an ability-use line (Squonk). A non-null entry
+    /// replaces the derived "defeats the &lt;mob&gt;" pattern for that name,
+    /// which then serves only as a tally label; a null entry (or a short array)
+    /// leaves that name on the ordinary kill pattern.
+    ///
+    /// The game only ever logs the local player's own gathers and discards, so
+    /// these have no third-person form and "count only my kills" makes no
+    /// difference to them.
+    /// </summary>
+    public string?[] TriggerPatterns { get; init; } = Array.Empty<string?>();
 }
 
 /// <summary>
-/// Counts kills of the lesser mobs that trigger certain S-ranks, by matching
-/// the game's own battle log lines. Purely passive — it reads chat, never
-/// sends anything.
+/// Counts the events that trigger certain S-ranks by matching the game's own
+/// battle log lines. Purely passive — it reads chat, never sends anything.
 ///
-/// Deliberately excludes marks triggered by gathering (e.g. Gandarewa) or by
-/// non-kill mechanics (e.g. Narrow-rift's Wee Ea minions), since those don't
-/// match a "defeats the X" line and would silently never tick.
+/// Most triggers are kills and match a "defeats the X" line. Four are not:
+/// Forgiven Pedantry (gathering dwarven cotton), Gandarewa (gathering aurum
+/// regis ore / seventh heaven), Salt and Light (discarding items) and Squonk
+/// (an ability going off); those carry explicit
+/// <see cref="CounterDefinition.TriggerPatterns"/> instead. Marks with no
+/// loggable trigger at all (Narrow-rift's Wee Ea minions) are still out of
+/// scope and handled elsewhere.
 /// </summary>
 public sealed class HuntCounter : IDisposable
 {
@@ -41,7 +59,11 @@ public sealed class HuntCounter : IDisposable
         new() { MarkName = "Ixtab", Expansion = "Shadowbringers", Zone = "The Rak'tika Greatwood", TerritoryId = 817,
                 MobNames = new[] { "Cracked Ronkan Doll", "Cracked Ronkan Thorn", "Cracked Ronkan Vessel" } },
         new() { MarkName = "Forgiven Pedantry", Expansion = "Shadowbringers", Zone = "Kholusia", TerritoryId = 814,
-                MobNames = new[] { "Dwarven Cotton Boll" } },
+                MobNames = new[] { "Dwarven Cotton Boll" },
+                // Spawned by gathering dwarven cotton, not by a kill. The yield
+                // line is "You obtain a/N dwarven cotton boll(s)." on the
+                // Gathering channel. Pattern from Hunt Helper's Constants.cs.
+                TriggerPatterns = new string?[] { @"(?i)You obtain.*dwarven cotton (boll|bolls)" } },
         new() { MarkName = "Sphatika", Expansion = "Endwalker", Zone = "Thavnair", TerritoryId = 957,
                 MobNames = new[] { "Asvattha", "Pisaca", "Vajralangula" } },
         new() { MarkName = "Ruminator", Expansion = "Endwalker", Zone = "Mare Lamentorum", TerritoryId = 959,
@@ -51,11 +73,31 @@ public sealed class HuntCounter : IDisposable
         new() { MarkName = "Udumbara", Expansion = "Stormblood", Zone = "The Fringes", TerritoryId = 612,
                 MobNames = new[] { "Leshy", "Diakka" } },
         new() { MarkName = "Salt and Light", Expansion = "Stormblood", Zone = "The Lochs", TerritoryId = 621,
-                MobNames = new[] { "Throw" } },
+                MobNames = new[] { "Throw" },
+                // Spawned by discarding items in the zone, not by a kill. The
+                // line is "You throw away a/N <item>." on the SystemMessage
+                // channel. Pattern from Hunt Helper's Constants.cs.
+                TriggerPatterns = new string?[] { @"(?i)^You throw away " } },
+        new() { MarkName = "Gandarewa", Expansion = "Heavensward", Zone = "The Churning Mists", TerritoryId = 400,
+                MobNames = new[] { "Aurum Regis Ore", "Seventh Heaven" },
+                // Spawned by gathering from the legendary nodes (mine aurum
+                // regis ore, harvest seventh heaven), not by a kill. Yield
+                // lines are "You obtain ... aurum regis ore" / "... seventh
+                // heaven" on the Gathering channel. Patterns from Hunt Helper's
+                // Constants.cs; one per item so each 50-count is its own row.
+                TriggerPatterns = new string?[]
+                {
+                    @"(?i)You obtain.*aurum regis ore",
+                    @"(?i)You obtain.*seventh heaven",
+                } },
         new() { MarkName = "Leucrotta", Expansion = "Heavensward", Zone = "Azys Lla", TerritoryId = 402,
                 MobNames = new[] { "Allagan Chimera", "Lesser Hydra", "Meracydian Vouivre" } },
         new() { MarkName = "Squonk", Expansion = "Heavensward", Zone = "The Sea of Clouds", TerritoryId = 401,
-                MobNames = new[] { "Chirp" } },
+                MobNames = new[] { "Chirp" },
+                // Not a kill either: the count tracks the Chirp ability going
+                // off, logged as "Squonk uses Chirp" on the Action channel.
+                // (Informational - it does not actually gate the spawn.)
+                TriggerPatterns = new string?[] { @"(?i)Squonk uses Chirp" } },
         new() { MarkName = "Minhocao", Expansion = "ARR", Zone = "Northern Thanalan", TerritoryId = 147,
                 MobNames = new[] { "Earth Sprite" } },
     };
@@ -64,26 +106,42 @@ public sealed class HuntCounter : IDisposable
     private const string PersonalRegexBase = "(?i)^you defeat the ";
 
     private readonly IChatGui _chatGui;
+    private readonly IClientState _clientState;
     private readonly IObjectTable _objectTable;
     private readonly Configuration _config;
 
-    private readonly List<(Regex Personal, Regex Nearby, string MobName, string MarkName)> _patterns = new();
+    private readonly List<(Regex Personal, Regex Nearby, string MobName, string MarkName, uint TerritoryId)> _patterns = new();
 
-    public HuntCounter(IChatGui chatGui, IObjectTable objectTable, Configuration config)
+    public HuntCounter(IChatGui chatGui, IClientState clientState, IObjectTable objectTable, Configuration config)
     {
         _chatGui = chatGui;
+        _clientState = clientState;
         _objectTable = objectTable;
         _config = config;
 
         foreach (var def in Definitions)
         {
-            foreach (var mob in def.MobNames)
+            for (var i = 0; i < def.MobNames.Length; i++)
             {
+                var mob = def.MobNames[i];
+                var triggerPattern = i < def.TriggerPatterns.Length ? def.TriggerPatterns[i] : null;
+
+                if (triggerPattern is not null)
+                {
+                    // A gather / discard / ability line, not a "defeats the X"
+                    // kill. There is no third-person form, so the same regex
+                    // serves both the personal and the nearby slot.
+                    var trigger = new Regex(triggerPattern, RegexOptions.Compiled);
+                    _patterns.Add((trigger, trigger, mob, def.MarkName, def.TerritoryId));
+                    continue;
+                }
+
                 _patterns.Add((
                     new Regex(PersonalRegexBase + Regex.Escape(mob), RegexOptions.Compiled),
                     new Regex(BattleRegexBase + Regex.Escape(mob), RegexOptions.Compiled),
                     mob,
-                    def.MarkName));
+                    def.MarkName,
+                    def.TerritoryId));
             }
         }
 
@@ -188,8 +246,10 @@ public sealed class HuntCounter : IDisposable
 
     private void OnChatMessage(IHandleableChatMessage message)
     {
-        // Kill lines land in these channels; anything else can't be a defeat
-        // message, so skip the regex work entirely.
+        // Trigger lines land in these channels: SystemError / SystemMessage for
+        // your own and a chocobo's kills, SystemMessage again for discards,
+        // Gathering for gather yields, Action for "Squonk uses Chirp". Anything
+        // else can't be a trigger, so skip the regex work entirely.
         var kind = message.LogKind;
         if (kind is not XivChatType.SystemError
             and not XivChatType.SystemMessage
@@ -197,11 +257,18 @@ public sealed class HuntCounter : IDisposable
             and not XivChatType.Action) return;
 
         var text = message.OriginalMessage.ToString();
+        var territory = _clientState.TerritoryType;
         var worldId = CurrentWorldId();
         var instance = MarkDetector.GetCurrentInstance();
 
-        foreach (var (personal, nearby, mobName, markName) in _patterns)
+        foreach (var (personal, nearby, mobName, markName, patternTerritory) in _patterns)
         {
+            // Every trigger mob for a given mark only counts toward its spawn
+            // in that mark's own zone, and several of them - Earth Sprites,
+            // discarded items - are common enough elsewhere to tick the wrong
+            // counter constantly without this gate.
+            if (territory != patternTerritory) continue;
+
             var pattern = _config.CountOnlyMyKills ? personal : nearby;
             if (!pattern.IsMatch(text)) continue;
 
