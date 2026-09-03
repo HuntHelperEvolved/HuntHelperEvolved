@@ -137,6 +137,12 @@ still keeping its own config file. That's deliberate: it keeps the merge to a
 wiring change, so the code people's existing totals were built by is the same
 code.
 
-## Licence
+## Licence and credits
 
-Spawn point data and territory ids adapted from Hunt Helper, MIT licensed.
+Third-party notices, including the full MIT licence text for everything this
+plugin borrows or redistributes, are in
+**[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)**.
+
+In short: Hunt Helper's spawn point data, territory ids, mark names and map
+design (MIT, © 2022 imaginary-png), and KamiToolKit (MIT), which ships inside
+the release archive. SS event coordinates are from Faloop.
