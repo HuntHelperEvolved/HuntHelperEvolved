@@ -139,6 +139,10 @@ code.
 
 ## Licence and credits
 
+Hunt Helper Evolved is **MIT licensed** — see [LICENSE](LICENSE). It is a joint
+project between MusicManBowls, whose Hunt Train Relay it continues, and kihtli,
+whose Hunt Tally is built into it.
+
 Third-party notices, including the full MIT licence text for everything this
 plugin borrows or redistributes, are in
 **[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)**.
