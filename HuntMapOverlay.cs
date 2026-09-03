@@ -385,9 +385,7 @@ public sealed unsafe class HuntMapOverlay : IDisposable
     private int DrawPlayerGuides(uint mapId, Dictionary<string, string> dots)
     {
         if (_overlay == null) return 0;
-        if (!_config.ShowPlayerCircleOnMap && !_config.ShowPlayerFacingOnMap
-            && !_config.ShowPlayerDirectionLine && !_config.ShowPlayerPositionDot)
-            return 0;
+        if (!_config.AnyPlayerGuideEnabled) return 0;
 
         var player = _objectTable.LocalPlayer;
         if (player is null) return 0;
@@ -514,7 +512,7 @@ public sealed unsafe class HuntMapOverlay : IDisposable
     private string DrawSignature() =>
         $"{_config.ShowSpawnPointsOnMap}{_config.ShowARankPoints}{_config.ShowBRankPoints}"
         + $"{_config.ShowSRankPoints}{_config.ShowPlayerCircleOnMap}"
-        + $"{_config.ShowPlayerFacingOnMap}{_config.ShowPlayerDirectionLine}{_config.ShowPlayerPositionDot}{_config.ShowSsEventOnMap}{_ssEvent.Pins.Count}{_ssEvent.Active}{_config.SpawnDotSize}{_config.PlayerCircleRadiusScale}{_config.PlayerDirectionLineThickness}{_config.PlayerPositionDotSize}";
+        + $"{_config.ShowPlayerGuides}{_config.ShowPlayerFacingOnMap}{_config.ShowPlayerDirectionLine}{_config.ShowPlayerPositionDot}{_config.ShowSsEventOnMap}{_ssEvent.Pins.Count}{_ssEvent.Active}{_config.SpawnDotSize}{_config.PlayerCircleRadiusScale}{_config.PlayerDirectionLineThickness}{_config.PlayerPositionDotSize}";
 
     /// <summary>
     /// The configured colours, as a string. Used both to name the files and to
