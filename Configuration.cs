@@ -300,11 +300,25 @@ public class Configuration : IPluginConfiguration
     /// <summary>Hunt Helper's own direction line colour.</summary>
     public Vector4 PlayerDirectionLineColour { get; set; } = new(1f, 0.3f, 0.3f, 1f);
 
+    /// <summary>
+    /// Heading line thickness, as a fraction of the detection radius.
+    ///
+    /// A proportion rather than a pixel count so it holds at any zoom and
+    /// follows the radius scale. Hunt Helper's own works out between about 0.06
+    /// and 0.12 of its radius depending on how wide its window is dragged —
+    /// its line is a flat 3 pixels while its radius grows with the window — so
+    /// there is no single right answer to copy, hence the setting.
+    /// </summary>
+    public float PlayerDirectionLineThickness { get; set; } = 0.05f;
+
     /// <summary>Draw a dot on your exact position, inside the ring.</summary>
     public bool ShowPlayerPositionDot { get; set; } = false;
 
     /// <summary>Hunt Helper's own player icon colour.</summary>
     public Vector4 PlayerPositionDotColour { get; set; } = new(0f, 0f, 0f, 1f);
+
+    /// <summary>Position dot diameter, as a fraction of the detection radius.</summary>
+    public float PlayerPositionDotSize { get; set; } = 0.07f;
 
     /// <summary>
     /// Draw the projected path: the swathe ahead of you that your detection
