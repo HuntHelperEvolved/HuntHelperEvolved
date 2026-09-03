@@ -19,6 +19,12 @@
         "requested": "[2.0.23, )",
         "resolved": "2.0.23",
         "contentHash": "hvf+XnPqOQfbZv4FGKX1+Iq7i9CMi1/tvNazQ9yNl9CMdoSGWYZ2FCCbuOQPeFAiiDciA7UNm8dV9ksNjc1VKw=="
+      },
+      "System.Speech": {
+        "type": "Direct",
+        "requested": "[9.0.3, )",
+        "resolved": "9.0.3",
+        "contentHash": "u75jktAY5Ee6DA1pXBRkWBaMpUGn+iunXt+qhqhreWjBRIcVjaSLpgxpYqA49eFBRWIfscbMvcHPLJMLyzTr6A=="
       }
     }
   }
