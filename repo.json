@@ -4,6 +4,7 @@
     "Name": "Hunt Helper Evolved",
     "Description": "Hunt tracking for FFXIV. Detects marks and records a train with exact kill times, posts Discord reports sorted by the order marks actually died, draws spawn points, your detection range and SS event locations on the in-game map, counts S-rank trigger mobs, and keeps a lifetime per-mark kill tally per character.",
     "Punchline": "Hunt trains, Discord reports, spawn points and your detection range on the in-game map.",
+    "IconUrl": "https://raw.githubusercontent.com/HuntHelperEvolved/HuntHelperEvolved/main/icon.png",
     "InternalName": "HuntHelperEvolved",
     "AssemblyVersion": "0.2.0.0",
     "TestingAssemblyVersion": "0.2.0.0",
