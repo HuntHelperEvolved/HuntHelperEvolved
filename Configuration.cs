@@ -289,6 +289,24 @@ public class Configuration : IPluginConfiguration
     public float PlayerCircleThickness { get; set; } = 8f;
 
     /// <summary>
+    /// Draw the heading line: a short line from you to the edge of the ring.
+    ///
+    /// Hunt Helper's direction line, which is a separate thing from its
+    /// projected path — the path is the wide translucent swathe, this is the
+    /// thin one inside the circle that says which way you are pointing.
+    /// </summary>
+    public bool ShowPlayerDirectionLine { get; set; } = false;
+
+    /// <summary>Hunt Helper's own direction line colour.</summary>
+    public Vector4 PlayerDirectionLineColour { get; set; } = new(1f, 0.3f, 0.3f, 1f);
+
+    /// <summary>Draw a dot on your exact position, inside the ring.</summary>
+    public bool ShowPlayerPositionDot { get; set; } = false;
+
+    /// <summary>Hunt Helper's own player icon colour.</summary>
+    public Vector4 PlayerPositionDotColour { get; set; } = new(0f, 0f, 0f, 1f);
+
+    /// <summary>
     /// Draw the projected path: the swathe ahead of you that your detection
     /// range will sweep if you keep walking. Exactly as wide as the ring, and
     /// long enough to leave the map, so neither is set here.
@@ -310,7 +328,7 @@ public class Configuration : IPluginConfiguration
     /// <summary>True when anything at all wants drawing on the map.</summary>
     public bool AnyMapOverlayEnabled =>
         ShowSpawnPointsOnMap || ShowPlayerCircleOnMap || ShowPlayerFacingOnMap
-        || ShowSsEventOnMap;
+        || ShowSsEventOnMap || ShowPlayerDirectionLine || ShowPlayerPositionDot;
 
     /// <summary>How close (in map units) a mark must be to count as "at" a spawn point.</summary>
     public float SpawnPointMatchRadius { get; set; } = 2.5f;
