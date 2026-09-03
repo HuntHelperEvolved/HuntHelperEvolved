@@ -6,16 +6,16 @@
     "Punchline": "Hunt trains, Discord reports, spawn points and your detection range on the in-game map.",
     "IconUrl": "https://raw.githubusercontent.com/HuntHelperEvolved/HuntHelperEvolved/main/icon.png",
     "InternalName": "HuntHelperEvolved",
-    "AssemblyVersion": "0.2.0.0",
-    "TestingAssemblyVersion": "0.2.0.0",
+    "AssemblyVersion": "0.2.1.0",
+    "TestingAssemblyVersion": "0.2.1.0",
     "RepoUrl": "https://raw.githubusercontent.com/HuntHelperEvolved/HuntHelperEvolved/main/repo.json",
     "ApplicableVersion": "any",
     "DalamudApiLevel": 15,
     "TestingDalamudApiLevel": 15,
     "IsHide": false,
     "IsTestingExclusive": true,
-    "DownloadLinkInstall": "https://github.com/HuntHelperEvolved/HuntHelperEvolved/releases/download/0.2.0/HuntHelperEvolved.zip",
-    "DownloadLinkUpdate": "https://github.com/HuntHelperEvolved/HuntHelperEvolved/releases/download/0.2.0/HuntHelperEvolved.zip",
-    "DownloadLinkTesting": "https://github.com/HuntHelperEvolved/HuntHelperEvolved/releases/download/0.2.0/HuntHelperEvolved.zip"
+    "DownloadLinkInstall": "https://github.com/HuntHelperEvolved/HuntHelperEvolved/releases/download/0.2.1/HuntHelperEvolved.zip",
+    "DownloadLinkUpdate": "https://github.com/HuntHelperEvolved/HuntHelperEvolved/releases/download/0.2.1/HuntHelperEvolved.zip",
+    "DownloadLinkTesting": "https://github.com/HuntHelperEvolved/HuntHelperEvolved/releases/download/0.2.1/HuntHelperEvolved.zip"
   }
 ]
