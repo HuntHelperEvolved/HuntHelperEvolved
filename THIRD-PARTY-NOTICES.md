@@ -1,6 +1,8 @@
 # Third-party notices
 
-Hunt Helper Evolved includes and derives from the following, each MIT licensed.
+Hunt Helper Evolved is itself MIT licensed; see [LICENSE](LICENSE).
+
+It includes and derives from the following, each MIT licensed.
 Their copyright and permission notices are reproduced in full below, as the MIT
 licence requires.
 
