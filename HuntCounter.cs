@@ -22,28 +22,30 @@ public sealed class CounterDefinition
     public string[] MobNames { get; init; } = Array.Empty<string>();
 
     /// <summary>
-    /// A full battle-log regex for marks whose trigger is not a kill and so
-    /// never produces a "defeats the X" line: gathering yields (Forgiven
-    /// Pedantry), item discards (Salt and Light) and an ability-use line
-    /// (Squonk). When set it replaces the derived "defeats the &lt;mob&gt;"
-    /// pattern for every name in <see cref="MobNames"/>, which then serve only
-    /// as tally labels. Left null for ordinary kill counters.
+    /// Full battle-log regexes, index-aligned with <see cref="MobNames"/>, for
+    /// marks whose trigger is not a kill and so never produces a "defeats the X"
+    /// line: gathering yields (Forgiven Pedantry, Gandarewa), item discards
+    /// (Salt and Light) and an ability-use line (Squonk). A non-null entry
+    /// replaces the derived "defeats the &lt;mob&gt;" pattern for that name,
+    /// which then serves only as a tally label; a null entry (or a short array)
+    /// leaves that name on the ordinary kill pattern.
     ///
     /// The game only ever logs the local player's own gathers and discards, so
     /// these have no third-person form and "count only my kills" makes no
     /// difference to them.
     /// </summary>
-    public string? TriggerPattern { get; init; }
+    public string?[] TriggerPatterns { get; init; } = Array.Empty<string?>();
 }
 
 /// <summary>
 /// Counts the events that trigger certain S-ranks by matching the game's own
 /// battle log lines. Purely passive — it reads chat, never sends anything.
 ///
-/// Most triggers are kills and match a "defeats the X" line. Three are not:
-/// Forgiven Pedantry (gathering dwarven cotton), Salt and Light (discarding
-/// items) and Squonk (an ability going off); those carry an explicit
-/// <see cref="CounterDefinition.TriggerPattern"/> instead. Marks with no
+/// Most triggers are kills and match a "defeats the X" line. Four are not:
+/// Forgiven Pedantry (gathering dwarven cotton), Gandarewa (gathering aurum
+/// regis ore / seventh heaven), Salt and Light (discarding items) and Squonk
+/// (an ability going off); those carry explicit
+/// <see cref="CounterDefinition.TriggerPatterns"/> instead. Marks with no
 /// loggable trigger at all (Narrow-rift's Wee Ea minions) are still out of
 /// scope and handled elsewhere.
 /// </summary>
@@ -61,7 +63,7 @@ public sealed class HuntCounter : IDisposable
                 // Spawned by gathering dwarven cotton, not by a kill. The yield
                 // line is "You obtain a/N dwarven cotton boll(s)." on the
                 // Gathering channel. Pattern from Hunt Helper's Constants.cs.
-                TriggerPattern = @"(?i)You obtain.*dwarven cotton (boll|bolls)" },
+                TriggerPatterns = new string?[] { @"(?i)You obtain.*dwarven cotton (boll|bolls)" } },
         new() { MarkName = "Sphatika", Expansion = "Endwalker", Zone = "Thavnair", TerritoryId = 957,
                 MobNames = new[] { "Asvattha", "Pisaca", "Vajralangula" } },
         new() { MarkName = "Ruminator", Expansion = "Endwalker", Zone = "Mare Lamentorum", TerritoryId = 959,
@@ -75,7 +77,19 @@ public sealed class HuntCounter : IDisposable
                 // Spawned by discarding items in the zone, not by a kill. The
                 // line is "You throw away a/N <item>." on the SystemMessage
                 // channel. Pattern from Hunt Helper's Constants.cs.
-                TriggerPattern = @"(?i)^You throw away " },
+                TriggerPatterns = new string?[] { @"(?i)^You throw away " } },
+        new() { MarkName = "Gandarewa", Expansion = "Heavensward", Zone = "The Churning Mists", TerritoryId = 400,
+                MobNames = new[] { "Aurum Regis Ore", "Seventh Heaven" },
+                // Spawned by gathering from the legendary nodes (mine aurum
+                // regis ore, harvest seventh heaven), not by a kill. Yield
+                // lines are "You obtain ... aurum regis ore" / "... seventh
+                // heaven" on the Gathering channel. Patterns from Hunt Helper's
+                // Constants.cs; one per item so each 50-count is its own row.
+                TriggerPatterns = new string?[]
+                {
+                    @"(?i)You obtain.*aurum regis ore",
+                    @"(?i)You obtain.*seventh heaven",
+                } },
         new() { MarkName = "Leucrotta", Expansion = "Heavensward", Zone = "Azys Lla", TerritoryId = 402,
                 MobNames = new[] { "Allagan Chimera", "Lesser Hydra", "Meracydian Vouivre" } },
         new() { MarkName = "Squonk", Expansion = "Heavensward", Zone = "The Sea of Clouds", TerritoryId = 401,
@@ -83,7 +97,7 @@ public sealed class HuntCounter : IDisposable
                 // Not a kill either: the count tracks the Chirp ability going
                 // off, logged as "Squonk uses Chirp" on the Action channel.
                 // (Informational - it does not actually gate the spawn.)
-                TriggerPattern = @"(?i)Squonk uses Chirp" },
+                TriggerPatterns = new string?[] { @"(?i)Squonk uses Chirp" } },
         new() { MarkName = "Minhocao", Expansion = "ARR", Zone = "Northern Thanalan", TerritoryId = 147,
                 MobNames = new[] { "Earth Sprite" } },
     };
@@ -107,14 +121,17 @@ public sealed class HuntCounter : IDisposable
 
         foreach (var def in Definitions)
         {
-            foreach (var mob in def.MobNames)
+            for (var i = 0; i < def.MobNames.Length; i++)
             {
-                if (def.TriggerPattern is not null)
+                var mob = def.MobNames[i];
+                var triggerPattern = i < def.TriggerPatterns.Length ? def.TriggerPatterns[i] : null;
+
+                if (triggerPattern is not null)
                 {
                     // A gather / discard / ability line, not a "defeats the X"
                     // kill. There is no third-person form, so the same regex
                     // serves both the personal and the nearby slot.
-                    var trigger = new Regex(def.TriggerPattern, RegexOptions.Compiled);
+                    var trigger = new Regex(triggerPattern, RegexOptions.Compiled);
                     _patterns.Add((trigger, trigger, mob, def.MarkName, def.TerritoryId));
                     continue;
                 }
