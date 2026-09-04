@@ -124,6 +124,13 @@ public sealed class MarkDetector
     private readonly Dictionary<(uint NameId, uint Instance, uint WorldId), OtherRankSighting> _otherRanks = new();
 
     /// <summary>
+    /// Where the last scan ran. A change means a different set of marks is
+    /// live, even when the territory alone has not moved — stepping between
+    /// instances, or visiting another world.
+    /// </summary>
+    private (uint TerritoryId, uint Instance, uint WorldId) _lastScannedScope;
+
+    /// <summary>
     /// Every mark seen, of every rank. Independent of the train, and populated
     /// whether or not recording is active.
     /// </summary>
@@ -238,7 +245,20 @@ public sealed class MarkDetector
         // A mark we have stopped seeing is no longer there to show. One scan
         // interval plus a little slack: any shorter and a mark simply missed by
         // one pass would be wrongly dropped.
-        var stale = Math.Max(2, _config.PollIntervalSeconds) + 1;
+        //
+        // Arriving somewhere new is the exception, and it gets no slack at all.
+        // Sightings are only ever expired for the scope being stood in, so
+        // another instance's — or another world's — sit there untouched however
+        // long you are away. Walking back in and keeping them for a few seconds
+        // would put marks on the map that may well be dead by now, on the
+        // strength of having seen them last time. Everything remembered here is
+        // dropped instead, and the sweep below immediately re-adds whatever is
+        // actually present.
+        var scope = (territoryId, instance, worldId);
+        var arrived = scope != _lastScannedScope;
+        _lastScannedScope = scope;
+
+        var stale = arrived ? 0 : Math.Max(2, _config.PollIntervalSeconds) + 1;
         ExpireStaleSightings(territoryId, instance, worldId, stale);
 
         foreach (var obj in _objectTable)
