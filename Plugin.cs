@@ -17,6 +17,7 @@ using Dalamud.Game.Command;
 using Dalamud.Interface.Windowing;
 using HuntTally;
 using HuntTally.Windows;
+using HuntHelperEvolved.Sync;
 
 namespace HuntHelperEvolved;
 
@@ -29,6 +30,7 @@ public sealed class Plugin : IDalamudPlugin
     private const string CounterCommand = "/htrc";
     private const string NextAetheryteCommand = "/htra";
     private const string MapCommand = "/htrm";
+    private const string SRankCommand = "/htrs";
 
     /// <summary>
     /// The tally's original command, kept verbatim. It was a separate plugin
@@ -75,6 +77,10 @@ public sealed class Plugin : IDalamudPlugin
     private readonly WorldData _worldData;
     private readonly HuntMapOverlay _mapOverlay;
     private readonly SsEventWatcher _ssEvent;
+
+    // Sharing with a group through their own server. See Sync/.
+    private readonly SyncCoordinator _sync;
+    private readonly SRankWindow _srankWindow;
     private int _counterDcIndex;
     private int _counterWorldIndex;
 
@@ -267,6 +273,11 @@ public sealed class Plugin : IDalamudPlugin
             _tracker.OnMarkDeath += _tallyIpc.PublishMarkDeath;
             _tracker.OnKill += AnnounceTallyKill;
 
+            // Every death the tally sees, credited or not. An S rank dying in
+            // front of anyone in the group is how the group's clock for it
+            // starts.
+            _tracker.OnMarkDeath += OnAnyMarkDeath;
+
             // Off the publisher rather than the tracker, so the train sees
             // exactly the feed an external subscriber would have seen over IPC —
             // including the tally's own switch between credited kills and every
@@ -294,6 +305,14 @@ public sealed class Plugin : IDalamudPlugin
         _spawnWatch = new SpawnWatchCounters(framework, clientState, objectTable, fateTable, _log);
         _worldData = new WorldData(dataManager);
 
+        // Built before the map overlay, which draws what other members can
+        // see. Connects straight away if sync is on in the saved settings.
+        _sync = new SyncCoordinator(
+            framework, clientState, objectTable, _log, _config, _detector, _worldData,
+            typeof(Plugin).Assembly.GetName().Version?.ToString(3) ?? "0.0.0");
+        _sync.RemoteTrainCleared += OnRemoteTrainCleared;
+        _srankWindow = new SRankWindow(_config, _sync, _worldData, _detector);
+
         // KamiToolKit needs one-time initialisation before any of its
         // controllers can be enabled — without it, AddonController.Enable()
         // throws a null reference on every frame.
@@ -307,7 +326,7 @@ public sealed class Plugin : IDalamudPlugin
         }
 
         _ssEvent = new SsEventWatcher(chatGui, clientState, _log, _detector);
-        _mapOverlay = new HuntMapOverlay(framework, clientState, objectTable, dataManager, addonLifecycle, gameGui, _log, _config, _detector, _ssEvent, _pluginInterface);
+        _mapOverlay = new HuntMapOverlay(framework, clientState, objectTable, dataManager, addonLifecycle, gameGui, _log, _config, _detector, _ssEvent, _pluginInterface, _sync);
         _detector.OtherRankDetected += OnSightingDetected;
         _watcher.PersistRequested += PersistTrain;
         RestoreSavedTrain();
@@ -335,6 +354,11 @@ public sealed class Plugin : IDalamudPlugin
         _commandManager.AddHandler(MapCommand, new CommandInfo(OnMapCommand)
         {
             HelpMessage = "Open the map dot filters.",
+        });
+
+        _commandManager.AddHandler(SRankCommand, new CommandInfo(OnSRankCommand)
+        {
+            HelpMessage = "Open the S-rank board: windows, kill times and spawn points, shared through sync.",
         });
 
         _commandManager.AddHandler(TallyCommand, new CommandInfo(OnTallyCommand)
@@ -830,6 +854,7 @@ public sealed class Plugin : IDalamudPlugin
         UpdateAutoAdvance();
         DrawTrainPopout();
         DrawCounterPopout();
+        _srankWindow.Draw();
         DrawMapControlBar();
 
         // Before the early return below: the tally's window is independent of
@@ -871,6 +896,12 @@ public sealed class Plugin : IDalamudPlugin
                 if (ImGui.BeginTabItem("Settings"))
                 {
                     DrawSettingsTab();
+                    ImGui.EndTabItem();
+                }
+
+                if (ImGui.BeginTabItem("Sync"))
+                {
+                    DrawSyncTab();
                     ImGui.EndTabItem();
                 }
 
@@ -2519,6 +2550,8 @@ public sealed class Plugin : IDalamudPlugin
             ClearSavedTrain();
         }
         ImGui.TextDisabled("Clears tracking and S-rank watches without posting anything — use if you need to abandon a train.");
+        if (_config.SyncEnabled && _config.SyncShareTrain)
+            ImGui.TextDisabled("Sync is on: this also empties the shared train for everyone.");
 
         ImGui.Spacing();
         ImGui.Separator();
@@ -3160,6 +3193,7 @@ public sealed class Plugin : IDalamudPlugin
 
         _tallyIpc.KillPublished -= OnTallyKillPublished;
         _tracker.OnKill -= AnnounceTallyKill;
+        _tracker.OnMarkDeath -= OnAnyMarkDeath;
         _tracker.OnKill -= _tallyIpc.PublishCredited;
         _tracker.OnMarkDeath -= _tallyIpc.PublishMarkDeath;
         _tracker.Dispose();
@@ -3192,6 +3226,8 @@ public sealed class Plugin : IDalamudPlugin
         _spawnWatch.Dispose();
         _mapOverlay.Dispose();
         _ssEvent.Dispose();
+        _sync.RemoteTrainCleared -= OnRemoteTrainCleared;
+        _sync.Dispose();
 
         try
         {
@@ -3214,6 +3250,211 @@ public sealed class Plugin : IDalamudPlugin
         _commandManager.RemoveHandler(CounterCommand);
         _commandManager.RemoveHandler(NextAetheryteCommand);
         _commandManager.RemoveHandler(MapCommand);
+        _commandManager.RemoveHandler(SRankCommand);
         _commandManager.RemoveHandler(TallyCommand);
+    }
+
+    // ---------------------------------------------------------------------
+    // Sync
+    // ---------------------------------------------------------------------
+
+    private void OnSRankCommand(string command, string args) => _srankWindow.Toggle();
+
+    /// <summary>
+    /// Somebody else emptied the shared train. Everything that Reset does
+    /// locally happens here too, minus the posting, so this client does not
+    /// keep a pointer into a train that no longer exists.
+    /// </summary>
+    private void OnRemoteTrainCleared(string by)
+    {
+        _watcher.ResetNow();
+        _currentMark = null;
+        _config.Flags.Clear();
+        _config.Save();
+        ClearSavedTrain();
+        _chatGui.Print($"[Hunt Helper Evolved] {by} cleared the shared train.");
+    }
+
+    /// <summary>
+    /// A mark died where this client could see it. Its dot comes off the
+    /// group's maps; an S rank also starts the group's respawn clock.
+    /// </summary>
+    private void OnAnyMarkDeath(KillDetail kill)
+    {
+        try
+        {
+            _sync.ReportMarkDeath(
+                kill.Mark.NameId,
+                kill.InstanceId,
+                kill.TerritoryId,
+                kill.Time.ToUniversalTime(),
+                kill.Mark.Rank == MarkRank.S);
+        }
+        catch (Exception ex)
+        {
+            _log.Warning(ex, "Could not report a mark death to the sync server.");
+        }
+    }
+
+    private bool _showSyncPassword;
+
+    private void DrawSyncTab()
+    {
+        ImGui.Spacing();
+        ImGui.TextWrapped(
+            "Share the hunt with a group through a server one of you runs. Everyone with its URL " +
+            "and password sees the same train, each other's marks on the map, and the same S-rank " +
+            "clocks. Nothing goes anywhere else, and without the password the URL alone gets nobody in.");
+        ImGui.Spacing();
+
+        var enabled = _config.SyncEnabled;
+        if (ImGui.Checkbox("Enabled", ref enabled))
+        {
+            _config.SyncEnabled = enabled;
+            _config.Save();
+            _sync.ApplySettings();
+        }
+
+        ImGui.SetNextItemWidth(360);
+        var url = _config.SyncServerUrl;
+        if (ImGui.InputTextWithHint("Server URL", "wss://hunts.example.com/ws", ref url, 512))
+            _config.SyncServerUrl = url;
+        if (ImGui.IsItemDeactivatedAfterEdit())
+        {
+            _config.Save();
+            _sync.ApplySettings();
+        }
+
+        ImGui.SetNextItemWidth(360);
+        var password = _config.SyncPassword;
+        var passwordFlags = _showSyncPassword ? ImGuiInputTextFlags.None : ImGuiInputTextFlags.Password;
+        if (ImGui.InputText("Password", ref password, 256, passwordFlags))
+            _config.SyncPassword = password;
+        if (ImGui.IsItemDeactivatedAfterEdit())
+        {
+            _config.Save();
+            _sync.ApplySettings();
+        }
+        ImGui.SameLine();
+        ImGui.Checkbox("show", ref _showSyncPassword);
+
+        ImGui.SetNextItemWidth(360);
+        var name = _config.SyncDisplayName;
+        if (ImGui.InputTextWithHint("Display name", "your character's name", ref name, 40))
+            _config.SyncDisplayName = name;
+        if (ImGui.IsItemDeactivatedAfterEdit())
+            _config.Save();
+        ImGui.TextDisabled("What the others see you as, next to marks you report. Takes effect on the next connection.");
+
+        ImGui.Spacing();
+        if (_config.SyncEnabled && !_sync.IsConnected && !string.IsNullOrEmpty(_sync.LastError))
+            ImGui.TextColored(new Vector4(1f, 0.4f, 0.4f, 1f), _sync.Status);
+        else
+            ImGui.TextWrapped($"Status: {_sync.Status}");
+
+        if (_sync.IsConnected && !string.IsNullOrEmpty(_sync.LastError))
+            ImGui.TextColored(new Vector4(1f, 0.6f, 0.3f, 1f), $"Server said: {_sync.LastError}");
+
+        if (_sync.IsConnected)
+        {
+            ImGui.SameLine();
+            if (ImGui.SmallButton("Reconnect"))
+            {
+                _sync.Client.Stop();
+                _sync.ApplySettings();
+            }
+
+            ImGui.Spacing();
+            ImGui.TextWrapped("Online now:");
+            foreach (var client in _sync.Clients)
+            {
+                var where = client.TerritoryId != 0
+                    ? $" — {_detector.GetZoneName(client.TerritoryId)}{ExpansionData.InstanceGlyph(client.Instance)}"
+                    : string.Empty;
+                var world = client.WorldId != 0 ? $" [{_worldData.NameOf(client.WorldId)}]" : string.Empty;
+                ImGui.BulletText($"{client.Name}{world}{where}");
+            }
+
+            var faloop = _sync.Faloop;
+            if (faloop.Enabled)
+                ImGui.TextDisabled($"Faloop feed on the server: {(faloop.Connected ? "connected" : faloop.Status)}");
+        }
+
+        ImGui.Spacing();
+        if (ImGui.Button("Open the S-rank board"))
+            _srankWindow.Toggle();
+        ImGui.SameLine();
+        ImGui.TextDisabled("Windows, kill times and spawn points for every S rank. Also /htrs.");
+
+        ImGui.Spacing();
+        ImGui.Separator();
+        ImGui.Spacing();
+
+        if (ImGui.CollapsingHeader("What to share", ImGuiTreeNodeFlags.DefaultOpen))
+        {
+            var train = _config.SyncShareTrain;
+            if (ImGui.Checkbox("The train", ref train))
+            {
+                _config.SyncShareTrain = train;
+                _config.Save();
+                if (train) { _sync.Client.Stop(); _sync.ApplySettings(); }
+            }
+            ImGui.TextDisabled("Marks scouted, their order, what is dead, custom flags and spicing. Everyone edits one list. Reset and Clear All empty it for everyone.");
+
+            var sightings = _config.SyncShareSightings;
+            if (ImGui.Checkbox("What I can see", ref sightings))
+            {
+                _config.SyncShareSightings = sightings;
+                _config.Save();
+            }
+            ImGui.TextDisabled("Each mark's position and health while it is in your range, refreshed as it changes. Also what rules spawn points out for the S.");
+
+            var kills = _config.SyncReportSRankKills;
+            if (ImGui.Checkbox("S-rank kills I witness", ref kills))
+            {
+                _config.SyncReportSRankKills = kills;
+                _config.Save();
+            }
+            ImGui.TextDisabled("The exact moment an S dies in front of you starts the group's clock for it.");
+            if (_standaloneTallyPresent)
+                ImGui.TextDisabled("Deaths are watched by the built-in tally, which is standing down while the standalone Hunt Tally is installed — so nothing is reported.");
+        }
+
+        if (ImGui.CollapsingHeader("What to show", ImGuiTreeNodeFlags.DefaultOpen))
+        {
+            var remote = _config.SyncShowRemoteMarksOnMap;
+            if (ImGui.Checkbox("Marks other members can see, on my map", ref remote))
+            {
+                _config.SyncShowRemoteMarksOnMap = remote;
+                _config.Save();
+            }
+            ImGui.TextDisabled("Drawn like your own, with who saw it and how long ago in the tooltip. Kept for two minutes after they lose sight of it.");
+
+            var candidates = _config.ShowSRankCandidatesOnMap;
+            if (ImGui.Checkbox("Which spawn points the S can still use", ref candidates))
+            {
+                _config.ShowSRankCandidatesOnMap = candidates;
+                _config.Save();
+            }
+            ImGui.TextDisabled("An S cannot spawn where an A or B has spawned since it last died, nor twice running where it died. Points still possible are coloured; the rest are dimmed.");
+
+            const ImGuiColorEditFlags flags = ImGuiColorEditFlags.AlphaBar | ImGuiColorEditFlags.AlphaPreviewHalf;
+            var candidate = _config.SpawnDotColourSCandidate;
+            if (ImGui.ColorEdit4("Possible S spawn", ref candidate, flags))
+            {
+                _config.SpawnDotColourSCandidate = candidate;
+                _config.Save();
+            }
+
+            var ruledOut = _config.SpawnDotColourSRuledOut;
+            if (ImGui.ColorEdit4("Ruled out for the S", ref ruledOut, flags))
+            {
+                _config.SpawnDotColourSRuledOut = ruledOut;
+                _config.Save();
+            }
+        }
+
+        ImGui.Spacing();
+        ImGui.TextDisabled("Running the server: github.com/HuntHelperEvolved/HuntHelperEvolvedServer");
     }
 }
