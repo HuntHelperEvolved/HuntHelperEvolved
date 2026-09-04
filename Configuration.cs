@@ -290,6 +290,17 @@ public class Configuration : IPluginConfiguration
     public Vector4 SpawnDotColourS { get; set; } = new(0f, 0.827f, 0f, 1f);
 
     /// <summary>
+    /// Click a live mark on the map to drop the flag on it.
+    ///
+    /// The flag goes where the mark actually is, not where its dot is drawn. A
+    /// mark sitting on a spawn point is drawn on the point — that is how the
+    /// map says which point is taken — but it is only within the match radius
+    /// of it, up to a couple of map coordinates away. Flagging the dot would
+    /// send you to the point; this sends you to the mark.
+    /// </summary>
+    public bool ClickMarkerToFlag { get; set; } = true;
+
+    /// <summary>
     /// Write each live mark's name and remaining health on the map beside its
     /// dot, rather than leaving both in a tooltip you have to go and find.
     ///

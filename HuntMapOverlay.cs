@@ -276,7 +276,9 @@ public sealed unsafe class HuntMapOverlay : IDisposable
                 Size = new Vector2(_config.SpawnDotSize * 1.35f, _config.SpawnDotSize * 1.35f),
                 TextTooltip = $"{sighting.Name}  ({sighting.Rank} rank) — UP\n"
                               + $"{sighting.MapPosition.X:F1}, {sighting.MapPosition.Y:F1}\n"
-                              + "Not on a known spawn point.",
+                              + "Not on a known spawn point."
+                              + (_config.ClickMarkerToFlag ? "\nClick to flag it." : string.Empty),
+                OnClick = FlagOnClick(sighting.TerritoryId, mapId, sighting),
             });
             placed++;
 
@@ -324,6 +326,39 @@ public sealed unsafe class HuntMapOverlay : IDisposable
     /// Dancing Wings" — at the largest font size on offer.
     /// </summary>
     private const float LabelWidth = 320f;
+
+    /// <summary>
+    /// What clicking a live mark's dot should do: drop the flag on the mark.
+    ///
+    /// Deliberately the sighting's own position rather than the dot's. A mark
+    /// on a spawn point is DRAWN on the point, because that is how the map says
+    /// which point is taken, but it is only within the match radius of it — up
+    /// to a couple of map coordinates off. Flagging the dot would walk you to
+    /// the point; this walks you to the mark.
+    ///
+    /// Returns null when the feature is off, which leaves MapMarkerNode.OnClick
+    /// unset — KamiToolKit only shows the clickable cursor for markers that
+    /// have one, so the map stops offering something that would not happen.
+    /// </summary>
+    private Action? FlagOnClick(uint territory, uint mapId, OtherRankSighting sighting)
+    {
+        if (!_config.ClickMarkerToFlag) return null;
+
+        return () =>
+        {
+            try
+            {
+                MapFlagHelper.FlagPosition(
+                    _gameGui, territory, mapId, sighting.Instance,
+                    sighting.MapPosition.X, sighting.MapPosition.Y);
+            }
+            catch (Exception ex)
+            {
+                // A click must never take the overlay down with it.
+                _log.Warning(ex, $"Could not flag {sighting.Name} from the map.");
+            }
+        };
+    }
 
     /// <summary>
     /// The player's position on the map, or the last one known when they are
@@ -574,7 +609,8 @@ public sealed unsafe class HuntMapOverlay : IDisposable
         $"{_config.ShowSpawnPointsOnMap}{_config.ShowARankPoints}{_config.ShowBRankPoints}"
         + $"{_config.ShowSRankPoints}{_config.ShowPlayerCircleOnMap}"
         + $"{_config.ShowPlayerGuides}{_config.ShowPlayerFacingOnMap}{_config.ShowPlayerDirectionLine}{_config.ShowPlayerPositionDot}{_config.ShowSsEventOnMap}{_ssEvent.Pins.Count}{_ssEvent.Active}{_config.SpawnDotSize}{_config.PlayerCircleRadiusScale}{_config.PlayerDirectionLineThickness}{_config.PlayerPositionDotSize}"
-        + $"{_config.ShowMarkLabelsOnMap}{DotTextures.HexOf(_config.MarkLabelColour)}{DotTextures.HexOf(_config.MarkLabelOutlineColour)}{_config.MarkLabelFontSize}";
+        + $"{_config.ShowMarkLabelsOnMap}{DotTextures.HexOf(_config.MarkLabelColour)}{DotTextures.HexOf(_config.MarkLabelOutlineColour)}{_config.MarkLabelFontSize}"
+        + $"{_config.ClickMarkerToFlag}";
 
     /// <summary>
     /// The configured colours, as a string. Used both to name the files and to
@@ -948,6 +984,10 @@ public sealed unsafe class HuntMapOverlay : IDisposable
                 string dot;
                 string tooltip;
 
+                // Only a point with a mark on it is worth clicking; an empty
+                // one has nothing to flag but itself.
+                Action? onClick = null;
+
                 if (claimed.TryGetValue(pointIndex, out var mark))
                 {
                     dot = mark.Rank switch
@@ -956,8 +996,15 @@ public sealed unsafe class HuntMapOverlay : IDisposable
                         HuntRank.A => "a",
                         _ => "b",
                     };
-                    tooltip = $"{mark.Name}  ({mark.Rank} rank)\n{point.X:F1}, {point.Y:F1}";
+
+                    // The mark's own coordinates, not the point's — the dot is
+                    // drawn on the point, but the mark is only near it.
+                    tooltip = $"{mark.Name}  ({mark.Rank} rank)\n"
+                              + $"{mark.MapPosition.X:F1}, {mark.MapPosition.Y:F1}"
+                              + (_config.ClickMarkerToFlag ? "\nClick to flag it." : string.Empty);
                     occupied++;
+
+                    onClick = FlagOnClick(mark.TerritoryId, mapId, mark);
 
                     AddMarkLabel(mapId, new Vector2(point.X, point.Y), mark, _config.SpawnDotSize);
                 }
@@ -982,6 +1029,7 @@ public sealed unsafe class HuntMapOverlay : IDisposable
                     TexturePath = dots[dot],
                     Size = new Vector2(_config.SpawnDotSize, _config.SpawnDotSize),
                     TextTooltip = tooltip,
+                    OnClick = onClick,
                 });
                 placed++;
             }
