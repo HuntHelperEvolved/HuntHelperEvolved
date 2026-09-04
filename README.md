@@ -138,8 +138,10 @@ What sync does, each with its own switch:
   who saw it in the tooltip. Kept for two minutes after they lose sight of it.
 - **S-rank clocks.** When an S dies in front of any member, the plugin reports
   the exact moment and everyone's window opens on time. Kills can also be
-  entered by hand on the S-rank board, and the server can optionally listen
-  to Faloop's feed (experimental; see the server's README).
+  entered by hand on the S-rank board, and the server can read Faloop's
+  timers for your data centre every minute or two, so the board is full even
+  when nobody in the group was at the kill. A member's own report always
+  wins; when Faloop disagrees with it the board says so instead of picking.
 - **Spawn point elimination.** An S cannot spawn where an A or B has spawned
   since it last died, nor twice running on the spot it died on. Members'
   sightings rule points out as they scout; the map colours what is left,

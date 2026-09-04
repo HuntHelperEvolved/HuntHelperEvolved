@@ -93,7 +93,8 @@ public sealed class SRankWindow
         if (faloop.Enabled)
         {
             ImGui.SameLine();
-            ImGui.TextDisabled($"Faloop: {(faloop.Connected ? "connected" : faloop.Status)}");
+            ImGui.TextDisabled(FaloopFreshness(faloop));
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip(faloop.Status);
         }
 
         var worldId = DrawWorldPicker();
@@ -246,8 +247,9 @@ public sealed class SRankWindow
                 SRankPhase.Up => 0,
                 SRankPhase.Forced => 1,
                 SRankPhase.Window => 2,
-                SRankPhase.Cooldown => 3,
-                _ => 4,
+                SRankPhase.Uncertain => 3,
+                SRankPhase.Cooldown => 4,
+                _ => 5,
             })
             .ThenByDescending(r => r.Window.Percent)
             .ThenBy(r => r.Window.OpensAtUtc ?? DateTime.MaxValue)
@@ -328,6 +330,15 @@ public sealed class SRankWindow
                 break;
             }
 
+            case SRankPhase.Uncertain:
+            {
+                var opens = w.OpensAtUtc ?? now;
+                ImGui.TextColored(WindowColour, opens > now ? $"sniped; not before {Duration(opens - now)}" : "sniped; may be open");
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("Faloop recorded it killed without a report, so the kill time is only the earliest it could have been. The window can start any time after it.");
+                break;
+            }
+
             default:
                 ImGui.TextColored(UnknownColour, "no kill recorded");
                 break;
@@ -353,11 +364,24 @@ public sealed class SRankWindow
 
         var ago = Duration(DateTime.UtcNow - killed);
         var what = status.Maintenance ? "maintenance" : status.KillSource ?? "unknown";
-        ImGui.Text($"{ago} ago");
+
+        // Faloop and a member disagree by more than a few minutes: say so
+        // rather than let either quietly win.
+        var disagreement = status.FaloopKilledAt is { } faloopAt
+                           && status.KillSource is "observed" or "manual"
+                           && (faloopAt - killed).Duration() > TimeSpan.FromMinutes(5);
+
+        if (disagreement) ImGui.TextColored(ForcedColour, $"{ago} ago !");
+        else ImGui.Text($"{ago} ago{(status.Uncertain ? " ~" : string.Empty)}");
+
         if (ImGui.IsItemHovered())
         {
             var who = string.IsNullOrEmpty(status.KillReporter) ? string.Empty : $" by {status.KillReporter}";
-            ImGui.SetTooltip($"{Local(killed)} — {what}{who}");
+            var tip = $"{Local(killed)} — {what}{who}";
+            if (status.Uncertain) tip += "\nEarliest possible; it died unreported some time after this.";
+            if (disagreement && status.FaloopKilledAt is { } f)
+                tip += $"\nFaloop has {Local(f)} instead. The member's report is being used.";
+            ImGui.SetTooltip(tip);
         }
     }
 
@@ -431,6 +455,15 @@ public sealed class SRankWindow
     // -----------------------------------------------------------------------
     // Formatting
     // -----------------------------------------------------------------------
+
+    private static string FaloopFreshness(SyncFaloopStatus faloop)
+    {
+        if (!faloop.Connected) return "Faloop: not reachable";
+        if (faloop.LastSyncAt is not { } at) return "Faloop: waiting for the first read";
+        var age = DateTime.UtcNow - at;
+        var dcs = faloop.DataCenters.Count > 0 ? $" ({string.Join(", ", faloop.DataCenters)})" : string.Empty;
+        return age.TotalMinutes < 1 ? $"Faloop: read just now{dcs}" : $"Faloop: read {Duration(age)} ago{dcs}";
+    }
 
     private static string Local(DateTime utc)
     {
