@@ -3377,7 +3377,7 @@ public sealed class Plugin : IDalamudPlugin
 
             var faloop = _sync.Faloop;
             if (faloop.Enabled)
-                ImGui.TextDisabled($"Faloop feed on the server: {(faloop.Connected ? "connected" : faloop.Status)}");
+                ImGui.TextDisabled($"Faloop on the server: {faloop.Status}");
         }
 
         ImGui.Spacing();

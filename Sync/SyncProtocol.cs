@@ -117,6 +117,17 @@ public sealed class SyncSRankStatus
     public float? LastSeenHp { get; set; }
     public DateTime? SpawnedAt { get; set; }
 
+    /// <summary>
+    /// The kill is a bound, not an observation: Faloop recorded the mark as
+    /// sniped, so it died unreported some time after KilledAt. No honest
+    /// percentage exists for such a window.
+    /// </summary>
+    public bool Uncertain { get; set; }
+    public DateTime? KilledAtLatest { get; set; }
+
+    /// <summary>What Faloop holds, kept even when a member's own report won, so the board can show the disagreement.</summary>
+    public DateTime? FaloopKilledAt { get; set; }
+
     [JsonIgnore]
     public (uint NameId, uint Instance, uint WorldId) Key => (NameId, Instance, WorldId);
 }
@@ -180,6 +191,8 @@ public sealed class SyncFaloopStatus
     public bool Enabled { get; set; }
     public bool Connected { get; set; }
     public string Status { get; set; } = "Off.";
+    public DateTime? LastSyncAt { get; set; }
+    public List<string> DataCenters { get; set; } = new();
 }
 
 // ---------------------------------------------------------------------------

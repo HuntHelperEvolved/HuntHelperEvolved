@@ -42,6 +42,12 @@ public enum SRankPhase
 
     /// <summary>Somebody has seen it since the kill.</summary>
     Up,
+
+    /// <summary>
+    /// Died unreported (sniped, in Faloop's terms) some time after the kill
+    /// time on record, so the window is only bounded from below.
+    /// </summary>
+    Uncertain,
 }
 
 /// <summary>What the S-rank table shows for one mark on one world.</summary>
@@ -160,9 +166,14 @@ public static class SRankTimerData
         else percent = Math.Clamp((nowUtc - opens).TotalHours / (max - min) * 100.0, 0, 100);
 
         var phase = up ? SRankPhase.Up
+            : status.Uncertain ? SRankPhase.Uncertain
             : nowUtc < opens ? SRankPhase.Cooldown
             : nowUtc >= forced ? SRankPhase.Forced
             : SRankPhase.Window;
+
+        // A sniped mark died at or after the recorded time, so "opens" is
+        // the earliest the window can start and nothing bounds it above.
+        if (status.Uncertain) return new SRankCycle(phase, 0, opens, null, since);
 
         return new SRankCycle(phase, percent, opens, forced, since);
     }
