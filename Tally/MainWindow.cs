@@ -32,6 +32,22 @@ public sealed class MainWindow : Window, IDisposable
     private string filter = string.Empty;
     private string statusMessage = string.Empty;
 
+    /// <summary>
+    /// Which rank the marks list is narrowed to, as an index into
+    /// <see cref="RankFilterLabels"/>. Zero is every rank.
+    ///
+    /// A view filter rather than a setting, like the name box beside it — it
+    /// answers "what am I looking at right now", not "how should this plugin
+    /// behave", so it is not persisted.
+    /// </summary>
+    private int rankFilter;
+
+    private static readonly string[] RankFilterLabels = { "All ranks", "B", "A", "S", "SS" };
+
+    /// <summary>Index-aligned with <see cref="RankFilterLabels"/>; null is every rank.</summary>
+    private static readonly MarkRank?[] RankFilterValues =
+        { null, MarkRank.B, MarkRank.A, MarkRank.S, MarkRank.SS };
+
     // Derived views are rebuilt when the data revision, the scope or the filter
     // moves - not on every frame. The statistics tab in particular used to copy
     // the whole kill history and walk it five times per frame, which at the
@@ -44,6 +60,7 @@ public sealed class MainWindow : Window, IDisposable
     // Written as an escape on purpose: as a raw NUL byte it made the whole
     // file read as binary, and grep skips those silently.
     private string marksFilter = "\0";
+    private int marksRankFilter = -1;
 
     private StatsSnapshot? stats;
     private int statsRevision = -1;
@@ -248,6 +265,14 @@ public sealed class MainWindow : Window, IDisposable
     {
         ImGui.SetNextItemWidth(200);
         ImGui.InputTextWithHint("##filter", "Filter by name...", ref filter, 64);
+
+        // The list is already ordered by kills, so picking a rank here puts
+        // the most-killed mark of that rank at the top — which is the whole
+        // point of having it.
+        ImGui.SameLine();
+        ImGui.SetNextItemWidth(110);
+        ImGui.Combo("##rankfilter", ref rankFilter, RankFilterLabels, RankFilterLabels.Length);
+
         ImGui.SameLine();
         if (ImGui.Button("Export CSV"))
             ExportCsv();
@@ -309,17 +334,22 @@ public sealed class MainWindow : Window, IDisposable
         var scope = Scope;
         var scopeKey = ScopeKey(scope);
 
-        if (marksRevision == config.Revision && marksScopeKey == scopeKey && marksFilter == filter)
+        if (marksRevision == config.Revision && marksScopeKey == scopeKey
+            && marksFilter == filter && marksRankFilter == rankFilter)
             return;
 
         marksRevision = config.Revision;
         marksScopeKey = scopeKey;
         marksFilter = filter;
+        marksRankFilter = rankFilter;
 
         var source = scope is null ? config.AggregateRecords() : scope.Records.Values;
 
+        var rank = RankFilterValues[Math.Clamp(rankFilter, 0, RankFilterValues.Length - 1)];
+
         marksRows = source
             .Where(r => r.Count > 0)
+            .Where(r => rank is null || r.Rank == rank)
             .Where(r => filter.Length == 0 ||
                         r.Name.Contains(filter, StringComparison.OrdinalIgnoreCase))
             .OrderByDescending(r => r.Count)
