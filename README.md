@@ -39,6 +39,7 @@ why.
 | `/htrc` | the trigger-mob counter popout — also Narrow-rift's Wee Ea headcount in Ultima Thule and Nunyunuwi's no-FATE-failed clock in Southern Thanalan |
 | `/htra` | name the closest aetheryte to the next mark |
 | `/htrm` | show or hide the control bar above the map |
+| `/htrs` | the S-rank board — windows, kill times and spawn points, shared through sync |
 | `/hunttally` | the kill tally. `/hunttally config` for its settings |
 
 ## The map
@@ -111,6 +112,46 @@ actions rather than guessed from combat state, and A and S ranks are only
 counted once the game confirms it rewarded you.
 
 `/hunttally` opens it. Its settings live on the **Tally** tab of the main window.
+
+## Sharing with a group
+
+Everything above works alone. With a **sync server** it works together: one
+of you runs the server, everyone puts its URL and password into the **Sync**
+tab, and from then on you are hunting as one. The URL is a setting, not a
+constant, so a group shares with itself and nobody else — and having the URL
+is not enough, because the server has a password.
+
+The server is its own project:
+[HuntHelperEvolved/HuntHelperEvolvedServer](https://github.com/HuntHelperEvolved/HuntHelperEvolvedServer).
+It is one small container with one SQLite file and takes a few minutes to put
+up. Its README covers hosting it.
+
+What sync does, each with its own switch:
+
+- **One train.** Every mark any member scouts lands in one list, in one
+  order. Ticking a mark dead, dragging it, spicing it, adding a custom flag
+  or removing a row shows up for everyone within a second. Two scouts can
+  split an expansion and the conductor watches the whole thing assemble.
+  Reset and Clear All empty it for everyone, and say so.
+- **Live marks.** While a member can see a mark, everyone sees where it is
+  and how much health it has, on the in-game map, drawn like their own with
+  who saw it in the tooltip. Kept for two minutes after they lose sight of it.
+- **S-rank clocks.** When an S dies in front of any member, the plugin reports
+  the exact moment and everyone's window opens on time. Kills can also be
+  entered by hand on the S-rank board, and the server can optionally listen
+  to Faloop's feed (experimental; see the server's README).
+- **Spawn point elimination.** An S cannot spawn where an A or B has spawned
+  since it last died, nor twice running on the spot it died on. Members'
+  sightings rule points out as they scout; the map colours what is left,
+  and the board counts it.
+
+The **S-rank board** (`/htrs`) is the in-game version of what the trackers
+show: every timed S on a world, whether it is up, in cooldown, in its window
+(and how far through, as a percentage) or past its forced time, when the
+window opens and closes in your local time, who last saw it, and how many
+spawn points are still possible. ARR S ranks have their own timers; everything
+since Heavensward is 84 to 132 hours, or 50 to 80 after maintenance, which the
+board handles once someone records when the servers came back.
 
 ## Where this came from
 

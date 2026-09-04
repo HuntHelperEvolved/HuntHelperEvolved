@@ -486,6 +486,64 @@ public class Configuration : IPluginConfiguration
     /// </summary>
     public List<string> AdditionalScouts { get; set; } = new() { string.Empty };
 
+    // ------------------------------------------------------------------
+    // Sync — sharing with a group through their own server
+    // ------------------------------------------------------------------
+
+    /// <summary>
+    /// Connect to a sync server. Everything below it is inert until this is
+    /// on, and turning it off drops the connection at once.
+    /// </summary>
+    public bool SyncEnabled { get; set; } = false;
+
+    /// <summary>
+    /// The server's WebSocket URL, e.g. wss://hunts.example.com/ws. A
+    /// setting rather than a constant on purpose: each group of friends
+    /// runs its own server and shares with each other, not with the world.
+    /// </summary>
+    public string SyncServerUrl { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The server's password. Having the URL is not enough to join. Stored
+    /// as typed, alongside the webhook URLs, which are secrets of the same
+    /// weight.
+    /// </summary>
+    public string SyncPassword { get; set; } = string.Empty;
+
+    /// <summary>What the others see you as. Empty means your character's name.</summary>
+    public string SyncDisplayName { get; set; } = string.Empty;
+
+    /// <summary>Share the train: what has been scouted, in what order, and what is dead.</summary>
+    public bool SyncShareTrain { get; set; } = true;
+
+    /// <summary>Share what you can see: each mark's position and health while it is in range.</summary>
+    public bool SyncShareSightings { get; set; } = true;
+
+    /// <summary>Tell the server when an S rank dies in front of you.</summary>
+    public bool SyncReportSRankKills { get; set; } = true;
+
+    /// <summary>Draw marks other members can see on your map, with who saw them.</summary>
+    public bool SyncShowRemoteMarksOnMap { get; set; } = true;
+
+    /// <summary>
+    /// Colour the S-capable spawn points by whether the S can still spawn
+    /// there: an A or B seen on a point since the S last died rules it out,
+    /// and so does the point the S died on.
+    /// </summary>
+    public bool ShowSRankCandidatesOnMap { get; set; } = true;
+
+    /// <summary>A point the S may still spawn on. Gold, so it reads as the prize it is.</summary>
+    public Vector4 SpawnDotColourSCandidate { get; set; } = new(1f, 0.84f, 0.1f, 1f);
+
+    /// <summary>A point ruled out for the S. Dim, and translucent so the map shows through.</summary>
+    public Vector4 SpawnDotColourSRuledOut { get; set; } = new(0.35f, 0.35f, 0.35f, 0.45f);
+
+    /// <summary>Show the S-rank window at all, and remember whether it was open.</summary>
+    public bool SRankWindowOpen { get; set; } = false;
+
+    /// <summary>Which expansion the S-rank window is filtered to; -1 for all.</summary>
+    public int SRankWindowExpansion { get; set; } = -1;
+
     [NonSerialized]
     private IDalamudPluginInterface? _pluginInterface;
 

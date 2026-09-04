@@ -103,6 +103,14 @@ public class OtherRankSighting
     /// <summary>Zone name, resolved once at first sighting.</summary>
     public string ZoneName = string.Empty;
 
+    /// <summary>
+    /// Who saw it, when it came from the sync server rather than this
+    /// client's own scan. Empty for anything seen here.
+    /// </summary>
+    public string Reporter = string.Empty;
+
+    public bool IsRemote => Reporter.Length > 0;
+
     /// <summary>As DetectedMark.Key, and for the same reason.</summary>
     public (uint NameId, uint Instance, uint WorldId) Key => (NameId, Instance, WorldId);
 }
@@ -119,7 +127,11 @@ public sealed class MarkDetector
 
     // Synthetic ids for custom flags, counting down from the top so they can
     // never collide with a real BNpcName row id.
-    private uint _nextCustomId = uint.MaxValue;
+    //
+    // Started from a random spot near the top rather than the very top, so
+    // two clients sharing a train through the sync server do not both mint
+    // 4294967295 for their first flag and have the server treat them as one.
+    private uint _nextCustomId = uint.MaxValue - (uint)Random.Shared.Next(0, 8_000_000) * 16;
 
     private readonly Dictionary<(uint NameId, uint Instance, uint WorldId), OtherRankSighting> _otherRanks = new();
 
@@ -134,6 +146,12 @@ public sealed class MarkDetector
 
     /// <summary>Raised once when a mark is first picked up by scanning.</summary>
     public event Action<DetectedMark>? MarkDetected;
+
+    /// <summary>Raised when the train is emptied, by whoever did it.</summary>
+    public event System.Action? Cleared;
+
+    /// <summary>Raised at the end of every scan pass, once the sightings are current.</summary>
+    public event System.Action? Scanned;
 
     public IReadOnlyDictionary<(uint NameId, uint Instance, uint WorldId), DetectedMark> Marks => _marks;
 
@@ -150,6 +168,7 @@ public sealed class MarkDetector
         _marks.Clear();
         _otherRanks.Clear();
         _nextOrder = 0;
+        Cleared?.Invoke();
     }
 
     /// <summary>
@@ -286,6 +305,8 @@ public sealed class MarkDetector
 
             MarkDetected?.Invoke(_marks[key]);
         }
+
+        Scanned?.Invoke();
     }
 
     /// <summary>

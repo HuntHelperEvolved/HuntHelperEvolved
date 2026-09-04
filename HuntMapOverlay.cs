@@ -1,3 +1,4 @@
+using HuntHelperEvolved.Sync;
 using Dalamud.Game.Addon.Lifecycle;
 using Dalamud.Game.Addon.Lifecycle.AddonArgTypes;
 using Dalamud.Plugin.Services;
@@ -40,6 +41,10 @@ public sealed unsafe class HuntMapOverlay : IDisposable
     private readonly Configuration _config;
     private readonly MarkDetector _detector;
     private readonly SsEventWatcher _ssEvent;
+
+    // What other members can see, and what rules spawn points out. Null
+    // only in tests; the plugin always passes one.
+    private readonly SyncCoordinator? _sync;
 
     private readonly IDalamudPluginInterface _pluginInterface;
     private Dictionary<string, string>? _dotPaths;
@@ -84,7 +89,8 @@ public sealed unsafe class HuntMapOverlay : IDisposable
         Configuration config,
         MarkDetector detector,
         SsEventWatcher ssEvent,
-        IDalamudPluginInterface pluginInterface)
+        IDalamudPluginInterface pluginInterface,
+        SyncCoordinator? sync = null)
     {
         _framework = framework;
         _clientState = clientState;
@@ -96,6 +102,7 @@ public sealed unsafe class HuntMapOverlay : IDisposable
         _config = config;
         _detector = detector;
         _ssEvent = ssEvent;
+        _sync = sync;
         _pluginInterface = pluginInterface;
 
         try
@@ -274,7 +281,7 @@ public sealed unsafe class HuntMapOverlay : IDisposable
                 Position = world,
                 TexturePath = dots[dot],
                 Size = new Vector2(_config.SpawnDotSize * 1.35f, _config.SpawnDotSize * 1.35f),
-                TextTooltip = $"{sighting.Name}  ({sighting.Rank} rank) — UP\n"
+                TextTooltip = $"{sighting.Name}  ({sighting.Rank} rank) — UP{SeenBy(sighting)}\n"
                               + $"{sighting.MapPosition.X:F1}, {sighting.MapPosition.Y:F1}\n"
                               + "Not on a known spawn point.",
             });
@@ -298,6 +305,25 @@ public sealed unsafe class HuntMapOverlay : IDisposable
     /// are drawn larger than spawn points and their labels have to drop
     /// further to match.
     /// </param>
+    /// <summary>Who saw a mark and how long ago, for anything that came through sync.</summary>
+    private static string SeenBy(OtherRankSighting sighting) =>
+        sighting.IsRemote ? $" — seen by {sighting.Reporter} {FormatAge(sighting.LastSeenUtc)} ago" : string.Empty;
+
+    private static string ClaimantName(SyncEliminatedPoint claim) =>
+        OtherRankData.Lookup(claim.NameId)?.Name
+        ?? ExpansionData.Lookup(claim.NameId)?.Name
+        ?? $"{claim.Rank} rank";
+
+    private static string FormatAge(DateTime utc)
+    {
+        var age = DateTime.UtcNow - utc;
+        if (age < TimeSpan.Zero) age = TimeSpan.Zero;
+        if (age.TotalMinutes < 1) return $"{(int)age.TotalSeconds}s";
+        if (age.TotalHours < 1) return $"{(int)age.TotalMinutes}m";
+        if (age.TotalDays < 1) return $"{(int)age.TotalHours}h {age.Minutes}m";
+        return $"{(int)age.TotalDays}d {age.Hours}h";
+    }
+
     private void AddMarkLabel(uint mapId, Vector2 mapPosition, OtherRankSighting sighting, float dotSize)
     {
         if (_overlay == null || !_config.ShowMarkLabelsOnMap) return;
@@ -574,7 +600,8 @@ public sealed unsafe class HuntMapOverlay : IDisposable
         $"{_config.ShowSpawnPointsOnMap}{_config.ShowARankPoints}{_config.ShowBRankPoints}"
         + $"{_config.ShowSRankPoints}{_config.ShowPlayerCircleOnMap}"
         + $"{_config.ShowPlayerGuides}{_config.ShowPlayerFacingOnMap}{_config.ShowPlayerDirectionLine}{_config.ShowPlayerPositionDot}{_config.ShowSsEventOnMap}{_ssEvent.Pins.Count}{_ssEvent.Active}{_config.SpawnDotSize}{_config.PlayerCircleRadiusScale}{_config.PlayerDirectionLineThickness}{_config.PlayerPositionDotSize}"
-        + $"{_config.ShowMarkLabelsOnMap}{DotTextures.HexOf(_config.MarkLabelColour)}{DotTextures.HexOf(_config.MarkLabelOutlineColour)}{_config.MarkLabelFontSize}";
+        + $"{_config.ShowMarkLabelsOnMap}{DotTextures.HexOf(_config.MarkLabelColour)}{DotTextures.HexOf(_config.MarkLabelOutlineColour)}{_config.MarkLabelFontSize}"
+        + $"{_config.ShowSRankCandidatesOnMap}{_config.SyncShowRemoteMarksOnMap}";
 
     /// <summary>
     /// The configured colours, as a string. Used both to name the files and to
@@ -585,6 +612,8 @@ public sealed unsafe class HuntMapOverlay : IDisposable
         + DotTextures.HexOf(_config.SpawnDotColourB) + "-"
         + DotTextures.HexOf(_config.SpawnDotColourA) + "-"
         + DotTextures.HexOf(_config.SpawnDotColourS) + "-"
+        + DotTextures.HexOf(_config.SpawnDotColourSCandidate) + "-"
+        + DotTextures.HexOf(_config.SpawnDotColourSRuledOut) + "-"
         + DotTextures.HexOf(_config.SsMinionColour) + "-"
         + DotTextures.HexOf(_config.PlayerCircleColour) + "t"
         + ((int)_config.PlayerCircleThickness).ToString() + "-"
@@ -631,6 +660,13 @@ public sealed unsafe class HuntMapOverlay : IDisposable
                 Texture("a", "dot", _config.SpawnDotColourA,
                     c => DotTextures.Render(c)),
                 Texture("s", "dot", _config.SpawnDotColourS,
+                    c => DotTextures.Render(c)),
+
+                // S-rank elimination: a point the S may still use, and one
+                // it cannot. Only drawn with sync on; harmless otherwise.
+                Texture("scand", "dot", _config.SpawnDotColourSCandidate,
+                    c => DotTextures.Render(c)),
+                Texture("sout", "dot", _config.SpawnDotColourSRuledOut,
                     c => DotTextures.Render(c)),
                 Texture("ssminion", "dot", _config.SsMinionColour,
                     c => DotTextures.Render(c)),
@@ -802,6 +838,10 @@ public sealed unsafe class HuntMapOverlay : IDisposable
                 ? 0
                 : _detector.Marks.Values.Where(m => !m.Dead).Sum(m => (long)m.NameId);
             markSignature += _detector.OtherRanks.Values.Sum(o => (long)o.NameId);
+
+            // Anything from the group — a sighting elsewhere, a point ruled
+            // out, an S kill — counts as a change too.
+            markSignature += _sync?.RemoteVersion ?? 0;
             if (markSignature != _lastMarkSignature)
             {
                 _lastMarkSignature = markSignature;
@@ -887,6 +927,21 @@ public sealed unsafe class HuntMapOverlay : IDisposable
                             && o.WorldId == worldId)
                 .ToList();
 
+            // What other members can see, for this map. Our own sighting
+            // wins where both exist; a mark the train already has dead is
+            // not resurrected by somebody's two-minute-old report.
+            if (_sync is not null && _config.SyncShowRemoteMarksOnMap)
+            {
+                var localKeys = here.Select(o => o.Key).ToHashSet();
+                foreach (var remote in _sync.RemoteSightings.Values)
+                {
+                    if (remote.TerritoryId != territory || remote.Instance != instance
+                        || remote.WorldId != worldId) continue;
+                    if (localKeys.Contains(remote.Key) || deadNameIds.Contains(remote.NameId)) continue;
+                    here.Add(remote);
+                }
+            }
+
             var aMarks = here.Where(o => o.Rank == HuntRank.A && !deadNameIds.Contains(o.NameId)).ToList();
             var bSightings = here.Where(o => o.Rank == HuntRank.B).ToList();
             var sSightings = here.Where(o => o.Rank == HuntRank.S).ToList();
@@ -956,7 +1011,7 @@ public sealed unsafe class HuntMapOverlay : IDisposable
                         HuntRank.A => "a",
                         _ => "b",
                     };
-                    tooltip = $"{mark.Name}  ({mark.Rank} rank)\n{point.X:F1}, {point.Y:F1}";
+                    tooltip = $"{mark.Name}  ({mark.Rank} rank){SeenBy(mark)}\n{point.X:F1}, {point.Y:F1}";
                     occupied++;
 
                     AddMarkLabel(mapId, new Vector2(point.X, point.Y), mark, _config.SpawnDotSize);
@@ -970,6 +1025,30 @@ public sealed unsafe class HuntMapOverlay : IDisposable
                     if (point.Ranks.HasFlag(SpawnRanks.S)) canSpawn.Add("S");
                     var ranks = canSpawn.Count > 0 ? string.Join("/", canSpawn) : "?";
                     tooltip = $"Spawn point ({ranks})\n{point.X:F1}, {point.Y:F1}";
+
+                    // Where the zone's S can still spawn, from what the group
+                    // has seen: an A or B on a point since the S last died
+                    // rules it out, and so does the point it died on.
+                    if (point.Ranks.HasFlag(SpawnRanks.S) && _config.ShowSRankCandidatesOnMap
+                        && _sync?.ZoneFor(territory, worldId, instance) is { } zone
+                        && SRankTimerData.ForTerritory(territory) is { } sTimer)
+                    {
+                        if (zone.IsRuledOut(pointIndex))
+                        {
+                            dot = "sout";
+                            var reason = zone.LastSDeathIndex == pointIndex
+                                ? $"{sTimer.Name} died here last time"
+                                : zone.EliminatedBy(pointIndex) is { } by
+                                    ? $"{ClaimantName(by)} seen here {FormatAge(by.SeenAt)} ago"
+                                    : "ruled out";
+                            tooltip += $"\nRuled out for {sTimer.Name}: {reason}.";
+                        }
+                        else
+                        {
+                            dot = "scand";
+                            tooltip += $"\n{sTimer.Name} could spawn here.";
+                        }
+                    }
                 }
 
                 var world = MapCoordinates.ToWorld(_dataManager, mapId, point.X, point.Y);
