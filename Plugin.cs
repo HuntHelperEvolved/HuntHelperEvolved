@@ -2946,6 +2946,14 @@ public sealed class Plugin : IDalamudPlugin
                 }
                 ImGui.TextDisabled("Hover a dot on the map for what's there. A live mark that isn't on a known spawn point — an SS, for instance — is drawn slightly larger at its real position.");
 
+                var clickFlag = _config.ClickMarkerToFlag;
+                if (ImGui.Checkbox("Click a mark on the map to flag it", ref clickFlag))
+                {
+                    _config.ClickMarkerToFlag = clickFlag;
+                    _config.Save();
+                }
+                ImGui.TextDisabled("The flag lands where the mark actually is, which is not always where its dot is — a mark on a spawn point is drawn on the point but stands within the match radius of it.");
+
                 var ssEvent = _config.ShowSsEventOnMap;
                 if (ImGui.Checkbox("Mark SS event minion locations", ref ssEvent))
                 {

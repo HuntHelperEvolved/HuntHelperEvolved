@@ -52,6 +52,11 @@ grey / blue / red / green as a B, A or S rank turns up on one. A mark that
 isn't on a known spawn point — an SS, or one that spawned somewhere unlisted —
 is drawn slightly larger at its real position rather than being left off.
 
+**Click to flag.** Clicking a live mark on the map drops the flag on it, and
+on the mark itself rather than on the dot — a mark sitting on a spawn point is
+drawn on the point, but stands within the match radius of it. Turn it off and
+the clickable cursor stops appearing too.
+
 **Mark names.** Every mark that is actually up gets its name and remaining
 health written beside its dot, so a glance at the map says which are still
 untouched and which somebody is already pulling. The health keeps counting down
