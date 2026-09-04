@@ -889,7 +889,16 @@ public sealed unsafe class HuntMapOverlay : IDisposable
 
             var aMarks = here.Where(o => o.Rank == HuntRank.A && !deadNameIds.Contains(o.NameId)).ToList();
             var bSightings = here.Where(o => o.Rank == HuntRank.B).ToList();
-            var sSightings = here.Where(o => o.Rank == HuntRank.S).ToList();
+
+            // An SS event's minions and the mark they lead to are S ranks in the
+            // data, but neither spawns on a B/A/S spawn point: a minion stands
+            // where the event put it, and the mark appears on its own fixed
+            // spot. They are held out of the claiming below and drawn where they
+            // actually are.
+            var ssEventMobs = here.Where(o => SsEventWatcher.IsSsEventMob(o.NameId)).ToList();
+            var sSightings = here
+                .Where(o => o.Rank == HuntRank.S && !SsEventWatcher.IsSsEventMob(o.NameId))
+                .ToList();
 
             var radius = Math.Max(0.5f, _config.SpawnPointMatchRadius);
 
@@ -900,9 +909,17 @@ public sealed unsafe class HuntMapOverlay : IDisposable
             var claimed = new Dictionary<int, OtherRankSighting>();
 
             // Whatever fails to claim a point is not lost — it gets drawn where
-            // it really is instead. An SS is always in here, because its spawn
-            // spot is not one of the points.
-            var unclaimed = new List<OtherRankSighting>();
+            // it really is instead.
+            //
+            // The SS event's mobs are put here outright rather than being
+            // offered a point first. Assuming they could never claim one
+            // because their spots "are not spawn points" was the bug: true, and
+            // not the same thing as being far enough from all of them. Six of
+            // the 72 known minion spots sit inside the default 2.5 match
+            // radius of a real spawn point, Mare Lamentorum's SS mark spot is
+            // 2.45 from one, and a minion that has wandered can reach others —
+            // so they were being drawn on a dot they were merely near.
+            var unclaimed = new List<OtherRankSighting>(ssEventMobs);
 
             void Claim(List<OtherRankSighting> sightings)
             {
