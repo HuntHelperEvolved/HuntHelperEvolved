@@ -124,6 +124,9 @@ stops reporting a running total once it's complete. Credit is read from your own
 actions rather than guessed from combat state, and A and S ranks are only
 counted once the game confirms it rewarded you.
 
+The **Marks Slain** list filters by name and by B/A/S rank, and is ordered by
+kills — so picking a rank puts your most-killed mark of that rank at the top.
+
 `/hunttally` opens it. Its settings live on the **Tally** tab of the main window.
 
 ## Where this came from
