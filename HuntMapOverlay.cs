@@ -66,6 +66,11 @@ public sealed unsafe class HuntMapOverlay : IDisposable
     private bool _needsRefresh = true;
     private uint _lastTerritory;
 
+    // Instance and world are part of "which map am I looking at" just as much
+    // as the territory is, and neither changes the territory when it changes.
+    private uint _lastInstance;
+    private uint _lastWorldId;
+
     // A failure here repeats every frame, so log it once and stop rather than
     // filling /xllog with thousands of identical lines.
     private bool _faulted;
@@ -219,29 +224,27 @@ public sealed unsafe class HuntMapOverlay : IDisposable
     }
 
     /// <summary>
-    /// Draws live marks that are not sitting on any known spawn point, at
-    /// wherever they actually are.
+    /// Draws every mark that is up, at the position it is actually standing on.
     ///
-    /// This is how an SS shows up. An SS spawns on its own spot, one no S rank
-    /// uses, and those spots are not in the spawn point data — so there is no
-    /// dot at that location to light up, and until now a live SS simply did not
-    /// appear on the map at all. Rather than special-case the rank, anything
-    /// the claiming step could not place gets drawn where it is: the same gap
-    /// swallows a mark that spawned somewhere unlisted, or one whose nearest
-    /// point was already taken by a higher rank, and a live mark should never
-    /// be invisible.
+    /// No mark is snapped to a spawn point any more. A mark near a point is
+    /// only NEAR it — up to the old match radius away, a couple of map
+    /// coordinates — and drawing it on the point sent anyone following the map
+    /// to the wrong place. An SS event's mobs never spawn on one of those
+    /// points at all, so for them the dot could be somewhere they had no
+    /// business being.
     ///
-    /// Drawn a little larger than a spawn point, and after them, so it is clear
-    /// this is the mark itself rather than a point it happens to be near.
+    /// Drawn a little larger than a spawn point, and after them, so a mark
+    /// standing on top of its point still reads as the mark rather than
+    /// disappearing into the dot underneath.
     /// </summary>
-    private int DrawMarksOffSpawnPoints(
-        uint mapId, Dictionary<string, string> dots, IEnumerable<OtherRankSighting> unclaimed)
+    private int DrawLiveMarks(
+        uint mapId, Dictionary<string, string> dots, IEnumerable<OtherRankSighting> live)
     {
         if (_overlay == null) return 0;
 
         var placed = 0;
 
-        foreach (var sighting in unclaimed)
+        foreach (var sighting in live)
         {
             // Same filters the spawn points use, so turning a rank off turns
             // it off everywhere rather than only half of the map.
@@ -275,10 +278,7 @@ public sealed unsafe class HuntMapOverlay : IDisposable
                 TexturePath = dots[dot],
                 Size = new Vector2(_config.SpawnDotSize * 1.35f, _config.SpawnDotSize * 1.35f),
                 TextTooltip = $"{sighting.Name}  ({sighting.Rank} rank) — UP\n"
-                              + $"{sighting.MapPosition.X:F1}, {sighting.MapPosition.Y:F1}\n"
-                              + "Not on a known spawn point."
-                              + (_config.ClickMarkerToFlag ? "\nClick to flag it." : string.Empty),
-                OnClick = FlagOnClick(sighting.TerritoryId, mapId, sighting),
+                              + $"{sighting.MapPosition.X:F1}, {sighting.MapPosition.Y:F1}",
             });
             placed++;
 
@@ -328,34 +328,35 @@ public sealed unsafe class HuntMapOverlay : IDisposable
     private const float LabelWidth = 320f;
 
     /// <summary>
-    /// What clicking a live mark's dot should do: drop the flag on the mark.
+    /// What clicking a spawn point should do: drop the flag on the point.
     ///
-    /// Deliberately the sighting's own position rather than the dot's. A mark
-    /// on a spawn point is DRAWN on the point, because that is how the map says
-    /// which point is taken, but it is only within the match radius of it — up
-    /// to a couple of map coordinates off. Flagging the dot would walk you to
-    /// the point; this walks you to the mark.
+    /// Useful before anything has spawned, which is the point of it — a
+    /// conductor can send the group to a spot to go and look at it, rather than
+    /// reading coordinates out loud. It is the spot itself being flagged, so
+    /// this is the one place on the map where the flag is deliberately a fixed
+    /// location rather than a live one.
     ///
     /// Returns null when the feature is off, which leaves MapMarkerNode.OnClick
     /// unset — KamiToolKit only shows the clickable cursor for markers that
     /// have one, so the map stops offering something that would not happen.
     /// </summary>
-    private Action? FlagOnClick(uint territory, uint mapId, OtherRankSighting sighting)
+    private Action? FlagSpawnPointOnClick(uint territory, uint mapId, SpawnPoint point)
     {
-        if (!_config.ClickMarkerToFlag) return null;
+        if (!_config.ClickSpawnPointToFlag) return null;
 
         return () =>
         {
             try
             {
-                MapFlagHelper.FlagPosition(
-                    _gameGui, territory, mapId, sighting.Instance,
-                    sighting.MapPosition.X, sighting.MapPosition.Y);
+                // Instance 0: a spawn point is a place, not a sighting, so it
+                // carries no instance of its own. The flag lands in whichever
+                // instance the map is showing, which is the one being looked at.
+                MapFlagHelper.FlagPosition(_gameGui, territory, mapId, 0, point.X, point.Y);
             }
             catch (Exception ex)
             {
                 // A click must never take the overlay down with it.
-                _log.Warning(ex, $"Could not flag {sighting.Name} from the map.");
+                _log.Warning(ex, $"Could not flag the spawn point at {point.X:F1}, {point.Y:F1}.");
             }
         };
     }
@@ -610,7 +611,7 @@ public sealed unsafe class HuntMapOverlay : IDisposable
         + $"{_config.ShowSRankPoints}{_config.ShowPlayerCircleOnMap}"
         + $"{_config.ShowPlayerGuides}{_config.ShowPlayerFacingOnMap}{_config.ShowPlayerDirectionLine}{_config.ShowPlayerPositionDot}{_config.ShowSsEventOnMap}{_ssEvent.Pins.Count}{_ssEvent.Active}{_config.SpawnDotSize}{_config.PlayerCircleRadiusScale}{_config.PlayerDirectionLineThickness}{_config.PlayerPositionDotSize}"
         + $"{_config.ShowMarkLabelsOnMap}{DotTextures.HexOf(_config.MarkLabelColour)}{DotTextures.HexOf(_config.MarkLabelOutlineColour)}{_config.MarkLabelFontSize}"
-        + $"{_config.ClickMarkerToFlag}";
+        + $"{_config.ClickSpawnPointToFlag}";
 
     /// <summary>
     /// The configured colours, as a string. Used both to name the files and to
@@ -832,12 +833,41 @@ public sealed unsafe class HuntMapOverlay : IDisposable
                 return;
             }
 
+            // Changing instance is a different set of marks on the same map,
+            // and it does not change the territory — so without this, stepping
+            // between instances left whatever the last one had on screen.
+            // World is here for the same reason: a world visit is a different
+            // set of marks too.
+            var instance = MarkDetector.GetCurrentInstance();
+            var worldId = _detector.CurrentWorldId();
+
+            if (instance != _lastInstance || worldId != _lastWorldId)
+            {
+                _lastInstance = instance;
+                _lastWorldId = worldId;
+                _needsRefresh = true;
+            }
+
             // Re-place when the detected marks change, so a dot lights up as
             // soon as something is found there.
-            var markSignature = _detector.Marks.Count == 0
-                ? 0
-                : _detector.Marks.Values.Where(m => !m.Dead).Sum(m => (long)m.NameId);
-            markSignature += _detector.OtherRanks.Values.Sum(o => (long)o.NameId);
+            //
+            // Each mark contributes its whole identity rather than its name id.
+            // Summing name ids could not tell one mark in two instances from
+            // two marks, so a change that swapped one for the other left the
+            // total identical and the map unrefreshed. Summed rather than
+            // combined in sequence so the result does not depend on what order
+            // the dictionaries happen to enumerate in.
+            long markSignature = 0;
+
+            foreach (var mark in _detector.Marks.Values)
+            {
+                if (mark.Dead) continue;
+                markSignature += HashCode.Combine(mark.NameId, mark.Instance, mark.WorldId);
+            }
+
+            foreach (var sighting in _detector.OtherRanks.Values)
+                markSignature += HashCode.Combine(sighting.NameId, sighting.Instance, sighting.WorldId);
+
             if (markSignature != _lastMarkSignature)
             {
                 _lastMarkSignature = markSignature;
@@ -905,70 +935,48 @@ public sealed unsafe class HuntMapOverlay : IDisposable
             // A-ranks come from sightings rather than the train, so they still
             // show with recording paused. Anything already killed in the train
             // is excluded so a dead mark doesn't stay lit.
-            var deadNameIds = _detector.Marks.Values
+            //
+            // Keyed on the whole identity, not the name id. The same mark is up
+            // in every instance and on every world at once, and they are
+            // different marks: killing one in instance 1 was blanking the live
+            // one in instance 2, and the one on the next world over, because
+            // all three share a name id. DetectedMark.Key exists to stop
+            // exactly this, and this was reaching past it.
+            var deadKeys = _detector.Marks.Values
                 .Where(m => m.Dead)
-                .Select(m => m.NameId)
+                .Select(m => m.Key)
                 .ToHashSet();
 
-            // Instance matters: Heritage Found 1 and 2 are different worlds as
-            // far as marks are concerned, so sightings from one must not show
-            // on the other's map.
-            var instance = MarkDetector.GetCurrentInstance();
-
-            // The same mark is up on every world; only this one is on this map.
-            var worldId = _detector.CurrentWorldId();
-
+            // instance and worldId are read further up, where a change in
+            // either is what asks for this rebuild in the first place. Instance
+            // matters because Heritage Found 1 and 2 are different worlds as
+            // far as marks are concerned, and the same mark is up on every
+            // world at once — only this one is on this map.
             var here = _detector.OtherRanks.Values
                 .Where(o => o.TerritoryId == territory && o.Instance == instance
                             && o.WorldId == worldId)
                 .ToList();
 
-            var aMarks = here.Where(o => o.Rank == HuntRank.A && !deadNameIds.Contains(o.NameId)).ToList();
-            var bSightings = here.Where(o => o.Rank == HuntRank.B).ToList();
-            var sSightings = here.Where(o => o.Rank == HuntRank.S).ToList();
-
-            var radius = Math.Max(0.5f, _config.SpawnPointMatchRadius);
-
-            // Claim points per MARK rather than per point. Checking each point
-            // for "is any mark near me" lit up every point within the radius —
-            // Chernobog filled four dots at once. Each mark now takes only its
-            // single closest point.
-            var claimed = new Dictionary<int, OtherRankSighting>();
-
-            // Whatever fails to claim a point is not lost — it gets drawn where
-            // it really is instead. An SS is always in here, because its spawn
-            // spot is not one of the points.
-            var unclaimed = new List<OtherRankSighting>();
-
-            void Claim(List<OtherRankSighting> sightings)
-            {
-                foreach (var sighting in sightings)
-                {
-                    var bestIndex = -1;
-                    var bestDistance = float.MaxValue;
-
-                    for (var i = 0; i < points.Length; i++)
-                    {
-                        var d = Vector2.Distance(new Vector2(points[i].X, points[i].Y), sighting.MapPosition);
-                        if (d > radius || d >= bestDistance) continue;
-                        bestDistance = d;
-                        bestIndex = i;
-                    }
-
-                    // Higher ranks claim first, so don't overwrite them.
-                    if (bestIndex >= 0 && !claimed.ContainsKey(bestIndex))
-                        claimed[bestIndex] = sighting;
-                    else
-                        unclaimed.Add(sighting);
-                }
-            }
-
-            Claim(sSightings);
-            Claim(aMarks);
-            Claim(bSightings);
+            // Every mark that is up, drawn below at the position it is actually
+            // standing on.
+            //
+            // Marks used to be snapped to the nearest spawn point within a match
+            // radius, and the point lit up in their colour. It read well — the
+            // map said which point was taken — but it was not true: the mark is
+            // only WITHIN the radius of that point, up to a couple of map
+            // coordinates from where the dot sat. Walking to the dot was walking
+            // to the wrong place, and for an SS event's mobs, which never spawn
+            // on a B/A/S point at all, it could be a point they had no business
+            // being drawn on.
+            //
+            // So nothing is snapped now. Spawn points stay spawn points, marks
+            // are drawn where they are, and the two are separate things on the
+            // map rather than one borrowing the other's position.
+            var live = here
+                .Where(o => o.Rank != HuntRank.A || !deadKeys.Contains(o.Key))
+                .ToList();
 
             var placed = 0;
-            var occupied = 0;
 
             for (var pointIndex = 0; pointIndex < points.Length; pointIndex++)
             {
@@ -981,43 +989,11 @@ public sealed unsafe class HuntMapOverlay : IDisposable
                 if (_config.ShowSRankPoints) wanted |= SpawnRanks.S;
                 if ((point.Ranks & wanted) == SpawnRanks.None) continue;
 
-                string dot;
-                string tooltip;
-
-                // Only a point with a mark on it is worth clicking; an empty
-                // one has nothing to flag but itself.
-                Action? onClick = null;
-
-                if (claimed.TryGetValue(pointIndex, out var mark))
-                {
-                    dot = mark.Rank switch
-                    {
-                        HuntRank.S => "s",
-                        HuntRank.A => "a",
-                        _ => "b",
-                    };
-
-                    // The mark's own coordinates, not the point's — the dot is
-                    // drawn on the point, but the mark is only near it.
-                    tooltip = $"{mark.Name}  ({mark.Rank} rank)\n"
-                              + $"{mark.MapPosition.X:F1}, {mark.MapPosition.Y:F1}"
-                              + (_config.ClickMarkerToFlag ? "\nClick to flag it." : string.Empty);
-                    occupied++;
-
-                    onClick = FlagOnClick(mark.TerritoryId, mapId, mark);
-
-                    AddMarkLabel(mapId, new Vector2(point.X, point.Y), mark, _config.SpawnDotSize);
-                }
-                else
-                {
-                    dot = "empty";
-                    var canSpawn = new List<string>();
-                    if (point.Ranks.HasFlag(SpawnRanks.B)) canSpawn.Add("B");
-                    if (point.Ranks.HasFlag(SpawnRanks.A)) canSpawn.Add("A");
-                    if (point.Ranks.HasFlag(SpawnRanks.S)) canSpawn.Add("S");
-                    var ranks = canSpawn.Count > 0 ? string.Join("/", canSpawn) : "?";
-                    tooltip = $"Spawn point ({ranks})\n{point.X:F1}, {point.Y:F1}";
-                }
+                var canSpawn = new List<string>();
+                if (point.Ranks.HasFlag(SpawnRanks.B)) canSpawn.Add("B");
+                if (point.Ranks.HasFlag(SpawnRanks.A)) canSpawn.Add("A");
+                if (point.Ranks.HasFlag(SpawnRanks.S)) canSpawn.Add("S");
+                var ranks = canSpawn.Count > 0 ? string.Join("/", canSpawn) : "?";
 
                 var world = MapCoordinates.ToWorld(_dataManager, mapId, point.X, point.Y);
 
@@ -1026,20 +1002,21 @@ public sealed unsafe class HuntMapOverlay : IDisposable
                     AllowAnyMap = false,
                     MapId = mapId,
                     Position = world,
-                    TexturePath = dots[dot],
+                    TexturePath = dots["empty"],
                     Size = new Vector2(_config.SpawnDotSize, _config.SpawnDotSize),
-                    TextTooltip = tooltip,
-                    OnClick = onClick,
+                    TextTooltip = $"Spawn point ({ranks})\n{point.X:F1}, {point.Y:F1}"
+                                  + (_config.ClickSpawnPointToFlag ? "\nClick to flag it." : string.Empty),
+                    OnClick = FlagSpawnPointOnClick(territory, mapId, point),
                 });
                 placed++;
             }
 
             var pins = DrawSsEventPins(territory, mapId, dots);
-            var offPoint = DrawMarksOffSpawnPoints(mapId, dots, unclaimed);
+            var marks = DrawLiveMarks(mapId, dots, live);
 
-            Status = $"{placed} spawn points shown, {occupied} with a mark on them."
+            Status = $"{placed} spawn points shown."
                      + (pins > 0 ? $" {pins} SS event." : string.Empty)
-                     + (offPoint > 0 ? $" {offPoint} off-point." : string.Empty)
+                     + (marks > 0 ? $" {marks} marks up." : string.Empty)
                      + (guides > 0 ? $" {guides} guide markers." : string.Empty);
         }
         catch (Exception ex)
