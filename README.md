@@ -6,7 +6,7 @@ order marks actually died, draws spawn points, your detection range and SS
 event locations on the **in-game map**, counts S-rank trigger mobs, and keeps a
 lifetime per-mark kill tally for every character you play.
 
-> **v0.2 — a testing build.** It is not finished, and it is published as a
+> **v0.3 — a testing build.** It is not finished, and it is published as a
 > testing-only release on purpose: you will not see it in the plugin installer
 > unless you have opted into testing builds. Expect rough edges and expect to
 > report them.
@@ -50,6 +50,14 @@ when Hunt Helper is absent — if you still have it installed, it keeps them.
 `/hh1`, `/hh2`, `/hh1save`, `/hh2save` and `/hhr` are left alone: they save and
 apply Hunt Helper's map-window presets and open its spawn point recorder, and
 there is nothing here that does either.
+
+## What's new
+
+The plugin keeps its own release notes and puts them up once after an update,
+so you can see what changed and what's worth testing. Only after an update —
+never on a fresh install, and never on an ordinary login. **Settings → About →
+What's new** reopens them, and the checkbox on that window turns the automatic
+one off.
 
 ## The map
 

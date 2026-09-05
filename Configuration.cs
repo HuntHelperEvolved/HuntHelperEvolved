@@ -156,6 +156,23 @@ public class Configuration : IPluginConfiguration
     /// </summary>
     public bool ScanningPaused { get; set; } = false;
 
+    /// <summary>
+    /// The last version whose notes were shown. Compared against the running
+    /// build to decide whether What's new is worth opening on its own.
+    ///
+    /// Empty on a fresh install, which counts as "not seen" and shows the notes
+    /// once — a reasonable introduction to a plugin you have just added.
+    /// </summary>
+    public string LastSeenReleaseVersion { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Open What's new by itself the first time a new version runs. On because
+    /// this is a testing build and knowing what changed is the difference
+    /// between testing it and stumbling into it; the tab is always there under
+    /// /htr whether or not this is set.
+    /// </summary>
+    public bool ShowReleaseNotesOnUpdate { get; set; } = true;
+
     /// <summary>Echo a mark to chat when its row is clicked in the train list.</summary>
     public bool EchoOnMarkClick { get; set; } = true;
 
