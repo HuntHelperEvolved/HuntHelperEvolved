@@ -127,6 +127,17 @@ public class Configuration : IPluginConfiguration
     public bool AutoMarkDeadEnabled { get; set; } = true;
 
     /// <summary>
+    /// Mark a train row dead when the battle log says the mark died, whoever
+    /// killed it.
+    ///
+    /// AutoMarkDeadEnabled above only covers kills YOU were credited with,
+    /// because that is all the tally can see. A mark the group brought down
+    /// while you were running in, or that another train took, stayed lit as
+    /// though it were still up — and the train report is built from this list.
+    /// </summary>
+    public bool MarkDeadOnObservedDefeat { get; set; } = true;
+
+    /// <summary>
     /// Print a local chat reminder on entering Lakeland (Tyger), Ultima Thule
     /// (Narrow-rift) or Elpis (Ophioneus).
     /// </summary>

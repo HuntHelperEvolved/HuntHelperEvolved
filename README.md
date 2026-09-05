@@ -99,6 +99,11 @@ looks "finished" the moment you leave the first leg.
 Marks are recorded per world, so the same mark on Mateus and on Goblin are two
 marks and can't overwrite each other.
 
+A mark is ticked off when the battle log says it died, whoever killed it — not
+only when you were credited with the kill. One the group brought down while you
+were still running in used to stay lit as though it were up, and the report is
+built from this list.
+
 The **Scout** tab posts a report with a Hunt Helper import code and a per-
 expansion count of what's up, including what was found already dead.
 
