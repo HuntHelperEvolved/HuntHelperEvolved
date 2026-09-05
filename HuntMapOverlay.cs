@@ -157,6 +157,19 @@ public sealed unsafe class HuntMapOverlay : IDisposable
     /// </summary>
     private const float ProjectedPathLength = 4096f;
 
+    /// <summary>
+    /// How the three things sharing a spot are sized, relative to SpawnDotSize.
+    ///
+    /// The order matters more than the numbers: a spawn point is the smallest,
+    /// an SS minion spot is a little larger because it is a remembered place
+    /// rather than a listed one, and a LIVE mark is larger than both so that it
+    /// draws over whatever it is standing on and still shows. A live minion and
+    /// its spot share a position and a colour, so if the spot were the bigger
+    /// of the two the minion would simply disappear into it.
+    /// </summary>
+    private const float SsSpotScale = 1.15f;
+    private const float LiveMarkScale = 1.35f;
+
 
     /// <summary>
     /// Marks where an SS event's minions were found.
@@ -197,7 +210,9 @@ public sealed unsafe class HuntMapOverlay : IDisposable
                 Size = new Vector2(_config.SpawnDotSize * 2.2f, _config.SpawnDotSize * 2.2f),
                 TextTooltip = "SS event — the mark spawns here\n"
                               + $"{markSpawn.X:F1}, {markSpawn.Y:F1}\n"
-                              + "Once all four minions are down.",
+                              + "Once all four minions are down."
+                              + ClickHint,
+                OnClick = FlagPlaceOnClick(territory, mapId, markSpawn.X, markSpawn.Y),
             });
             placed++;
         }
@@ -212,10 +227,19 @@ public sealed unsafe class HuntMapOverlay : IDisposable
                 MapId = mapId,
                 Position = world,
                 TexturePath = dots["ssminion"],
-                Size = new Vector2(_config.SpawnDotSize * 1.5f, _config.SpawnDotSize * 1.5f),
+
+                // Smaller than a live mark, on purpose. A minion standing on
+                // its own spot is drawn at the same coordinates in the same
+                // colour, so when the spot was the bigger of the two the live
+                // one vanished inside it and there was no way to tell a minion
+                // that was up from one that had never spawned. The spot is the
+                // place; the mark sits over it and overlaps its edges.
+                Size = new Vector2(_config.SpawnDotSize * SsSpotScale, _config.SpawnDotSize * SsSpotScale),
                 TextTooltip = $"SS event — {label}\n"
                               + $"{position.X:F1}, {position.Y:F1}\n"
-                              + "Stays until the mark spawns or you leave the zone.",
+                              + "Stays until the mark spawns or you leave the zone."
+                              + ClickHint,
+                OnClick = FlagPlaceOnClick(territory, mapId, position.X, position.Y),
             });
             placed++;
         }
@@ -277,13 +301,13 @@ public sealed unsafe class HuntMapOverlay : IDisposable
                 MapId = mapId,
                 Position = world,
                 TexturePath = dots[dot],
-                Size = new Vector2(_config.SpawnDotSize * 1.35f, _config.SpawnDotSize * 1.35f),
+                Size = new Vector2(_config.SpawnDotSize * LiveMarkScale, _config.SpawnDotSize * LiveMarkScale),
                 TextTooltip = $"{sighting.Name}  ({sighting.Rank} rank) — UP\n"
                               + $"{sighting.MapPosition.X:F1}, {sighting.MapPosition.Y:F1}",
             });
             placed++;
 
-            AddMarkLabel(mapId, sighting.MapPosition, sighting, _config.SpawnDotSize * 1.35f);
+            AddMarkLabel(mapId, sighting.MapPosition, sighting, _config.SpawnDotSize * LiveMarkScale);
         }
 
         return placed;
@@ -341,7 +365,7 @@ public sealed unsafe class HuntMapOverlay : IDisposable
     /// unset — KamiToolKit only shows the clickable cursor for markers that
     /// have one, so the map stops offering something that would not happen.
     /// </summary>
-    private Action? FlagSpawnPointOnClick(uint territory, uint mapId, SpawnPoint point)
+    private Action? FlagPlaceOnClick(uint territory, uint mapId, float mapX, float mapY)
     {
         if (!_config.ClickSpawnPointToFlag) return null;
 
@@ -349,18 +373,21 @@ public sealed unsafe class HuntMapOverlay : IDisposable
         {
             try
             {
-                // Instance 0: a spawn point is a place, not a sighting, so it
-                // carries no instance of its own. The flag lands in whichever
-                // instance the map is showing, which is the one being looked at.
-                MapFlagHelper.FlagPosition(_gameGui, territory, mapId, 0, point.X, point.Y);
+                // Instance 0: a place is not a sighting, so it carries no
+                // instance of its own. The flag lands in whichever instance the
+                // map is showing, which is the one being looked at.
+                MapFlagHelper.FlagPosition(_gameGui, territory, mapId, 0, mapX, mapY);
             }
             catch (Exception ex)
             {
                 // A click must never take the overlay down with it.
-                _log.Warning(ex, $"Could not flag the spawn point at {point.X:F1}, {point.Y:F1}.");
+                _log.Warning(ex, $"Could not flag the spot at {mapX:F1}, {mapY:F1}.");
             }
         };
     }
+
+    /// <summary>The "click to flag it" line, when clicking would in fact do that.</summary>
+    private string ClickHint => _config.ClickSpawnPointToFlag ? "\nClick to flag it." : string.Empty;
 
     /// <summary>
     /// The player's position on the map, or the last one known when they are
@@ -1000,8 +1027,8 @@ public sealed unsafe class HuntMapOverlay : IDisposable
                     TexturePath = dots["empty"],
                     Size = new Vector2(_config.SpawnDotSize, _config.SpawnDotSize),
                     TextTooltip = $"Spawn point ({ranks})\n{point.X:F1}, {point.Y:F1}"
-                                  + (_config.ClickSpawnPointToFlag ? "\nClick to flag it." : string.Empty),
-                    OnClick = FlagSpawnPointOnClick(territory, mapId, point),
+                                  + ClickHint,
+                    OnClick = FlagPlaceOnClick(territory, mapId, point.X, point.Y),
                 });
                 placed++;
             }
