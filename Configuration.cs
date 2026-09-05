@@ -290,15 +290,14 @@ public class Configuration : IPluginConfiguration
     public Vector4 SpawnDotColourS { get; set; } = new(0f, 0.827f, 0f, 1f);
 
     /// <summary>
-    /// Click a live mark on the map to drop the flag on it.
+    /// Click a spawn point on the map to drop the flag on it.
     ///
-    /// The flag goes where the mark actually is, not where its dot is drawn. A
-    /// mark sitting on a spawn point is drawn on the point — that is how the
-    /// map says which point is taken — but it is only within the match radius
-    /// of it, up to a couple of map coordinates away. Flagging the dot would
-    /// send you to the point; this sends you to the mark.
+    /// For pointing people at a spot before anything is on it — "go and look
+    /// here" — which is why it is the points that are clickable rather than the
+    /// marks. A mark that is up is already visible on the map and can be
+    /// flagged from the train list.
     /// </summary>
-    public bool ClickMarkerToFlag { get; set; } = true;
+    public bool ClickSpawnPointToFlag { get; set; } = true;
 
     /// <summary>
     /// Write each live mark's name and remaining health on the map beside its
@@ -438,8 +437,6 @@ public class Configuration : IPluginConfiguration
     public bool AnyMapOverlayEnabled =>
         ShowSpawnPointsOnMap || ShowSsEventOnMap || AnyPlayerGuideEnabled;
 
-    /// <summary>How close (in map units) a mark must be to count as "at" a spawn point.</summary>
-    public float SpawnPointMatchRadius { get; set; } = 2.5f;
 
     /// <summary>
     /// Count only kills you personally landed ("You defeat the X") rather than

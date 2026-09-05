@@ -50,6 +50,19 @@ public sealed class SsEventWatcher : IDisposable
     /// <summary>Whether a mark id is one of the SS minions.</summary>
     public static bool IsMinion(uint nameId) => MinionToMark.ContainsKey(nameId);
 
+    /// <summary>Whether a mark id is the SS mark itself, the one the minions herald.</summary>
+    public static bool IsSsMark(uint nameId) => MinionToMark.ContainsValue(nameId);
+
+    /// <summary>
+    /// Either half of an SS event: a minion, or the mark it leads to.
+    ///
+    /// Both are S ranks in OtherRankData, and neither spawns on a B/A/S spawn
+    /// point — a minion stands where the event put it, and the mark appears on
+    /// its own fixed spot. Anything asking "should this be snapped to a spawn
+    /// point" wants this rather than the rank.
+    /// </summary>
+    public static bool IsSsEventMob(uint nameId) => IsMinion(nameId) || IsSsMark(nameId);
+
     /// <summary>
     /// Matched against the announcement. A fragment rather than the whole line,
     /// so trailing punctuation and any surrounding decoration do not matter.

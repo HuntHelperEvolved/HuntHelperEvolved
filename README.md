@@ -47,15 +47,16 @@ Everything here draws on the game's own map, not in a separate window, and only
 in zones marks actually occur in. A two-row control bar sits above the map and
 appears and disappears with it.
 
-**Spawn points.** Every known spawn point in the zone, filtered by rank, going
-grey / blue / red / green as a B, A or S rank turns up on one. A mark that
-isn't on a known spawn point — an SS, or one that spawned somewhere unlisted —
-is drawn slightly larger at its real position rather than being left off.
+**Spawn points.** Every known spawn point in the zone, filtered by rank.
 
-**Click to flag.** Clicking a live mark on the map drops the flag on it, and
-on the mark itself rather than on the dot — a mark sitting on a spawn point is
-drawn on the point, but stands within the match radius of it. Turn it off and
-the clickable cursor stops appearing too.
+**Marks.** Every mark that's up, drawn slightly larger than a spawn point and
+at the position it is actually standing on — not snapped to the nearest spawn
+point. A mark near a point is only *near* it, and an SS event's mobs don't
+spawn on those points at all.
+
+**Click to flag.** Clicking a spawn point drops the flag on it, for sending
+people to a spot before anything has spawned there. Turn it off and the
+clickable cursor stops appearing too.
 
 **Mark names.** Every mark that is actually up gets its name and remaining
 health written beside its dot, so a glance at the map says which are still
