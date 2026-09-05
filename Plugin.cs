@@ -31,6 +31,29 @@ public sealed class Plugin : IDalamudPlugin
     private const string MapCommand = "/htrm";
 
     /// <summary>
+    /// Hunt Helper's own commands, taken over only when Hunt Helper itself is
+    /// not installed, so this plugin is a drop-in for someone who has replaced
+    /// it and still has the muscle memory.
+    ///
+    /// Its /hh1, /hh2, /hh1save and /hh2save save and apply map-window presets,
+    /// and /hhr opens a spawn point recorder. There is nothing here that does
+    /// either, so those are left unclaimed rather than answered with an
+    /// apology — typing one gets the game's ordinary unknown-command reply, and
+    /// the names stay free if those features ever arrive.
+    /// </summary>
+    private static readonly (string Command, string Help)[] HuntHelperAliases =
+    {
+        ("/hh", "Open the main window. Hunt Helper's own command, taken over because it isn't installed."),
+        ("/hht", "Open the train list popout. Hunt Helper's /hht."),
+        ("/hhn", "Move to the next live mark in the train and flag it. Hunt Helper's /hhn."),
+        ("/hhna", "Name the closest aetheryte to the next mark. Hunt Helper's /hhna."),
+        ("/hhc", "Open the trigger-mob counter popout. Hunt Helper's /hhc."),
+    };
+
+    /// <summary>Which aliases were actually claimed, so Dispose gives back exactly those.</summary>
+    private readonly List<string> _claimedAliases = new();
+
+    /// <summary>
     /// The tally's original command, kept verbatim. It was a separate plugin
     /// until this release and people have it in macros and muscle memory, so
     /// merging must not be the thing that breaks it.
@@ -336,6 +359,8 @@ public sealed class Plugin : IDalamudPlugin
         {
             HelpMessage = "Open the map dot filters.",
         });
+
+        RegisterHuntHelperAliases();
 
         _commandManager.AddHandler(TallyCommand, new CommandInfo(OnTallyCommand)
         {
@@ -654,9 +679,16 @@ public sealed class Plugin : IDalamudPlugin
             _notifier.Speak("A-Rank Nearby");
     }
 
-    private void OnCommand(string command, string args) => _configWindowVisible = true;
+    // A command that names a window toggles it. Typing it again to put the
+    // window away is what everyone expects, it is what /htrm and /hunttally
+    // already did, and it is what Hunt Helper's own commands do — so the /hh
+    // aliases would otherwise have been a one-way door.
+    //
+    // OnOpenConfigUi below is deliberately not one of these: that is Dalamud's
+    // own settings button, which has to mean open.
+    private void OnCommand(string command, string args) => _configWindowVisible = !_configWindowVisible;
 
-    private void OnTrainCommand(string command, string args) => _trainPopoutVisible = true;
+    private void OnTrainCommand(string command, string args) => _trainPopoutVisible = !_trainPopoutVisible;
 
     private void OnSightingDetected(OtherRankSighting sighting) => _notifier.Announce(sighting);
 
@@ -669,7 +701,7 @@ public sealed class Plugin : IDalamudPlugin
         return $"{(int)age.TotalHours}h {age.Minutes}m";
     }
 
-    private void OnCounterCommand(string command, string args) => _counterPopoutVisible = true;
+    private void OnCounterCommand(string command, string args) => _counterPopoutVisible = !_counterPopoutVisible;
 
     /// <summary>
     /// The map controls live on a bar pinned to the map itself now, rather than
@@ -1044,6 +1076,78 @@ public sealed class Plugin : IDalamudPlugin
         if (next == null) return;
 
         SetCurrentMark(next, announce: _config.EchoOnAdvance);
+    }
+
+    /// <summary>
+    /// Claims Hunt Helper's commands, but only when Hunt Helper is not
+    /// installed — two plugins cannot hold the same command, and the one that
+    /// owns it should be the one it belongs to.
+    ///
+    /// Each is registered on its own rather than as a batch. Dalamud refuses a
+    /// command that is already taken, and some other plugin may well have
+    /// claimed one of these in Hunt Helper's absence; losing /hh to that is no
+    /// reason to also lose /hhc.
+    /// </summary>
+    private void RegisterHuntHelperAliases()
+    {
+        if (HuntHelperIpc.IsHuntHelperInstalled(_pluginInterface))
+        {
+            _log.Information(
+                "Hunt Helper is installed, so its /hh commands are left alone.");
+            return;
+        }
+
+        foreach (var (command, help) in HuntHelperAliases)
+        {
+            try
+            {
+                var handler = command switch
+                {
+                    "/hh" => new IReadOnlyCommandInfo.HandlerDelegate(OnCommand),
+                    "/hht" => OnTrainCommand,
+                    "/hhn" => OnHuntHelperNextCommand,
+                    "/hhna" => OnNextAetheryteCommand,
+                    "/hhc" => OnCounterCommand,
+                    _ => null,
+                };
+
+                if (handler == null) continue;
+
+                _commandManager.AddHandler(command, new CommandInfo(handler) { HelpMessage = help });
+                _claimedAliases.Add(command);
+            }
+            catch (Exception ex)
+            {
+                _log.Warning(ex, $"Could not take over {command}; something else holds it.");
+            }
+        }
+
+        if (_claimedAliases.Count > 0)
+        {
+            _log.Information(
+                $"Hunt Helper is not installed; answering to {string.Join(", ", _claimedAliases)}.");
+        }
+    }
+
+    /// <summary>
+    /// Hunt Helper's /hhn: move to the next live mark and flag it.
+    ///
+    /// Its own version also ticks the current mark dead on the way past. This
+    /// one does not, deliberately. Marks are marked dead here by watching the
+    /// kill happen, and those timings are what the train report is built from —
+    /// a mistyped /hhn should not be able to write a kill that never occurred.
+    /// </summary>
+    private void OnHuntHelperNextCommand(string command, string args)
+    {
+        var next = NextLiveMark();
+        if (next == null)
+        {
+            _chatGui.Print("[Hunt Helper Evolved] No live marks left in the train.");
+            return;
+        }
+
+        // Announcing is what echoes it to chat and drops the flag on it.
+        SetCurrentMark(next, announce: true);
     }
 
     private void OnNextAetheryteCommand(string command, string args)
@@ -3299,5 +3403,8 @@ public sealed class Plugin : IDalamudPlugin
         _commandManager.RemoveHandler(NextAetheryteCommand);
         _commandManager.RemoveHandler(MapCommand);
         _commandManager.RemoveHandler(TallyCommand);
+
+        foreach (var alias in _claimedAliases)
+            _commandManager.RemoveHandler(alias);
     }
 }
