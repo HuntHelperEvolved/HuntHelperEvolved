@@ -66,6 +66,11 @@ public sealed unsafe class HuntMapOverlay : IDisposable
     private bool _needsRefresh = true;
     private uint _lastTerritory;
 
+    // Instance and world are part of "which map am I looking at" just as much
+    // as the territory is, and neither changes the territory when it changes.
+    private uint _lastInstance;
+    private uint _lastWorldId;
+
     // A failure here repeats every frame, so log it once and stop rather than
     // filling /xllog with thousands of identical lines.
     private bool _faulted;
@@ -796,12 +801,41 @@ public sealed unsafe class HuntMapOverlay : IDisposable
                 return;
             }
 
+            // Changing instance is a different set of marks on the same map,
+            // and it does not change the territory — so without this, stepping
+            // between instances left whatever the last one had on screen.
+            // World is here for the same reason: a world visit is a different
+            // set of marks too.
+            var instance = MarkDetector.GetCurrentInstance();
+            var worldId = _detector.CurrentWorldId();
+
+            if (instance != _lastInstance || worldId != _lastWorldId)
+            {
+                _lastInstance = instance;
+                _lastWorldId = worldId;
+                _needsRefresh = true;
+            }
+
             // Re-place when the detected marks change, so a dot lights up as
             // soon as something is found there.
-            var markSignature = _detector.Marks.Count == 0
-                ? 0
-                : _detector.Marks.Values.Where(m => !m.Dead).Sum(m => (long)m.NameId);
-            markSignature += _detector.OtherRanks.Values.Sum(o => (long)o.NameId);
+            //
+            // Each mark contributes its whole identity rather than its name id.
+            // Summing name ids could not tell one mark in two instances from
+            // two marks, so a change that swapped one for the other left the
+            // total identical and the map unrefreshed. Summed rather than
+            // combined in sequence so the result does not depend on what order
+            // the dictionaries happen to enumerate in.
+            long markSignature = 0;
+
+            foreach (var mark in _detector.Marks.Values)
+            {
+                if (mark.Dead) continue;
+                markSignature += HashCode.Combine(mark.NameId, mark.Instance, mark.WorldId);
+            }
+
+            foreach (var sighting in _detector.OtherRanks.Values)
+                markSignature += HashCode.Combine(sighting.NameId, sighting.Instance, sighting.WorldId);
+
             if (markSignature != _lastMarkSignature)
             {
                 _lastMarkSignature = markSignature;
@@ -869,25 +903,29 @@ public sealed unsafe class HuntMapOverlay : IDisposable
             // A-ranks come from sightings rather than the train, so they still
             // show with recording paused. Anything already killed in the train
             // is excluded so a dead mark doesn't stay lit.
-            var deadNameIds = _detector.Marks.Values
+            //
+            // Keyed on the whole identity, not the name id. The same mark is up
+            // in every instance and on every world at once, and they are
+            // different marks: killing one in instance 1 was blanking the live
+            // one in instance 2, and the one on the next world over, because
+            // all three share a name id. DetectedMark.Key exists to stop
+            // exactly this, and this was reaching past it.
+            var deadKeys = _detector.Marks.Values
                 .Where(m => m.Dead)
-                .Select(m => m.NameId)
+                .Select(m => m.Key)
                 .ToHashSet();
 
-            // Instance matters: Heritage Found 1 and 2 are different worlds as
-            // far as marks are concerned, so sightings from one must not show
-            // on the other's map.
-            var instance = MarkDetector.GetCurrentInstance();
-
-            // The same mark is up on every world; only this one is on this map.
-            var worldId = _detector.CurrentWorldId();
-
+            // instance and worldId are read further up, where a change in
+            // either is what asks for this rebuild in the first place. Instance
+            // matters because Heritage Found 1 and 2 are different worlds as
+            // far as marks are concerned, and the same mark is up on every
+            // world at once — only this one is on this map.
             var here = _detector.OtherRanks.Values
                 .Where(o => o.TerritoryId == territory && o.Instance == instance
                             && o.WorldId == worldId)
                 .ToList();
 
-            var aMarks = here.Where(o => o.Rank == HuntRank.A && !deadNameIds.Contains(o.NameId)).ToList();
+            var aMarks = here.Where(o => o.Rank == HuntRank.A && !deadKeys.Contains(o.Key)).ToList();
             var bSightings = here.Where(o => o.Rank == HuntRank.B).ToList();
 
             // An SS event's minions and the mark they lead to are S ranks in the
