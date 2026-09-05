@@ -54,6 +54,11 @@ at the position it is actually standing on — not snapped to the nearest spawn
 point. A mark near a point is only *near* it, and an SS event's mobs don't
 spawn on those points at all.
 
+The two have **separate switches, and separate B / A / S filters**, because they
+answer different questions: the points are where a mark *could* be, the marks
+are what *is* there. Showing only A and S points while still being told about
+a B rank that's turned up is a perfectly ordinary way to hunt.
+
 **Click to flag.** Clicking a spawn point drops the flag on it, for sending
 people to a spot before anything has spawned there. Turn it off and the
 clickable cursor stops appearing too.
