@@ -1,4 +1,5 @@
 using Dalamud.Game.Chat;
+using Dalamud.Game.Text;
 using Dalamud.Plugin.Services;
 using System;
 using System.Collections.Generic;
@@ -50,6 +51,19 @@ public sealed class SsEventWatcher : IDisposable
     /// <summary>Whether a mark id is one of the SS minions.</summary>
     public static bool IsMinion(uint nameId) => MinionToMark.ContainsKey(nameId);
 
+    /// <summary>Whether a mark id is the SS mark itself, the one the minions herald.</summary>
+    public static bool IsSsMark(uint nameId) => MinionToMark.ContainsValue(nameId);
+
+    /// <summary>
+    /// Either half of an SS event: a minion, or the mark it leads to.
+    ///
+    /// Both are S ranks in OtherRankData, and neither spawns on a B/A/S spawn
+    /// point — a minion stands where the event put it, and the mark appears on
+    /// its own fixed spot. Anything asking "should this be snapped to a spawn
+    /// point" wants this rather than the rank.
+    /// </summary>
+    public static bool IsSsEventMob(uint nameId) => IsMinion(nameId) || IsSsMark(nameId);
+
     /// <summary>
     /// Matched against the announcement. A fragment rather than the whole line,
     /// so trailing punctuation and any surrounding decoration do not matter.
@@ -61,6 +75,38 @@ public sealed class SsEventWatcher : IDisposable
     /// the path that produces a pin anyway.
     /// </summary>
     private const string AnnouncementFragment = "extraordinarily powerful mark";
+
+    /// <summary>
+    /// The channels the game itself announces on. Nothing a player can type
+    /// into is here, which is the whole point: the phrase is a sentence in
+    /// English, and someone saying "who's up for the extraordinarily powerful
+    /// mark then" in party chat was starting an event that had not happened.
+    ///
+    /// An allowlist rather than a list of player channels to ignore, because
+    /// the two fail in opposite directions. Miss a player channel off a
+    /// blocklist and the bug is still there. Miss the real announcement channel
+    /// off this and the watch simply does not arm from chat — and seeing a
+    /// minion arms it anyway, which is the path that produces a pin. Being too
+    /// strict here costs very little; being too loose is the bug.
+    ///
+    /// Echo is in the list and is not an oversight. Nothing reaches another
+    /// client's echo log, so it cannot be used to start an event on someone
+    /// else's screen — which is the thing being guarded against — and it gives
+    /// the one way to test this without waiting for a real event:
+    ///
+    ///     /echo the minions of an extraordinarily powerful mark are on the hunt
+    ///
+    /// Worth knowing that plugins print to echo as well, so nothing here should
+    /// ever print the fragment itself or it would arm its own watch.
+    /// </summary>
+    private static readonly XivChatType[] AnnouncementChannels =
+    {
+        XivChatType.SystemMessage,
+        XivChatType.NPCDialogueAnnouncements,
+        XivChatType.Notice,
+        XivChatType.Urgent,
+        XivChatType.Echo,
+    };
 
     private readonly IChatGui _chatGui;
     private readonly IClientState _clientState;
@@ -108,6 +154,9 @@ public sealed class SsEventWatcher : IDisposable
     {
         try
         {
+            if (Array.IndexOf(AnnouncementChannels, message.LogKind) < 0)
+                return;
+
             var text = message.Message.TextValue;
             if (text.IndexOf(AnnouncementFragment, StringComparison.OrdinalIgnoreCase) < 0)
                 return;

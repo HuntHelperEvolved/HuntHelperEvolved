@@ -31,6 +31,29 @@ public sealed class Plugin : IDalamudPlugin
     private const string MapCommand = "/htrm";
 
     /// <summary>
+    /// Hunt Helper's own commands, taken over only when Hunt Helper itself is
+    /// not installed, so this plugin is a drop-in for someone who has replaced
+    /// it and still has the muscle memory.
+    ///
+    /// Its /hh1, /hh2, /hh1save and /hh2save save and apply map-window presets,
+    /// and /hhr opens a spawn point recorder. There is nothing here that does
+    /// either, so those are left unclaimed rather than answered with an
+    /// apology — typing one gets the game's ordinary unknown-command reply, and
+    /// the names stay free if those features ever arrive.
+    /// </summary>
+    private static readonly (string Command, string Help)[] HuntHelperAliases =
+    {
+        ("/hh", "Open the main window. Hunt Helper's own command, taken over because it isn't installed."),
+        ("/hht", "Open the train list popout. Hunt Helper's /hht."),
+        ("/hhn", "Move to the next live mark in the train and flag it. Hunt Helper's /hhn."),
+        ("/hhna", "Name the closest aetheryte to the next mark. Hunt Helper's /hhna."),
+        ("/hhc", "Open the trigger-mob counter popout. Hunt Helper's /hhc."),
+    };
+
+    /// <summary>Which aliases were actually claimed, so Dispose gives back exactly those.</summary>
+    private readonly List<string> _claimedAliases = new();
+
+    /// <summary>
     /// The tally's original command, kept verbatim. It was a separate plugin
     /// until this release and people have it in macros and muscle memory, so
     /// merging must not be the thing that breaks it.
@@ -229,7 +252,7 @@ public sealed class Plugin : IDalamudPlugin
         _detector = new MarkDetector(objectTable, clientState, dataManager, _config);
         _teleport = new TeleportHelper(_pluginInterface, _log, dataManager);
         SyncBlacklist();
-        _watcher = new TrainWatcher(framework, _ipc, _detector, _config);
+        _watcher = new TrainWatcher(framework, _ipc, _detector, _config, chatGui, _log);
 
         // The tally reaches Dalamud through its own injected service class
         // rather than this constructor's parameters, which is how it was built
@@ -345,6 +368,8 @@ public sealed class Plugin : IDalamudPlugin
         {
             HelpMessage = "Open the map dot filters.",
         });
+
+        RegisterHuntHelperAliases();
 
         _commandManager.AddHandler(TallyCommand, new CommandInfo(OnTallyCommand)
         {
@@ -663,9 +688,16 @@ public sealed class Plugin : IDalamudPlugin
             _notifier.Speak("A-Rank Nearby");
     }
 
-    private void OnCommand(string command, string args) => _configWindowVisible = true;
+    // A command that names a window toggles it. Typing it again to put the
+    // window away is what everyone expects, it is what /htrm and /hunttally
+    // already did, and it is what Hunt Helper's own commands do — so the /hh
+    // aliases would otherwise have been a one-way door.
+    //
+    // OnOpenConfigUi below is deliberately not one of these: that is Dalamud's
+    // own settings button, which has to mean open.
+    private void OnCommand(string command, string args) => _configWindowVisible = !_configWindowVisible;
 
-    private void OnTrainCommand(string command, string args) => _trainPopoutVisible = true;
+    private void OnTrainCommand(string command, string args) => _trainPopoutVisible = !_trainPopoutVisible;
 
     private void OnSightingDetected(OtherRankSighting sighting) => _notifier.Announce(sighting);
 
@@ -678,7 +710,7 @@ public sealed class Plugin : IDalamudPlugin
         return $"{(int)age.TotalHours}h {age.Minutes}m";
     }
 
-    private void OnCounterCommand(string command, string args) => _counterPopoutVisible = true;
+    private void OnCounterCommand(string command, string args) => _counterPopoutVisible = !_counterPopoutVisible;
 
     /// <summary>
     /// The map controls live on a bar pinned to the map itself now, rather than
@@ -1054,6 +1086,78 @@ public sealed class Plugin : IDalamudPlugin
         if (next == null) return;
 
         SetCurrentMark(next, announce: _config.EchoOnAdvance);
+    }
+
+    /// <summary>
+    /// Claims Hunt Helper's commands, but only when Hunt Helper is not
+    /// installed — two plugins cannot hold the same command, and the one that
+    /// owns it should be the one it belongs to.
+    ///
+    /// Each is registered on its own rather than as a batch. Dalamud refuses a
+    /// command that is already taken, and some other plugin may well have
+    /// claimed one of these in Hunt Helper's absence; losing /hh to that is no
+    /// reason to also lose /hhc.
+    /// </summary>
+    private void RegisterHuntHelperAliases()
+    {
+        if (HuntHelperIpc.IsHuntHelperInstalled(_pluginInterface))
+        {
+            _log.Information(
+                "Hunt Helper is installed, so its /hh commands are left alone.");
+            return;
+        }
+
+        foreach (var (command, help) in HuntHelperAliases)
+        {
+            try
+            {
+                var handler = command switch
+                {
+                    "/hh" => new IReadOnlyCommandInfo.HandlerDelegate(OnCommand),
+                    "/hht" => OnTrainCommand,
+                    "/hhn" => OnHuntHelperNextCommand,
+                    "/hhna" => OnNextAetheryteCommand,
+                    "/hhc" => OnCounterCommand,
+                    _ => null,
+                };
+
+                if (handler == null) continue;
+
+                _commandManager.AddHandler(command, new CommandInfo(handler) { HelpMessage = help });
+                _claimedAliases.Add(command);
+            }
+            catch (Exception ex)
+            {
+                _log.Warning(ex, $"Could not take over {command}; something else holds it.");
+            }
+        }
+
+        if (_claimedAliases.Count > 0)
+        {
+            _log.Information(
+                $"Hunt Helper is not installed; answering to {string.Join(", ", _claimedAliases)}.");
+        }
+    }
+
+    /// <summary>
+    /// Hunt Helper's /hhn: move to the next live mark and flag it.
+    ///
+    /// Its own version also ticks the current mark dead on the way past. This
+    /// one does not, deliberately. Marks are marked dead here by watching the
+    /// kill happen, and those timings are what the train report is built from —
+    /// a mistyped /hhn should not be able to write a kill that never occurred.
+    /// </summary>
+    private void OnHuntHelperNextCommand(string command, string args)
+    {
+        var next = NextLiveMark();
+        if (next == null)
+        {
+            _chatGui.Print("[Hunt Helper Evolved] No live marks left in the train.");
+            return;
+        }
+
+        // Announcing is what echoes it to chat and drops the flag on it.
+        SetCurrentMark(next, announce: true);
     }
 
     private void OnNextAetheryteCommand(string command, string args)
@@ -1630,8 +1734,14 @@ public sealed class Plugin : IDalamudPlugin
     }
 
     /// <summary>
-    /// First row: what is drawn about the zone — the spawn points, which ranks
-    /// of them, and the SS event.
+    /// First row: what is drawn about the zone — the spawn points and the marks,
+    /// each with its own ranks, and the SS event.
+    ///
+    /// Points and marks get their own switches because they answer different
+    /// questions: the points are where a mark COULD be, the marks are what is
+    /// there now. Wanting only A/S points while still being told about a B rank
+    /// that has turned up is an ordinary way to hunt, and one set of switches
+    /// could not express it.
     /// </summary>
     private void DrawMapBarZoneRow()
     {
@@ -1647,7 +1757,7 @@ public sealed class Plugin : IDalamudPlugin
         using (ImRaii.Disabled(!_config.ShowSpawnPointsOnMap))
         {
             var showB = _config.ShowBRankPoints;
-            if (ImGui.Checkbox("B", ref showB))
+            if (ImGui.Checkbox("B##points", ref showB))
             {
                 _config.ShowBRankPoints = showB;
                 _config.Save();
@@ -1655,7 +1765,7 @@ public sealed class Plugin : IDalamudPlugin
 
             ImGui.SameLine();
             var showA = _config.ShowARankPoints;
-            if (ImGui.Checkbox("A", ref showA))
+            if (ImGui.Checkbox("A##points", ref showA))
             {
                 _config.ShowARankPoints = showA;
                 _config.Save();
@@ -1663,9 +1773,49 @@ public sealed class Plugin : IDalamudPlugin
 
             ImGui.SameLine();
             var showS = _config.ShowSRankPoints;
-            if (ImGui.Checkbox("S", ref showS))
+            if (ImGui.Checkbox("S##points", ref showS))
             {
                 _config.ShowSRankPoints = showS;
+                _config.Save();
+            }
+        }
+
+        ImGui.SameLine();
+        ImGui.TextDisabled("|");
+        ImGui.SameLine();
+
+        var marks = _config.ShowMarksOnMap;
+        if (ImGui.Checkbox("Marks", ref marks))
+        {
+            _config.ShowMarksOnMap = marks;
+            _config.Save();
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Marks that are actually up, drawn where they stand. Separate from the spawn points.");
+
+        ImGui.SameLine();
+        using (ImRaii.Disabled(!_config.ShowMarksOnMap))
+        {
+            var markB = _config.ShowBRankMarks;
+            if (ImGui.Checkbox("B##marks", ref markB))
+            {
+                _config.ShowBRankMarks = markB;
+                _config.Save();
+            }
+
+            ImGui.SameLine();
+            var markA = _config.ShowARankMarks;
+            if (ImGui.Checkbox("A##marks", ref markA))
+            {
+                _config.ShowARankMarks = markA;
+                _config.Save();
+            }
+
+            ImGui.SameLine();
+            var markS = _config.ShowSRankMarks;
+            if (ImGui.Checkbox("S##marks", ref markS))
+            {
+                _config.ShowSRankMarks = markS;
                 _config.Save();
             }
 
@@ -2993,6 +3143,14 @@ public sealed class Plugin : IDalamudPlugin
 
             ImGui.TextDisabled("Announcing marks as they're detected has its own section below.");
 
+            var observedDeaths = _config.MarkDeadOnObservedDefeat;
+            if (ImGui.Checkbox("Tick a mark dead when the battle log says it died", ref observedDeaths))
+            {
+                _config.MarkDeadOnObservedDefeat = observedDeaths;
+                _config.Save();
+            }
+            ImGui.TextDisabled("Whoever killed it — either seeing its health hit zero, or the battle log saying so. Marking dead from the tally only covers kills you were credited with, so a mark the group brought down while you ran in used to stay lit.");
+
             var teleFlags = _config.TeleportAlsoFlags;
             if (ImGui.Checkbox("Teleport also drops the map flag", ref teleFlags))
             {
@@ -3086,6 +3244,16 @@ public sealed class Plugin : IDalamudPlugin
                 _config.ShowSpawnPointsOnMap = mapPoints;
                 _config.Save();
             }
+            ImGui.TextDisabled("Where a mark could be. A zone's B-rank points alone can run to sixty dots.");
+
+            var mapMarks = _config.ShowMarksOnMap;
+            if (ImGui.Checkbox("Show live marks on the in-game map", ref mapMarks))
+            {
+                _config.ShowMarksOnMap = mapMarks;
+                _config.Save();
+            }
+            ImGui.TextDisabled("What is actually there, drawn where it stands. Separate from the points above, so you can have one without the other.");
+
             ImGui.TextDisabled(_mapOverlay.Status);
 
             var bar = _config.ShowMapControlBar;
@@ -3096,29 +3264,65 @@ public sealed class Plugin : IDalamudPlugin
             }
             ImGui.TextDisabled("These same toggles, pinned to the top of the game's map and shown with it. Also /htrm.");
 
-            if (_config.ShowSpawnPointsOnMap)
+            if (_config.ShowSpawnPointsOnMap || _config.ShowMarksOnMap)
             {
-                var showA = _config.ShowARankPoints;
-                if (ImGui.Checkbox("A-rank points", ref showA))
+                if (_config.ShowSpawnPointsOnMap)
                 {
-                    _config.ShowARankPoints = showA;
+                    var showA = _config.ShowARankPoints;
+                    if (ImGui.Checkbox("A-rank points", ref showA))
+                    {
+                        _config.ShowARankPoints = showA;
+                        _config.Save();
+                    }
+                    ImGui.SameLine();
+                    var showB = _config.ShowBRankPoints;
+                    if (ImGui.Checkbox("B-rank##points", ref showB))
+                    {
+                        _config.ShowBRankPoints = showB;
+                        _config.Save();
+                    }
+                    ImGui.SameLine();
+                    var showS = _config.ShowSRankPoints;
+                    if (ImGui.Checkbox("S-rank##points", ref showS))
+                    {
+                        _config.ShowSRankPoints = showS;
+                        _config.Save();
+                    }
+                }
+
+                if (_config.ShowMarksOnMap)
+                {
+                    var markA = _config.ShowARankMarks;
+                    if (ImGui.Checkbox("A-rank marks", ref markA))
+                    {
+                        _config.ShowARankMarks = markA;
+                        _config.Save();
+                    }
+                    ImGui.SameLine();
+                    var markB = _config.ShowBRankMarks;
+                    if (ImGui.Checkbox("B-rank##marks", ref markB))
+                    {
+                        _config.ShowBRankMarks = markB;
+                        _config.Save();
+                    }
+                    ImGui.SameLine();
+                    var markS = _config.ShowSRankMarks;
+                    if (ImGui.Checkbox("S-rank##marks", ref markS))
+                    {
+                        _config.ShowSRankMarks = markS;
+                        _config.Save();
+                    }
+                }
+
+                ImGui.TextDisabled("Hover a dot on the map for what's there. Marks are drawn a little larger than a spawn point, at the position they are actually standing on.");
+
+                var clickFlag = _config.ClickSpawnPointToFlag;
+                if (ImGui.Checkbox("Click a spawn point on the map to flag it", ref clickFlag))
+                {
+                    _config.ClickSpawnPointToFlag = clickFlag;
                     _config.Save();
                 }
-                ImGui.SameLine();
-                var showB = _config.ShowBRankPoints;
-                if (ImGui.Checkbox("B-rank", ref showB))
-                {
-                    _config.ShowBRankPoints = showB;
-                    _config.Save();
-                }
-                ImGui.SameLine();
-                var showS = _config.ShowSRankPoints;
-                if (ImGui.Checkbox("S-rank", ref showS))
-                {
-                    _config.ShowSRankPoints = showS;
-                    _config.Save();
-                }
-                ImGui.TextDisabled("Hover a dot on the map for what's there. A live mark that isn't on a known spawn point — an SS, for instance — is drawn slightly larger at its real position.");
+                ImGui.TextDisabled("For sending people to a spot before anything is on it. Marks themselves aren't clickable — one that's up is already drawn where it is.");
 
                 var ssEvent = _config.ShowSsEventOnMap;
                 if (ImGui.Checkbox("Mark SS event minion locations", ref ssEvent))
@@ -3160,14 +3364,6 @@ public sealed class Plugin : IDalamudPlugin
                     _config.Save();
                 }
 
-                var radius = _config.SpawnPointMatchRadius;
-                ImGui.SetNextItemWidth(90);
-                if (ImGui.InputFloat("Match radius", ref radius, 0.5f))
-                {
-                    _config.SpawnPointMatchRadius = Math.Clamp(radius, 0.5f, 10f);
-                    _config.Save();
-                }
-                ImGui.TextDisabled("How close a mark must be to count as sitting on a spawn point.");
             }
 
             ImGui.Spacing();
@@ -3404,5 +3600,8 @@ public sealed class Plugin : IDalamudPlugin
         _commandManager.RemoveHandler(NextAetheryteCommand);
         _commandManager.RemoveHandler(MapCommand);
         _commandManager.RemoveHandler(TallyCommand);
+
+        foreach (var alias in _claimedAliases)
+            _commandManager.RemoveHandler(alias);
     }
 }
