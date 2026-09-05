@@ -41,6 +41,16 @@ why.
 | `/htrm` | show or hide the control bar above the map |
 | `/hunttally` | the kill tally. `/hunttally config` for its settings |
 
+If **Hunt Helper is not installed**, this plugin also answers to its commands,
+so you can carry the muscle memory over: `/hh` opens the main window, `/hht` the
+train list, `/hhn` moves to the next live mark and flags it, `/hhna` names the
+closest aetheryte to it, and `/hhc` opens the counter. They are only claimed
+when Hunt Helper is absent — if you still have it installed, it keeps them.
+
+`/hh1`, `/hh2`, `/hh1save`, `/hh2save` and `/hhr` are left alone: they save and
+apply Hunt Helper's map-window presets and open its spawn point recorder, and
+there is nothing here that does either.
+
 ## The map
 
 Everything here draws on the game's own map, not in a separate window, and only
