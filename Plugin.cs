@@ -1620,8 +1620,14 @@ public sealed class Plugin : IDalamudPlugin
     }
 
     /// <summary>
-    /// First row: what is drawn about the zone — the spawn points, which ranks
-    /// of them, and the SS event.
+    /// First row: what is drawn about the zone — the spawn points and the marks,
+    /// each with its own ranks, and the SS event.
+    ///
+    /// Points and marks get their own switches because they answer different
+    /// questions: the points are where a mark COULD be, the marks are what is
+    /// there now. Wanting only A/S points while still being told about a B rank
+    /// that has turned up is an ordinary way to hunt, and one set of switches
+    /// could not express it.
     /// </summary>
     private void DrawMapBarZoneRow()
     {
@@ -1637,7 +1643,7 @@ public sealed class Plugin : IDalamudPlugin
         using (ImRaii.Disabled(!_config.ShowSpawnPointsOnMap))
         {
             var showB = _config.ShowBRankPoints;
-            if (ImGui.Checkbox("B", ref showB))
+            if (ImGui.Checkbox("B##points", ref showB))
             {
                 _config.ShowBRankPoints = showB;
                 _config.Save();
@@ -1645,7 +1651,7 @@ public sealed class Plugin : IDalamudPlugin
 
             ImGui.SameLine();
             var showA = _config.ShowARankPoints;
-            if (ImGui.Checkbox("A", ref showA))
+            if (ImGui.Checkbox("A##points", ref showA))
             {
                 _config.ShowARankPoints = showA;
                 _config.Save();
@@ -1653,9 +1659,49 @@ public sealed class Plugin : IDalamudPlugin
 
             ImGui.SameLine();
             var showS = _config.ShowSRankPoints;
-            if (ImGui.Checkbox("S", ref showS))
+            if (ImGui.Checkbox("S##points", ref showS))
             {
                 _config.ShowSRankPoints = showS;
+                _config.Save();
+            }
+        }
+
+        ImGui.SameLine();
+        ImGui.TextDisabled("|");
+        ImGui.SameLine();
+
+        var marks = _config.ShowMarksOnMap;
+        if (ImGui.Checkbox("Marks", ref marks))
+        {
+            _config.ShowMarksOnMap = marks;
+            _config.Save();
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Marks that are actually up, drawn where they stand. Separate from the spawn points.");
+
+        ImGui.SameLine();
+        using (ImRaii.Disabled(!_config.ShowMarksOnMap))
+        {
+            var markB = _config.ShowBRankMarks;
+            if (ImGui.Checkbox("B##marks", ref markB))
+            {
+                _config.ShowBRankMarks = markB;
+                _config.Save();
+            }
+
+            ImGui.SameLine();
+            var markA = _config.ShowARankMarks;
+            if (ImGui.Checkbox("A##marks", ref markA))
+            {
+                _config.ShowARankMarks = markA;
+                _config.Save();
+            }
+
+            ImGui.SameLine();
+            var markS = _config.ShowSRankMarks;
+            if (ImGui.Checkbox("S##marks", ref markS))
+            {
+                _config.ShowSRankMarks = markS;
                 _config.Save();
             }
 
@@ -2912,6 +2958,16 @@ public sealed class Plugin : IDalamudPlugin
                 _config.ShowSpawnPointsOnMap = mapPoints;
                 _config.Save();
             }
+            ImGui.TextDisabled("Where a mark could be. A zone's B-rank points alone can run to sixty dots.");
+
+            var mapMarks = _config.ShowMarksOnMap;
+            if (ImGui.Checkbox("Show live marks on the in-game map", ref mapMarks))
+            {
+                _config.ShowMarksOnMap = mapMarks;
+                _config.Save();
+            }
+            ImGui.TextDisabled("What is actually there, drawn where it stands. Separate from the points above, so you can have one without the other.");
+
             ImGui.TextDisabled(_mapOverlay.Status);
 
             var bar = _config.ShowMapControlBar;
@@ -2922,29 +2978,57 @@ public sealed class Plugin : IDalamudPlugin
             }
             ImGui.TextDisabled("These same toggles, pinned to the top of the game's map and shown with it. Also /htrm.");
 
-            if (_config.ShowSpawnPointsOnMap)
+            if (_config.ShowSpawnPointsOnMap || _config.ShowMarksOnMap)
             {
-                var showA = _config.ShowARankPoints;
-                if (ImGui.Checkbox("A-rank points", ref showA))
+                if (_config.ShowSpawnPointsOnMap)
                 {
-                    _config.ShowARankPoints = showA;
-                    _config.Save();
+                    var showA = _config.ShowARankPoints;
+                    if (ImGui.Checkbox("A-rank points", ref showA))
+                    {
+                        _config.ShowARankPoints = showA;
+                        _config.Save();
+                    }
+                    ImGui.SameLine();
+                    var showB = _config.ShowBRankPoints;
+                    if (ImGui.Checkbox("B-rank##points", ref showB))
+                    {
+                        _config.ShowBRankPoints = showB;
+                        _config.Save();
+                    }
+                    ImGui.SameLine();
+                    var showS = _config.ShowSRankPoints;
+                    if (ImGui.Checkbox("S-rank##points", ref showS))
+                    {
+                        _config.ShowSRankPoints = showS;
+                        _config.Save();
+                    }
                 }
-                ImGui.SameLine();
-                var showB = _config.ShowBRankPoints;
-                if (ImGui.Checkbox("B-rank", ref showB))
+
+                if (_config.ShowMarksOnMap)
                 {
-                    _config.ShowBRankPoints = showB;
-                    _config.Save();
+                    var markA = _config.ShowARankMarks;
+                    if (ImGui.Checkbox("A-rank marks", ref markA))
+                    {
+                        _config.ShowARankMarks = markA;
+                        _config.Save();
+                    }
+                    ImGui.SameLine();
+                    var markB = _config.ShowBRankMarks;
+                    if (ImGui.Checkbox("B-rank##marks", ref markB))
+                    {
+                        _config.ShowBRankMarks = markB;
+                        _config.Save();
+                    }
+                    ImGui.SameLine();
+                    var markS = _config.ShowSRankMarks;
+                    if (ImGui.Checkbox("S-rank##marks", ref markS))
+                    {
+                        _config.ShowSRankMarks = markS;
+                        _config.Save();
+                    }
                 }
-                ImGui.SameLine();
-                var showS = _config.ShowSRankPoints;
-                if (ImGui.Checkbox("S-rank", ref showS))
-                {
-                    _config.ShowSRankPoints = showS;
-                    _config.Save();
-                }
-                ImGui.TextDisabled("Hover a dot on the map for what's there. A live mark that isn't on a known spawn point — an SS, for instance — is drawn slightly larger at its real position.");
+
+                ImGui.TextDisabled("Hover a dot on the map for what's there. Marks are drawn a little larger than a spawn point, at the position they are actually standing on.");
 
                 var ssEvent = _config.ShowSsEventOnMap;
                 if (ImGui.Checkbox("Mark SS event minion locations", ref ssEvent))
@@ -2986,14 +3070,6 @@ public sealed class Plugin : IDalamudPlugin
                     _config.Save();
                 }
 
-                var radius = _config.SpawnPointMatchRadius;
-                ImGui.SetNextItemWidth(90);
-                if (ImGui.InputFloat("Match radius", ref radius, 0.5f))
-                {
-                    _config.SpawnPointMatchRadius = Math.Clamp(radius, 0.5f, 10f);
-                    _config.Save();
-                }
-                ImGui.TextDisabled("How close a mark must be to count as sitting on a spawn point.");
             }
 
             ImGui.Spacing();

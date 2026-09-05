@@ -47,10 +47,17 @@ Everything here draws on the game's own map, not in a separate window, and only
 in zones marks actually occur in. A two-row control bar sits above the map and
 appears and disappears with it.
 
-**Spawn points.** Every known spawn point in the zone, filtered by rank, going
-grey / blue / red / green as a B, A or S rank turns up on one. A mark that
-isn't on a known spawn point — an SS, or one that spawned somewhere unlisted —
-is drawn slightly larger at its real position rather than being left off.
+**Spawn points.** Every known spawn point in the zone, filtered by rank.
+
+**Marks.** Every mark that's up, drawn slightly larger than a spawn point and
+at the position it is actually standing on — not snapped to the nearest spawn
+point. A mark near a point is only *near* it, and an SS event's mobs don't
+spawn on those points at all.
+
+The two have **separate switches, and separate B / A / S filters**, because they
+answer different questions: the points are where a mark *could* be, the marks
+are what *is* there. Showing only A and S points while still being told about
+a B rank that's turned up is a perfectly ordinary way to hunt.
 
 **Mark names.** Every mark that is actually up gets its name and remaining
 health written beside its dot, so a glance at the map says which are still

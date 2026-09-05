@@ -224,37 +224,36 @@ public sealed unsafe class HuntMapOverlay : IDisposable
     }
 
     /// <summary>
-    /// Draws live marks that are not sitting on any known spawn point, at
-    /// wherever they actually are.
+    /// Draws every mark that is up, at the position it is actually standing on.
     ///
-    /// This is how an SS shows up. An SS spawns on its own spot, one no S rank
-    /// uses, and those spots are not in the spawn point data — so there is no
-    /// dot at that location to light up, and until now a live SS simply did not
-    /// appear on the map at all. Rather than special-case the rank, anything
-    /// the claiming step could not place gets drawn where it is: the same gap
-    /// swallows a mark that spawned somewhere unlisted, or one whose nearest
-    /// point was already taken by a higher rank, and a live mark should never
-    /// be invisible.
+    /// No mark is snapped to a spawn point any more. A mark near a point is
+    /// only NEAR it — up to the old match radius away, a couple of map
+    /// coordinates — and drawing it on the point sent anyone following the map
+    /// to the wrong place. An SS event's mobs never spawn on one of those
+    /// points at all, so for them the dot could be somewhere they had no
+    /// business being.
     ///
-    /// Drawn a little larger than a spawn point, and after them, so it is clear
-    /// this is the mark itself rather than a point it happens to be near.
+    /// Drawn a little larger than a spawn point, and after them, so a mark
+    /// standing on top of its point still reads as the mark rather than
+    /// disappearing into the dot underneath.
     /// </summary>
-    private int DrawMarksOffSpawnPoints(
-        uint mapId, Dictionary<string, string> dots, IEnumerable<OtherRankSighting> unclaimed)
+    private int DrawLiveMarks(
+        uint mapId, Dictionary<string, string> dots, IEnumerable<OtherRankSighting> live)
     {
         if (_overlay == null) return 0;
 
         var placed = 0;
 
-        foreach (var sighting in unclaimed)
+        foreach (var sighting in live)
         {
-            // Same filters the spawn points use, so turning a rank off turns
-            // it off everywhere rather than only half of the map.
+            // The mark switches, not the spawn point ones. Hiding a zone's
+            // sixty B-rank points is a different wish from hiding a B rank
+            // that is actually up.
             var wanted = sighting.Rank switch
             {
-                HuntRank.A => _config.ShowARankPoints,
-                HuntRank.B => _config.ShowBRankPoints,
-                _ => _config.ShowSRankPoints,
+                HuntRank.A => _config.ShowARankMarks,
+                HuntRank.B => _config.ShowBRankMarks,
+                _ => _config.ShowSRankMarks,
             };
             if (!wanted) continue;
 
@@ -280,8 +279,7 @@ public sealed unsafe class HuntMapOverlay : IDisposable
                 TexturePath = dots[dot],
                 Size = new Vector2(_config.SpawnDotSize * 1.35f, _config.SpawnDotSize * 1.35f),
                 TextTooltip = $"{sighting.Name}  ({sighting.Rank} rank) — UP\n"
-                              + $"{sighting.MapPosition.X:F1}, {sighting.MapPosition.Y:F1}\n"
-                              + "Not on a known spawn point.",
+                              + $"{sighting.MapPosition.X:F1}, {sighting.MapPosition.Y:F1}",
             });
             placed++;
 
@@ -577,7 +575,9 @@ public sealed unsafe class HuntMapOverlay : IDisposable
     /// </summary>
     private string DrawSignature() =>
         $"{_config.ShowSpawnPointsOnMap}{_config.ShowARankPoints}{_config.ShowBRankPoints}"
-        + $"{_config.ShowSRankPoints}{_config.ShowPlayerCircleOnMap}"
+        + $"{_config.ShowSRankPoints}"
+        + $"{_config.ShowMarksOnMap}{_config.ShowARankMarks}{_config.ShowBRankMarks}{_config.ShowSRankMarks}"
+        + $"{_config.ShowPlayerCircleOnMap}"
         + $"{_config.ShowPlayerGuides}{_config.ShowPlayerFacingOnMap}{_config.ShowPlayerDirectionLine}{_config.ShowPlayerPositionDot}{_config.ShowSsEventOnMap}{_ssEvent.Pins.Count}{_ssEvent.Active}{_config.SpawnDotSize}{_config.PlayerCircleRadiusScale}{_config.PlayerDirectionLineThickness}{_config.PlayerPositionDotSize}"
         + $"{_config.ShowMarkLabelsOnMap}{DotTextures.HexOf(_config.MarkLabelColour)}{DotTextures.HexOf(_config.MarkLabelOutlineColour)}{_config.MarkLabelFontSize}";
 
@@ -884,18 +884,6 @@ public sealed unsafe class HuntMapOverlay : IDisposable
             var guides = DrawPlayerGuides(mapId, dots, out var guidesWaiting);
             if (guidesWaiting) _needsRefresh = true;
 
-            if (!_config.ShowSpawnPointsOnMap)
-            {
-                // An SS event is not a spawn point, so it is not switched off
-                // with them.
-                var pinsOnly = DrawSsEventPins(territory, mapId, dots);
-
-                Status = "Spawn points off."
-                         + (pinsOnly > 0 ? $" {pinsOnly} SS event." : string.Empty)
-                         + (guides > 0 ? $" {guides} guide markers." : string.Empty);
-                return;
-            }
-
             var points = SpawnPointData.For(territory);
 
             // Live A-ranks come from the train list; B and S from the separate
@@ -925,54 +913,32 @@ public sealed unsafe class HuntMapOverlay : IDisposable
                             && o.WorldId == worldId)
                 .ToList();
 
-            var aMarks = here.Where(o => o.Rank == HuntRank.A && !deadKeys.Contains(o.Key)).ToList();
-            var bSightings = here.Where(o => o.Rank == HuntRank.B).ToList();
-            var sSightings = here.Where(o => o.Rank == HuntRank.S).ToList();
-
-            var radius = Math.Max(0.5f, _config.SpawnPointMatchRadius);
-
-            // Claim points per MARK rather than per point. Checking each point
-            // for "is any mark near me" lit up every point within the radius —
-            // Chernobog filled four dots at once. Each mark now takes only its
-            // single closest point.
-            var claimed = new Dictionary<int, OtherRankSighting>();
-
-            // Whatever fails to claim a point is not lost — it gets drawn where
-            // it really is instead. An SS is always in here, because its spawn
-            // spot is not one of the points.
-            var unclaimed = new List<OtherRankSighting>();
-
-            void Claim(List<OtherRankSighting> sightings)
-            {
-                foreach (var sighting in sightings)
-                {
-                    var bestIndex = -1;
-                    var bestDistance = float.MaxValue;
-
-                    for (var i = 0; i < points.Length; i++)
-                    {
-                        var d = Vector2.Distance(new Vector2(points[i].X, points[i].Y), sighting.MapPosition);
-                        if (d > radius || d >= bestDistance) continue;
-                        bestDistance = d;
-                        bestIndex = i;
-                    }
-
-                    // Higher ranks claim first, so don't overwrite them.
-                    if (bestIndex >= 0 && !claimed.ContainsKey(bestIndex))
-                        claimed[bestIndex] = sighting;
-                    else
-                        unclaimed.Add(sighting);
-                }
-            }
-
-            Claim(sSightings);
-            Claim(aMarks);
-            Claim(bSightings);
+            // Every mark that is up, drawn below at the position it is actually
+            // standing on.
+            //
+            // Marks used to be snapped to the nearest spawn point within a match
+            // radius, and the point lit up in their colour. It read well — the
+            // map said which point was taken — but it was not true: the mark is
+            // only WITHIN the radius of that point, up to a couple of map
+            // coordinates from where the dot sat. Walking to the dot was walking
+            // to the wrong place, and for an SS event's mobs, which never spawn
+            // on a B/A/S point at all, it could be a point they had no business
+            // being drawn on.
+            //
+            // So nothing is snapped now. Spawn points stay spawn points, marks
+            // are drawn where they are, and the two are separate things on the
+            // map rather than one borrowing the other's position.
+            var live = here
+                .Where(o => o.Rank != HuntRank.A || !deadKeys.Contains(o.Key))
+                .ToList();
 
             var placed = 0;
-            var occupied = 0;
 
-            for (var pointIndex = 0; pointIndex < points.Length; pointIndex++)
+            // Only the points are behind this switch. Marks are drawn below
+            // whatever it says — they are what is actually in the zone, and
+            // hiding the map of where things could be is no reason to stop
+            // showing where one is.
+            for (var pointIndex = 0; _config.ShowSpawnPointsOnMap && pointIndex < points.Length; pointIndex++)
             {
                 var point = points[pointIndex];
 
@@ -983,32 +949,11 @@ public sealed unsafe class HuntMapOverlay : IDisposable
                 if (_config.ShowSRankPoints) wanted |= SpawnRanks.S;
                 if ((point.Ranks & wanted) == SpawnRanks.None) continue;
 
-                string dot;
-                string tooltip;
-
-                if (claimed.TryGetValue(pointIndex, out var mark))
-                {
-                    dot = mark.Rank switch
-                    {
-                        HuntRank.S => "s",
-                        HuntRank.A => "a",
-                        _ => "b",
-                    };
-                    tooltip = $"{mark.Name}  ({mark.Rank} rank)\n{point.X:F1}, {point.Y:F1}";
-                    occupied++;
-
-                    AddMarkLabel(mapId, new Vector2(point.X, point.Y), mark, _config.SpawnDotSize);
-                }
-                else
-                {
-                    dot = "empty";
-                    var canSpawn = new List<string>();
-                    if (point.Ranks.HasFlag(SpawnRanks.B)) canSpawn.Add("B");
-                    if (point.Ranks.HasFlag(SpawnRanks.A)) canSpawn.Add("A");
-                    if (point.Ranks.HasFlag(SpawnRanks.S)) canSpawn.Add("S");
-                    var ranks = canSpawn.Count > 0 ? string.Join("/", canSpawn) : "?";
-                    tooltip = $"Spawn point ({ranks})\n{point.X:F1}, {point.Y:F1}";
-                }
+                var canSpawn = new List<string>();
+                if (point.Ranks.HasFlag(SpawnRanks.B)) canSpawn.Add("B");
+                if (point.Ranks.HasFlag(SpawnRanks.A)) canSpawn.Add("A");
+                if (point.Ranks.HasFlag(SpawnRanks.S)) canSpawn.Add("S");
+                var ranks = canSpawn.Count > 0 ? string.Join("/", canSpawn) : "?";
 
                 var world = MapCoordinates.ToWorld(_dataManager, mapId, point.X, point.Y);
 
@@ -1017,19 +962,21 @@ public sealed unsafe class HuntMapOverlay : IDisposable
                     AllowAnyMap = false,
                     MapId = mapId,
                     Position = world,
-                    TexturePath = dots[dot],
+                    TexturePath = dots["empty"],
                     Size = new Vector2(_config.SpawnDotSize, _config.SpawnDotSize),
-                    TextTooltip = tooltip,
+                    TextTooltip = $"Spawn point ({ranks})\n{point.X:F1}, {point.Y:F1}",
                 });
                 placed++;
             }
 
             var pins = DrawSsEventPins(territory, mapId, dots);
-            var offPoint = DrawMarksOffSpawnPoints(mapId, dots, unclaimed);
+            var marks = _config.ShowMarksOnMap ? DrawLiveMarks(mapId, dots, live) : 0;
 
-            Status = $"{placed} spawn points shown, {occupied} with a mark on them."
+            Status = (_config.ShowSpawnPointsOnMap
+                         ? $"{placed} spawn points shown."
+                         : "Spawn points off.")
                      + (pins > 0 ? $" {pins} SS event." : string.Empty)
-                     + (offPoint > 0 ? $" {offPoint} off-point." : string.Empty)
+                     + (marks > 0 ? $" {marks} marks up." : string.Empty)
                      + (guides > 0 ? $" {guides} guide markers." : string.Empty);
         }
         catch (Exception ex)
