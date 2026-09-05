@@ -317,6 +317,16 @@ public class Configuration : IPluginConfiguration
     public Vector4 SpawnDotColourS { get; set; } = new(0f, 0.827f, 0f, 1f);
 
     /// <summary>
+    /// Click a spawn point on the map to drop the flag on it.
+    ///
+    /// For pointing people at a spot before anything is on it — "go and look
+    /// here" — which is why it is the points that are clickable rather than the
+    /// marks. A mark that is up is already visible on the map and can be
+    /// flagged from the train list.
+    /// </summary>
+    public bool ClickSpawnPointToFlag { get; set; } = true;
+
+    /// <summary>
     /// Write each live mark's name and remaining health on the map beside its
     /// dot, rather than leaving both in a tooltip you have to go and find.
     ///
