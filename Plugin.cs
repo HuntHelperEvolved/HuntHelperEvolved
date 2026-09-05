@@ -2986,14 +2986,6 @@ public sealed class Plugin : IDalamudPlugin
                     _config.Save();
                 }
 
-                var radius = _config.SpawnPointMatchRadius;
-                ImGui.SetNextItemWidth(90);
-                if (ImGui.InputFloat("Match radius", ref radius, 0.5f))
-                {
-                    _config.SpawnPointMatchRadius = Math.Clamp(radius, 0.5f, 10f);
-                    _config.Save();
-                }
-                ImGui.TextDisabled("How close a mark must be to count as sitting on a spawn point.");
             }
 
             ImGui.Spacing();

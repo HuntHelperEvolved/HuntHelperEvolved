@@ -427,8 +427,6 @@ public class Configuration : IPluginConfiguration
     public bool AnyMapOverlayEnabled =>
         ShowSpawnPointsOnMap || ShowSsEventOnMap || AnyPlayerGuideEnabled;
 
-    /// <summary>How close (in map units) a mark must be to count as "at" a spawn point.</summary>
-    public float SpawnPointMatchRadius { get; set; } = 2.5f;
 
     /// <summary>
     /// Count only kills you personally landed ("You defeat the X") rather than
