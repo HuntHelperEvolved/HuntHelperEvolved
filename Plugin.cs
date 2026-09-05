@@ -679,9 +679,16 @@ public sealed class Plugin : IDalamudPlugin
             _notifier.Speak("A-Rank Nearby");
     }
 
-    private void OnCommand(string command, string args) => _configWindowVisible = true;
+    // A command that names a window toggles it. Typing it again to put the
+    // window away is what everyone expects, it is what /htrm and /hunttally
+    // already did, and it is what Hunt Helper's own commands do — so the /hh
+    // aliases would otherwise have been a one-way door.
+    //
+    // OnOpenConfigUi below is deliberately not one of these: that is Dalamud's
+    // own settings button, which has to mean open.
+    private void OnCommand(string command, string args) => _configWindowVisible = !_configWindowVisible;
 
-    private void OnTrainCommand(string command, string args) => _trainPopoutVisible = true;
+    private void OnTrainCommand(string command, string args) => _trainPopoutVisible = !_trainPopoutVisible;
 
     private void OnSightingDetected(OtherRankSighting sighting) => _notifier.Announce(sighting);
 
@@ -694,7 +701,7 @@ public sealed class Plugin : IDalamudPlugin
         return $"{(int)age.TotalHours}h {age.Minutes}m";
     }
 
-    private void OnCounterCommand(string command, string args) => _counterPopoutVisible = true;
+    private void OnCounterCommand(string command, string args) => _counterPopoutVisible = !_counterPopoutVisible;
 
     /// <summary>
     /// The map controls live on a bar pinned to the map itself now, rather than
