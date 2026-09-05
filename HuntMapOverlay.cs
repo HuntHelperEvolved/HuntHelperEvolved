@@ -246,13 +246,14 @@ public sealed unsafe class HuntMapOverlay : IDisposable
 
         foreach (var sighting in live)
         {
-            // Same filters the spawn points use, so turning a rank off turns
-            // it off everywhere rather than only half of the map.
+            // The mark switches, not the spawn point ones. Hiding a zone's
+            // sixty B-rank points is a different wish from hiding a B rank
+            // that is actually up.
             var wanted = sighting.Rank switch
             {
-                HuntRank.A => _config.ShowARankPoints,
-                HuntRank.B => _config.ShowBRankPoints,
-                _ => _config.ShowSRankPoints,
+                HuntRank.A => _config.ShowARankMarks,
+                HuntRank.B => _config.ShowBRankMarks,
+                _ => _config.ShowSRankMarks,
             };
             if (!wanted) continue;
 
@@ -574,7 +575,9 @@ public sealed unsafe class HuntMapOverlay : IDisposable
     /// </summary>
     private string DrawSignature() =>
         $"{_config.ShowSpawnPointsOnMap}{_config.ShowARankPoints}{_config.ShowBRankPoints}"
-        + $"{_config.ShowSRankPoints}{_config.ShowPlayerCircleOnMap}"
+        + $"{_config.ShowSRankPoints}"
+        + $"{_config.ShowMarksOnMap}{_config.ShowARankMarks}{_config.ShowBRankMarks}{_config.ShowSRankMarks}"
+        + $"{_config.ShowPlayerCircleOnMap}"
         + $"{_config.ShowPlayerGuides}{_config.ShowPlayerFacingOnMap}{_config.ShowPlayerDirectionLine}{_config.ShowPlayerPositionDot}{_config.ShowSsEventOnMap}{_ssEvent.Pins.Count}{_ssEvent.Active}{_config.SpawnDotSize}{_config.PlayerCircleRadiusScale}{_config.PlayerDirectionLineThickness}{_config.PlayerPositionDotSize}"
         + $"{_config.ShowMarkLabelsOnMap}{DotTextures.HexOf(_config.MarkLabelColour)}{DotTextures.HexOf(_config.MarkLabelOutlineColour)}{_config.MarkLabelFontSize}";
 
@@ -881,18 +884,6 @@ public sealed unsafe class HuntMapOverlay : IDisposable
             var guides = DrawPlayerGuides(mapId, dots, out var guidesWaiting);
             if (guidesWaiting) _needsRefresh = true;
 
-            if (!_config.ShowSpawnPointsOnMap)
-            {
-                // An SS event is not a spawn point, so it is not switched off
-                // with them.
-                var pinsOnly = DrawSsEventPins(territory, mapId, dots);
-
-                Status = "Spawn points off."
-                         + (pinsOnly > 0 ? $" {pinsOnly} SS event." : string.Empty)
-                         + (guides > 0 ? $" {guides} guide markers." : string.Empty);
-                return;
-            }
-
             var points = SpawnPointData.For(territory);
 
             // Live A-ranks come from the train list; B and S from the separate
@@ -943,7 +934,11 @@ public sealed unsafe class HuntMapOverlay : IDisposable
 
             var placed = 0;
 
-            for (var pointIndex = 0; pointIndex < points.Length; pointIndex++)
+            // Only the points are behind this switch. Marks are drawn below
+            // whatever it says — they are what is actually in the zone, and
+            // hiding the map of where things could be is no reason to stop
+            // showing where one is.
+            for (var pointIndex = 0; _config.ShowSpawnPointsOnMap && pointIndex < points.Length; pointIndex++)
             {
                 var point = points[pointIndex];
 
@@ -975,9 +970,11 @@ public sealed unsafe class HuntMapOverlay : IDisposable
             }
 
             var pins = DrawSsEventPins(territory, mapId, dots);
-            var marks = DrawLiveMarks(mapId, dots, live);
+            var marks = _config.ShowMarksOnMap ? DrawLiveMarks(mapId, dots, live) : 0;
 
-            Status = $"{placed} spawn points shown."
+            Status = (_config.ShowSpawnPointsOnMap
+                         ? $"{placed} spawn points shown."
+                         : "Spawn points off.")
                      + (pins > 0 ? $" {pins} SS event." : string.Empty)
                      + (marks > 0 ? $" {marks} marks up." : string.Empty)
                      + (guides > 0 ? $" {guides} guide markers." : string.Empty);
