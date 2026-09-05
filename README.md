@@ -41,6 +41,16 @@ why.
 | `/htrm` | show or hide the control bar above the map |
 | `/hunttally` | the kill tally. `/hunttally config` for its settings |
 
+If **Hunt Helper is not installed**, this plugin also answers to its commands,
+so you can carry the muscle memory over: `/hh` opens the main window, `/hht` the
+train list, `/hhn` moves to the next live mark and flags it, `/hhna` names the
+closest aetheryte to it, and `/hhc` opens the counter. They are only claimed
+when Hunt Helper is absent — if you still have it installed, it keeps them.
+
+`/hh1`, `/hh2`, `/hh1save`, `/hh2save` and `/hhr` are left alone: they save and
+apply Hunt Helper's map-window presets and open its spawn point recorder, and
+there is nothing here that does either.
+
 ## What's new
 
 The plugin keeps its own release notes and puts them up once after an update,
@@ -55,10 +65,22 @@ Everything here draws on the game's own map, not in a separate window, and only
 in zones marks actually occur in. A two-row control bar sits above the map and
 appears and disappears with it.
 
-**Spawn points.** Every known spawn point in the zone, filtered by rank, going
-grey / blue / red / green as a B, A or S rank turns up on one. A mark that
-isn't on a known spawn point — an SS, or one that spawned somewhere unlisted —
-is drawn slightly larger at its real position rather than being left off.
+**Spawn points.** Every known spawn point in the zone, filtered by rank.
+
+**Marks.** Every mark that's up, drawn slightly larger than a spawn point and
+at the position it is actually standing on — not snapped to the nearest spawn
+point. A mark near a point is only *near* it, and an SS event's mobs don't
+spawn on those points at all.
+
+The two have **separate switches, and separate B / A / S filters**, because they
+answer different questions: the points are where a mark *could* be, the marks
+are what *is* there. Showing only A and S points while still being told about
+a B rank that's turned up is a perfectly ordinary way to hunt.
+
+**Click to flag.** Clicking a spawn point drops the flag on it, for sending
+people to a spot before anything has spawned there. SS event spots and the spot
+the SS mark itself will appear on are clickable the same way. Turn it off and
+the clickable cursor stops appearing too.
 
 **Mark names.** Every mark that is actually up gets its name and remaining
 health written beside its dot, so a glance at the map says which are still
@@ -79,8 +101,10 @@ zoom. There's a scale if you want it bigger than life, and a line-width setting.
 
 **SS events.** When the *"minions of an extraordinarily powerful mark"*
 announcement goes out, the four minion spots for that zone are marked, along
-with a star on the spot the mark itself will spawn. They stay until the mark
-appears or you leave the zone. All 18 ShB, EW and DT hunt zones are covered.
+with a star on the spot the mark itself will spawn. A minion that is actually
+up is drawn over its spot and larger than it, so a spot with something alive on
+it reads differently from one still waiting. They stay until the mark appears or
+you leave the zone. All 18 ShB, EW and DT hunt zones are covered.
 
 ## When a mark turns up
 
@@ -107,6 +131,13 @@ looks "finished" the moment you leave the first leg.
 Marks are recorded per world, so the same mark on Mateus and on Goblin are two
 marks and can't overwrite each other.
 
+A mark is ticked off when it dies, whoever killed it — not only when you were
+credited with the kill. Its health reaching zero is the signal, which carries as
+far as the game loads the mark itself; the battle log is watched too, but that
+only reaches as far as the fight. One the group brought down while you were
+still running in used to stay lit as though it were up, and the report is built
+from this list.
+
 The **Scout** tab posts a report with a Hunt Helper import code and a per-
 expansion count of what's up, including what was found already dead.
 
@@ -117,6 +148,9 @@ rank and expansion — so the number survives finishing the achievement, which
 stops reporting a running total once it's complete. Credit is read from your own
 actions rather than guessed from combat state, and A and S ranks are only
 counted once the game confirms it rewarded you.
+
+The **Marks Slain** list filters by name and by B/A/S rank, and is ordered by
+kills — so picking a rank puts your most-killed mark of that rank at the top.
 
 `/hunttally` opens it. Its settings live on the **Tally** tab of the main window.
 
