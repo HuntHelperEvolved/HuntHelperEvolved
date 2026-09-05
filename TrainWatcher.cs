@@ -125,12 +125,39 @@ public class TrainWatcher : IDisposable
 
         _framework.Update += OnUpdate;
         _chatGui.ChatMessage += OnChatMessage;
+        _detector.MarkObservedDead += OnMarkObservedDead;
     }
 
     public void Dispose()
     {
         _framework.Update -= OnUpdate;
         _chatGui.ChatMessage -= OnChatMessage;
+        _detector.MarkObservedDead -= OnMarkObservedDead;
+    }
+
+    /// <summary>
+    /// The detector saw a mark at zero health. It has already flagged its own
+    /// row; this keeps Hunt Helper's parallel list in step and clears the dot.
+    /// </summary>
+    private void OnMarkObservedDead(DetectedMark mark)
+    {
+        try
+        {
+            ObservedDeathCount++;
+            _detector.RemoveSighting(mark.NameId, mark.Instance, mark.WorldId);
+
+            if (_tracked.TryGetValue((mark.NameId, mark.Instance), out var tracked) && !tracked.Dead)
+            {
+                tracked.Dead = true;
+                tracked.DeathObservedAtUtc = mark.DeathObservedAtUtc ?? DateTime.UtcNow;
+            }
+
+            _log.Information($"{mark.Name} was seen at zero health; marked dead in the train.");
+        }
+        catch (Exception ex)
+        {
+            _log.Warning(ex, "Could not record an observed mark death.");
+        }
     }
 
     /// <summary>How many marks were ticked off by watching them die rather than killing them.</summary>

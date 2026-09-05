@@ -2825,7 +2825,7 @@ public sealed class Plugin : IDalamudPlugin
                 _config.MarkDeadOnObservedDefeat = observedDeaths;
                 _config.Save();
             }
-            ImGui.TextDisabled("Whoever killed it. Marking dead from the tally only covers kills you were credited with, so a mark the group brought down while you ran in used to stay lit.");
+            ImGui.TextDisabled("Whoever killed it — either seeing its health hit zero, or the battle log saying so. Marking dead from the tally only covers kills you were credited with, so a mark the group brought down while you ran in used to stay lit.");
 
             var teleFlags = _config.TeleportAlsoFlags;
             if (ImGui.Checkbox("Teleport also drops the map flag", ref teleFlags))
