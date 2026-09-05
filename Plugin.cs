@@ -243,7 +243,7 @@ public sealed class Plugin : IDalamudPlugin
         _detector = new MarkDetector(objectTable, clientState, dataManager, _config);
         _teleport = new TeleportHelper(_pluginInterface, _log, dataManager);
         SyncBlacklist();
-        _watcher = new TrainWatcher(framework, _ipc, _detector, _config);
+        _watcher = new TrainWatcher(framework, _ipc, _detector, _config, chatGui, _log);
 
         // The tally reaches Dalamud through its own injected service class
         // rather than this constructor's parameters, which is how it was built
@@ -2968,6 +2968,14 @@ public sealed class Plugin : IDalamudPlugin
             ImGui.TextDisabled("Off still flags the mark on your map — it just doesn't post the chat line.");
 
             ImGui.TextDisabled("Announcing marks as they're detected has its own section below.");
+
+            var observedDeaths = _config.MarkDeadOnObservedDefeat;
+            if (ImGui.Checkbox("Tick a mark dead when the battle log says it died", ref observedDeaths))
+            {
+                _config.MarkDeadOnObservedDefeat = observedDeaths;
+                _config.Save();
+            }
+            ImGui.TextDisabled("Whoever killed it — either seeing its health hit zero, or the battle log saying so. Marking dead from the tally only covers kills you were credited with, so a mark the group brought down while you ran in used to stay lit.");
 
             var teleFlags = _config.TeleportAlsoFlags;
             if (ImGui.Checkbox("Teleport also drops the map flag", ref teleFlags))

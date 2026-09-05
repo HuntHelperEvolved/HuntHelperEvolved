@@ -1,8 +1,11 @@
+using Dalamud.Game.Chat;
+using Dalamud.Game.Text;
 using Dalamud.Plugin.Services;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.RegularExpressions;
 
 namespace HuntHelperEvolved;
 
@@ -54,6 +57,21 @@ public class TrainWatcher : IDisposable
     private readonly HuntHelperIpc _ipc;
     private readonly MarkDetector _detector;
     private readonly Configuration _config;
+    private readonly IChatGui _chatGui;
+    private readonly IPluginLog _log;
+
+    /// <summary>
+    /// The channels the battle log arrives on. No player channel is here, and
+    /// that is the point: "Someone defeats the Chernobog" typed into party chat
+    /// must not be able to tick a mark off the train.
+    /// </summary>
+    private static readonly XivChatType[] BattleChannels =
+    {
+        XivChatType.SystemMessage,
+        XivChatType.SystemError,
+        XivChatType.Damage,
+        XivChatType.Action,
+    };
 
     private readonly Dictionary<(uint ModelId, uint Instance), TrackedMark> _tracked = new();
 
@@ -94,19 +112,123 @@ public class TrainWatcher : IDisposable
     /// <summary>Number of marks auto-marked dead by Hunt Tally this train.</summary>
     public int AutoMarkedCount { get; private set; }
 
-    public TrainWatcher(IFramework framework, HuntHelperIpc ipc, MarkDetector detector, Configuration config)
+    public TrainWatcher(
+        IFramework framework, HuntHelperIpc ipc, MarkDetector detector, Configuration config,
+        IChatGui chatGui, IPluginLog log)
     {
         _framework = framework;
         _ipc = ipc;
         _detector = detector;
         _config = config;
+        _chatGui = chatGui;
+        _log = log;
+
         _framework.Update += OnUpdate;
+        _chatGui.ChatMessage += OnChatMessage;
+        _detector.MarkObservedDead += OnMarkObservedDead;
     }
 
     public void Dispose()
     {
         _framework.Update -= OnUpdate;
+        _chatGui.ChatMessage -= OnChatMessage;
+        _detector.MarkObservedDead -= OnMarkObservedDead;
     }
+
+    /// <summary>
+    /// The detector saw a mark at zero health. It has already flagged its own
+    /// row; this keeps Hunt Helper's parallel list in step and clears the dot.
+    /// </summary>
+    private void OnMarkObservedDead(DetectedMark mark)
+    {
+        try
+        {
+            ObservedDeathCount++;
+            _detector.RemoveSighting(mark.NameId, mark.Instance, mark.WorldId);
+
+            if (_tracked.TryGetValue((mark.NameId, mark.Instance), out var tracked) && !tracked.Dead)
+            {
+                tracked.Dead = true;
+                tracked.DeathObservedAtUtc = mark.DeathObservedAtUtc ?? DateTime.UtcNow;
+            }
+
+            _log.Information($"{mark.Name} was seen at zero health; marked dead in the train.");
+        }
+        catch (Exception ex)
+        {
+            _log.Warning(ex, "Could not record an observed mark death.");
+        }
+    }
+
+    /// <summary>How many marks were ticked off by watching them die rather than killing them.</summary>
+    public int ObservedDeathCount { get; private set; }
+
+    /// <summary>
+    /// Ticks a mark dead when the battle log says it died, whoever landed the
+    /// kill.
+    ///
+    /// The tally can only report kills you were credited with, so a mark the
+    /// group brought down while you were still running in stayed lit as though
+    /// it were up. The battle log does not care who tagged it.
+    ///
+    /// The mark's name is matched at the END of the line rather than anywhere
+    /// in it. "defeats the Ker" is a prefix of "defeats the Ker Shroud", and
+    /// an unanchored match would tick the mark off when its minion died.
+    /// </summary>
+    private void OnChatMessage(IChatMessage message)
+    {
+        try
+        {
+            if (!_config.MarkDeadOnObservedDefeat) return;
+            if (Array.IndexOf(BattleChannels, message.LogKind) < 0) return;
+
+            var text = message.Message.TextValue;
+            if (text.IndexOf("defeat", StringComparison.OrdinalIgnoreCase) < 0) return;
+
+            var instance = MarkDetector.GetCurrentInstance();
+            var worldId = _detector.CurrentWorldId();
+            var now = DateTime.UtcNow;
+
+            foreach (var mark in _detector.Marks.Values)
+            {
+                if (mark.Dead || mark.IsCustom) continue;
+                if (mark.Instance != instance || mark.WorldId != worldId) continue;
+                if (string.IsNullOrWhiteSpace(mark.Name)) continue;
+                if (!DefeatedInLine(text, mark.Name)) continue;
+
+                mark.Dead = true;
+                mark.DeathObservedAtUtc = now;
+                ObservedDeathCount++;
+
+                // Its dot goes out now rather than waiting for the sighting to
+                // expire, the same as a kill the tally reported.
+                _detector.RemoveSighting(mark.NameId, mark.Instance, mark.WorldId);
+
+                _log.Information($"{mark.Name} was defeated; marked dead in the train.");
+            }
+
+            // Hunt Helper's own list, keyed differently, so matched separately.
+            foreach (var tracked in _tracked.Values)
+            {
+                if (tracked.Dead || string.IsNullOrWhiteSpace(tracked.Name)) continue;
+                if (!DefeatedInLine(text, tracked.Name)) continue;
+
+                tracked.Dead = true;
+                tracked.DeathObservedAtUtc = now;
+            }
+        }
+        catch (Exception ex)
+        {
+            // Never throw back into the chat pipeline.
+            _log.Warning(ex, "Could not read a battle log line while watching for mark deaths.");
+        }
+    }
+
+    private static bool DefeatedInLine(string text, string markName) =>
+        Regex.IsMatch(
+            text,
+            $@"defeats?\s+the\s+{Regex.Escape(markName)}\s*[.!]?\s*$",
+            RegexOptions.IgnoreCase);
 
     /// <summary>
     /// Takes a kill from the tally. Public because the tally is wired to this

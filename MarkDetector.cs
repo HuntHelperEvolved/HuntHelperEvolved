@@ -142,6 +142,13 @@ public sealed class MarkDetector
     /// <summary>Raised once when a mark is first picked up by scanning.</summary>
     public event Action<DetectedMark>? MarkDetected;
 
+    /// <summary>
+    /// Raised when a mark in the train is seen at zero health, whoever killed
+    /// it. The row is already flagged dead by the time this fires; it exists so
+    /// the Hunt Helper-derived list can be kept in step.
+    /// </summary>
+    public event Action<DetectedMark>? MarkObservedDead;
+
     public IReadOnlyDictionary<(uint NameId, uint Instance, uint WorldId), DetectedMark> Marks => _marks;
 
     public MarkDetector(IObjectTable objectTable, IClientState clientState, IDataManager dataManager, Configuration config)
@@ -283,6 +290,18 @@ public sealed class MarkDetector
             {
                 existing.LastSeenUtc = now;
                 existing.MapPosition = MapCoordinates.FromWorld(_dataManager, mapId, mob.Position.X, mob.Position.Z);
+
+                // Zero health is the death itself, seen rather than inferred,
+                // and it carries as far as the object table does. The battle
+                // log only reaches as far as the fight, so a mark killed across
+                // the zone never produced a line and stayed lit.
+                if (IsDead(mob) && !existing.Dead && _config.MarkDeadOnObservedDefeat)
+                {
+                    existing.Dead = true;
+                    existing.DeathObservedAtUtc = now;
+                    MarkObservedDead?.Invoke(existing);
+                }
+
                 continue;
             }
 
@@ -363,6 +382,16 @@ public sealed class MarkDetector
         }
 
         var key = (mob.NameId, instance, worldId);
+
+        // A corpse is not a mark that is up. Drop it rather than leaving a dot
+        // on the map over something already dead, and do not re-add it as the
+        // body lingers.
+        if (IsDead(mob))
+        {
+            _otherRanks.Remove(key);
+            return;
+        }
+
         if (_otherRanks.TryGetValue(key, out var existing))
         {
             existing.LastSeenUtc = now;
@@ -403,6 +432,16 @@ public sealed class MarkDetector
         if (mob.MaxHp == 0) return 100f;
         return Math.Clamp(mob.CurrentHp / (float)mob.MaxHp * 100f, 0f, 100f);
     }
+
+    /// <summary>
+    /// Whether the game is reporting this mob as dead.
+    ///
+    /// MaxHp is checked as well as CurrentHp on purpose. An object the game has
+    /// not finished filling in reads zero for both, and calling that dead would
+    /// tick a mark off the train the moment it came into range.
+    /// </summary>
+    private static bool IsDead(Dalamud.Game.ClientState.Objects.Types.IBattleNpc mob) =>
+        mob.MaxHp > 0 && mob.CurrentHp == 0;
 
     /// <summary>Clears all sightings.</summary>
     public void ClearOtherRanks() => _otherRanks.Clear();
