@@ -123,6 +123,13 @@ public sealed class Plugin : IDalamudPlugin
     private bool _selectTallyTab;
 
     /// <summary>
+    /// The release notes window. Its own window rather than a tab because it
+    /// arrives unasked after an update — putting it in front of someone means
+    /// showing it, not selecting a tab behind whatever they had open.
+    /// </summary>
+    private bool _releaseNotesVisible;
+
+    /// <summary>
     /// True when the standalone Hunt Tally plugin is also loaded, which the
     /// merged build has to treat as an error rather than a duplicate.
     /// </summary>
@@ -212,6 +219,8 @@ public sealed class Plugin : IDalamudPlugin
             _config.Save();
             _log.Information("Carried settings over from the Hunt Train Relay config file.");
         }
+
+        ShowReleaseNotesIfUpdated();
 
         _ipc = new HuntHelperIpc(_pluginInterface);
         _gameGui = gameGui;
@@ -830,6 +839,7 @@ public sealed class Plugin : IDalamudPlugin
         UpdateAutoAdvance();
         DrawTrainPopout();
         DrawCounterPopout();
+        DrawReleaseNotesWindow();
         DrawMapControlBar();
 
         // Before the early return below: the tally's window is independent of
@@ -2473,6 +2483,170 @@ public sealed class Plugin : IDalamudPlugin
         return false;
     }
 
+    /// <summary>
+    /// What changed in each version, newest first.
+    ///
+    /// Grouped by area within a release rather than listed flat, because the
+    /// question being asked is almost always "did anything change about the
+    /// map" rather than "what happened in order".
+    /// </summary>
+    /// <summary>
+    /// Puts the release notes up after an update, and only after an update.
+    ///
+    /// A fresh install records the version and shows nothing. Someone who has
+    /// just chosen to install a plugin is not being told what changed since a
+    /// version they never ran, and the window would land on top of a plugin
+    /// they have not seen yet.
+    ///
+    /// The version is recorded whether or not the window was actually shown, so
+    /// turning the setting off does not leave the plugin permanently convinced
+    /// it still owes an update notice.
+    /// </summary>
+    private void ShowReleaseNotesIfUpdated()
+    {
+        try
+        {
+            var current = ReleaseNotes.CurrentVersion;
+            var previous = _config.LastSeenReleaseVersion;
+
+            if (!ReleaseNotes.IsNewerThan(current, previous))
+                return;
+
+            var freshInstall = string.IsNullOrWhiteSpace(previous);
+
+            _config.LastSeenReleaseVersion = current;
+            _config.Save();
+
+            if (freshInstall)
+            {
+                _log.Information($"First install at {current}; not showing what's new.");
+                return;
+            }
+
+            if (!_config.ShowReleaseNotesOnUpdate) return;
+
+            _releaseNotesVisible = true;
+            _log.Information($"Updated from {previous} to {current}; showing what's new.");
+        }
+        catch (Exception ex)
+        {
+            // A window that fails to open is not worth taking the plugin down.
+            _log.Warning(ex, "Could not decide whether to show the release notes.");
+        }
+    }
+
+    private void DrawReleaseNotesWindow()
+    {
+        if (!_releaseNotesVisible) return;
+
+        ImGui.SetNextWindowSize(new Vector2(560, 520), ImGuiCond.FirstUseEver);
+        ImGui.SetNextWindowSizeConstraints(new Vector2(380, 240), new Vector2(float.MaxValue, float.MaxValue));
+
+        if (!ImGui.Begin("Hunt Helper Evolved — what's new###HHEReleaseNotes", ref _releaseNotesVisible))
+        {
+            ImGui.End();
+            return;
+        }
+
+        DrawReleaseNotesBody();
+        ImGui.End();
+    }
+
+    private void DrawReleaseNotesBody()
+    {
+        ImGui.Spacing();
+
+        if (ReleaseNotes.MissingCurrentVersion)
+        {
+            // Better to say so than to show the previous release as though it
+            // were this one.
+            ImGui.TextColored(
+                new Vector4(1f, 0.6f, 0.3f, 1f),
+                $"Running {ReleaseNotes.CurrentVersion}, which has no notes written for it yet.");
+            ImGui.Spacing();
+        }
+        else
+        {
+            ImGui.TextDisabled($"Running {ReleaseNotes.CurrentVersion}.");
+            ImGui.Spacing();
+        }
+
+        var notesOnUpdate = _config.ShowReleaseNotesOnUpdate;
+        if (ImGui.Checkbox("Show this automatically after an update", ref notesOnUpdate))
+        {
+            _config.ShowReleaseNotesOnUpdate = notesOnUpdate;
+            _config.Save();
+        }
+        ImGui.TextDisabled("Only after an update — never on a fresh install, and never on an ordinary login.");
+
+        ImGui.Spacing();
+        ImGui.Separator();
+        ImGui.Spacing();
+
+        var newest = true;
+        foreach (var release in ReleaseNotes.All)
+        {
+            // The newest opens on its own; everything older is there to go
+            // looking for rather than to scroll past.
+            if (newest) ImGui.SetNextItemOpen(true, ImGuiCond.FirstUseEver);
+            newest = false;
+
+            var isRunning = release.Version == ReleaseNotes.CurrentVersion;
+            var heading = isRunning
+                ? $"{release.Version}  —  {release.Date}  (running)"
+                : $"{release.Version}  —  {release.Date}";
+
+            if (!ImGui.CollapsingHeader($"{heading}###release{release.Version}"))
+                continue;
+
+            ImGui.Indent();
+
+            if (!string.IsNullOrEmpty(release.Summary))
+            {
+                ImGui.TextWrapped(release.Summary);
+                ImGui.Spacing();
+            }
+
+            string? lastArea = null;
+            foreach (var change in release.Changes)
+            {
+                if (change.Area != lastArea)
+                {
+                    if (lastArea != null) ImGui.Spacing();
+                    ImGui.TextColored(new Vector4(0.55f, 0.78f, 1f, 1f), change.Area);
+                    lastArea = change.Area;
+                }
+
+                ImGui.Bullet();
+                ImGui.SameLine();
+                ImGui.TextWrapped(change.Text);
+
+                var credit = change.Issue > 0
+                    ? $"{change.Credit}  ·  issue #{change.Issue}"
+                    : change.Credit;
+
+                ImGui.Indent();
+                ImGui.TextDisabled(credit);
+                ImGui.Unindent();
+            }
+
+            ImGui.Unindent();
+            ImGui.Spacing();
+        }
+
+        ImGui.Spacing();
+        ImGui.Separator();
+        ImGui.Spacing();
+
+        ImGui.TextColored(new Vector4(0.55f, 0.78f, 1f, 1f), "Credits");
+        ImGui.TextWrapped(
+            "Hunt Train Relay by MusicManBowls and Hunt Tally by kihtli, merged and carried on here.");
+        ImGui.TextWrapped(
+            "Spawn point data, territory ids and the map's design come from Hunt Helper by img02, "
+            + "used under the MIT licence. SS minion and mark coordinates are from Faloop.");
+        ImGui.TextDisabled("Full notices are in THIRD-PARTY-NOTICES.md in the repository.");
+    }
+
     private void DrawConductorTab()
     {
         ImGui.Spacing();
@@ -3006,6 +3180,21 @@ public sealed class Plugin : IDalamudPlugin
         if (ImGui.CollapsingHeader("Detection notifications"))
         {
             DrawDetectionNotificationSettings();
+        }
+
+        if (ImGui.CollapsingHeader("About"))
+        {
+            ImGui.TextDisabled($"Hunt Helper Evolved {ReleaseNotes.CurrentVersion}");
+            ImGui.Spacing();
+
+            // The notes are a window of their own and turn up on their own
+            // after an update, so this is the way back to them afterwards.
+            if (ImGui.Button("What's new"))
+                _releaseNotesVisible = true;
+
+            ImGui.SameLine();
+            ImGui.TextDisabled("Changes in this and previous versions, and who to thank.");
+            ImGui.Spacing();
         }
 
         if (ImGui.CollapsingHeader("Teleport"))
