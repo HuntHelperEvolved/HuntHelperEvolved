@@ -3030,6 +3030,14 @@ public sealed class Plugin : IDalamudPlugin
 
                 ImGui.TextDisabled("Hover a dot on the map for what's there. Marks are drawn a little larger than a spawn point, at the position they are actually standing on.");
 
+                var clickFlag = _config.ClickSpawnPointToFlag;
+                if (ImGui.Checkbox("Click a spawn point on the map to flag it", ref clickFlag))
+                {
+                    _config.ClickSpawnPointToFlag = clickFlag;
+                    _config.Save();
+                }
+                ImGui.TextDisabled("For sending people to a spot before anything is on it. Marks themselves aren't clickable — one that's up is already drawn where it is.");
+
                 var ssEvent = _config.ShowSsEventOnMap;
                 if (ImGui.Checkbox("Mark SS event minion locations", ref ssEvent))
                 {
