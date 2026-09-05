@@ -42,11 +42,14 @@ public sealed class MainWindow : Window, IDisposable
     /// </summary>
     private int rankFilter;
 
-    private static readonly string[] RankFilterLabels = { "All ranks", "B", "A", "S", "SS" };
+    private static readonly string[] RankFilterLabels = { "All ranks", "B", "A", "S" };
 
     /// <summary>Index-aligned with <see cref="RankFilterLabels"/>; null is every rank.</summary>
     private static readonly MarkRank?[] RankFilterValues =
-        { null, MarkRank.B, MarkRank.A, MarkRank.S, MarkRank.SS };
+        { null, MarkRank.B, MarkRank.A, MarkRank.S };
+
+    // No SS. An SS kill lands in the tally as an S rank, so the option matched
+    // nothing and only offered an empty table.
 
     // Derived views are rebuilt when the data revision, the scope or the filter
     // moves - not on every frame. The statistics tab in particular used to copy
