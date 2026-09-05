@@ -60,8 +60,9 @@ are what *is* there. Showing only A and S points while still being told about
 a B rank that's turned up is a perfectly ordinary way to hunt.
 
 **Click to flag.** Clicking a spawn point drops the flag on it, for sending
-people to a spot before anything has spawned there. Turn it off and the
-clickable cursor stops appearing too.
+people to a spot before anything has spawned there. SS event spots and the spot
+the SS mark itself will appear on are clickable the same way. Turn it off and
+the clickable cursor stops appearing too.
 
 **Mark names.** Every mark that is actually up gets its name and remaining
 health written beside its dot, so a glance at the map says which are still
@@ -82,8 +83,10 @@ zoom. There's a scale if you want it bigger than life, and a line-width setting.
 
 **SS events.** When the *"minions of an extraordinarily powerful mark"*
 announcement goes out, the four minion spots for that zone are marked, along
-with a star on the spot the mark itself will spawn. They stay until the mark
-appears or you leave the zone. All 18 ShB, EW and DT hunt zones are covered.
+with a star on the spot the mark itself will spawn. A minion that is actually
+up is drawn over its spot and larger than it, so a spot with something alive on
+it reads differently from one still waiting. They stay until the mark appears or
+you leave the zone. All 18 ShB, EW and DT hunt zones are covered.
 
 ## When a mark turns up
 
