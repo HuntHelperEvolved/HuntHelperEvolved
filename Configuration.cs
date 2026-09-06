@@ -308,6 +308,21 @@ public class Configuration : IPluginConfiguration
     public List<string> CollapsedExpansions { get; set; } = new();
 
     /// <summary>
+    /// Open the next expansion block by itself once the one before it has
+    /// nothing left standing.
+    ///
+    /// The other half of <see cref="CollapsedExpansions"/>: a conductor folds
+    /// the legs already finished away, and the block they want next is
+    /// therefore always the shut one below. Opening it costs them a click at
+    /// the exact moment the train is moving fastest.
+    ///
+    /// Only ever opens a block, never closes one — the finished leg is left
+    /// exactly as they had it, because its kill times are still worth reading
+    /// after the last mark in it went down.
+    /// </summary>
+    public bool AutoExpandNextExpansion { get; set; } = true;
+
+    /// <summary>
     /// Draw A-rank spawn points on the real in-game map. Currently a proof of
     /// concept covering Urqopacha only, and the one feature here that depends
     /// on a third-party library, so it's off by default.

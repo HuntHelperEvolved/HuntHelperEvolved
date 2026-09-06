@@ -201,6 +201,19 @@ public sealed class Plugin : IDalamudPlugin
     private int _dragExpansionFrom = -1;
     private int _dragExpansionTo = -1;
 
+    // Expansion blocks with nothing left standing in them, as of the last time
+    // the train was drawn. Auto-opening the next block has to fire on the frame
+    // a block ENTERS this set rather than for as long as it sits in it: acting
+    // on the state would spring the next block open again every frame, and a
+    // conductor who folded it back would never get it to stay.
+    private readonly HashSet<string> _finishedExpansions = new();
+
+    // Whether the set above has been filled in once. The first grouped frame
+    // only records where things stand — a train reloaded with three finished
+    // legs in it must not fire three times over for transitions that happened
+    // before the plugin was running.
+    private bool _finishedExpansionsSeeded;
+
     // The mark the conductor is currently on. Tracked by identity rather than
     // list position, so dragging rows or removing marks can't silently change
     // what "current" points at.
@@ -2133,6 +2146,26 @@ public sealed class Plugin : IDalamudPlugin
                 "Sorts the train into expansion blocks, keeping scout order inside each one.\n"
                 + "Drag a block heading to move a whole expansion.");
 
+        // Only offered while the train is in blocks, since there is no next
+        // block to open without them. Hidden rather than greyed out, for the
+        // same reason the rest of this window greys nothing: BeginDisabled is
+        // an API this project has stayed off.
+        if (grouped)
+        {
+            ImGui.SameLine();
+            var autoExpand = _config.AutoExpandNextExpansion;
+            if (ImGui.Checkbox("Open next automatically", ref autoExpand))
+            {
+                _config.AutoExpandNextExpansion = autoExpand;
+                _config.Save();
+            }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip(
+                    "When the last mark in an expansion goes down, unfolds the next block\n"
+                    + "that still has something up. Never folds one away — a finished leg\n"
+                    + "stays open if you left it open.");
+        }
+
         // Row 5 — same setting as the one on the Settings tab, so the two
         // always agree.
         var spicingHere = _config.ShowSpicing;
@@ -2188,6 +2221,12 @@ public sealed class Plugin : IDalamudPlugin
             }
         }
 
+        // After the re-sort, because "the next block" is a question about the
+        // order the blocks are in, and before the dead marks are filtered out,
+        // because a leg ending is precisely a block whose marks are all dead.
+        if (grouping && _config.AutoExpandNextExpansion)
+            AutoExpandNextExpansion(allMarks);
+
         // What's shown may be a subset, but ordering maths always works against
         // the full list so hidden dead marks keep their place in the train.
         var marks = _config.HideDeadMarks
@@ -2214,15 +2253,18 @@ public sealed class Plugin : IDalamudPlugin
             foreach (var m in marks)
             {
                 var e = ExpansionData.ExpansionOf(m.NameId, m.ZoneName);
-                if (expansionCounts.TryGetValue(e, out var seen))
-                {
-                    expansionCounts[e] = seen + 1;
-                }
-                else
-                {
-                    expansionCounts[e] = 1;
-                    presentExpansions.Add(e);
-                }
+                if (!presentExpansions.Contains(e)) presentExpansions.Add(e);
+
+                // Custom flags are rally points and route notes, not quarry.
+                // "(6)" on a heading is a promise about how many A-ranks that
+                // leg holds, and a conductor reading it off should never have
+                // to subtract the flags they dropped themselves. The flag rows
+                // are still drawn in the block — they are simply not the count,
+                // which is also why a block is still listed as present when
+                // flags are all it holds.
+                if (m.IsCustom) continue;
+
+                expansionCounts[e] = expansionCounts.GetValueOrDefault(e) + 1;
 
                 if (!m.Dead)
                     expansionUpCounts[e] = expansionUpCounts.GetValueOrDefault(e) + 1;
@@ -2290,7 +2332,7 @@ public sealed class Plugin : IDalamudPlugin
                     blockIsFolded = DrawExpansionHeader(
                         blockExpansion,
                         presentExpansions.IndexOf(blockExpansion),
-                        expansionCounts[blockExpansion],
+                        expansionCounts.GetValueOrDefault(blockExpansion),
                         expansionUpCounts.GetValueOrDefault(blockExpansion),
                         rowHeight);
                 }
@@ -2600,7 +2642,7 @@ public sealed class Plugin : IDalamudPlugin
         {
             var block = presentExpansions[_dragExpansionFrom];
             ImGui.BeginTooltip();
-            ImGui.TextUnformatted($"{block} ({expansionCounts[block]})");
+            ImGui.TextUnformatted($"{block} ({expansionCounts.GetValueOrDefault(block)})");
             ImGui.EndTooltip();
         }
 
@@ -2678,9 +2720,17 @@ public sealed class Plugin : IDalamudPlugin
 
         // The up-count only earns its place while the block is shut, when the
         // rows that would have said it are not on screen.
-        var label = collapsed
-            ? $"▶ {expansion} ({count} — {upCount} up)"
-            : $"▼ {expansion} ({count})";
+        //
+        // A block holding nothing but custom flags counts zero, since flags are
+        // not marks, and then says no number at all rather than an "(0)" that
+        // would read as a bug over rows that are plainly there.
+        var arrow = collapsed ? "▶" : "▼";
+        var tally = count == 0
+            ? string.Empty
+            : collapsed
+                ? $" ({count} — {upCount} up)"
+                : $" ({count})";
+        var label = $"{arrow} {expansion}{tally}";
 
         ImGui.PushStyleColor(ImGuiCol.Text, new Vector4(0.62f, 0.78f, 1f, 1f));
         ImGui.Selectable(label, _dragExpansionFrom == index,
@@ -2746,6 +2796,82 @@ public sealed class Plugin : IDalamudPlugin
 
         ImGui.PopID();
         return collapsed;
+    }
+
+    /// <summary>
+    /// Opens the next block that still has something in it, the moment the one
+    /// above it runs out.
+    ///
+    /// This fires on the transition into "finished", never on the state — see
+    /// <see cref="_finishedExpansions"/> for why. A block that comes back to
+    /// life, because a mark was scouted into it or a death un-ticked, drops out
+    /// of the set and can hand over again later.
+    ///
+    /// Nothing is ever folded shut here. Opening a block a conductor did not
+    /// ask for costs them one click to undo; closing one they were reading
+    /// takes away the kill times they had on screen.
+    /// </summary>
+    private void AutoExpandNextExpansion(List<DetectedMark> allMarks)
+    {
+        // Block order, and whether each still has anything standing. The full
+        // list rather than the drawn one, because "Hide dead" takes a finished
+        // block off the screen entirely — which is exactly the moment this is
+        // most wanted.
+        var order = new List<string>();
+        var anythingUp = new Dictionary<string, bool>();
+        foreach (var mark in allMarks)
+        {
+            var expansion = ExpansionData.ExpansionOf(mark.NameId, mark.ZoneName);
+            if (!anythingUp.ContainsKey(expansion))
+            {
+                order.Add(expansion);
+                anythingUp[expansion] = false;
+            }
+
+            // Custom flags count towards a leg being unfinished even though the
+            // heading tally leaves them out. A rally point still standing is
+            // somewhere the train has yet to go, whatever the number says.
+            if (!mark.Dead) anythingUp[expansion] = true;
+        }
+
+        if (!_finishedExpansionsSeeded)
+        {
+            _finishedExpansionsSeeded = true;
+            foreach (var expansion in order)
+                if (!anythingUp[expansion]) _finishedExpansions.Add(expansion);
+            return;
+        }
+
+        // A block whose last row was removed from the train stops being
+        // anything at all, finished included. Left in the set, re-scouting it
+        // and killing it out again would be a handover this had already
+        // recorded, and so one that never happened.
+        _finishedExpansions.RemoveWhere(e => !anythingUp.ContainsKey(e));
+
+        var opened = false;
+        for (var i = 0; i < order.Count; i++)
+        {
+            if (anythingUp[order[i]])
+            {
+                _finishedExpansions.Remove(order[i]);
+                continue;
+            }
+
+            // Add reports false for a block that was already finished last
+            // frame, which is what keeps this to the one frame it changed.
+            if (!_finishedExpansions.Add(order[i])) continue;
+
+            // Blocks already finished are stepped over, so a leg killed out of
+            // order still hands on to one with work left in it.
+            for (var next = i + 1; next < order.Count; next++)
+            {
+                if (!anythingUp[order[next]]) continue;
+                opened |= _config.CollapsedExpansions.Remove(order[next]);
+                break;
+            }
+        }
+
+        if (opened) _config.Save();
     }
 
     /// <summary>
