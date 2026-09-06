@@ -298,6 +298,13 @@ public class Configuration : IPluginConfiguration
     public List<string> ExpansionOrder { get; set; } = new();
 
     /// <summary>
+    /// Expansion blocks folded away in the train list. Kept because a
+    /// conductor closes the legs already finished, and having them all spring
+    /// open again on reload would undo that every time.
+    /// </summary>
+    public List<string> CollapsedExpansions { get; set; } = new();
+
+    /// <summary>
     /// Draw A-rank spawn points on the real in-game map. Currently a proof of
     /// concept covering Urqopacha only, and the one feature here that depends
     /// on a third-party library, so it's off by default.
