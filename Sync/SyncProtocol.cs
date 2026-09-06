@@ -14,7 +14,7 @@ namespace HuntHelperEvolved.Sync;
 /// </summary>
 public static class SyncProtocol
 {
-    public const int Version = 3;
+    public const int Version = 4;
 
     public static readonly JsonSerializerSettings Json = new()
     {

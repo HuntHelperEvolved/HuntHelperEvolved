@@ -94,6 +94,38 @@ public static class DotTextures
         return EncodePng(size, size, pixels);
     }
 
+    /// <summary>An ordinary filled point with a separately coloured outline.</summary>
+    public static byte[] RenderOutlined(Vector4 fill, Vector4 outline)
+    {
+        const int size = Size;
+        var pixels = new byte[size * size * 4];
+        var centre = (size - 1) / 2f;
+        var outer = size / 2f;
+        var inner = outer - 3f;
+        for (var y = 0; y < size; y++)
+        for (var x = 0; x < size; x++)
+        {
+            var sum = Vector4.Zero;
+            for (var sy = 0; sy < Samples; sy++)
+            for (var sx = 0; sx < Samples; sx++)
+            {
+                var dx = x + (sx + 0.5f) / Samples - 0.5f - centre;
+                var dy = y + (sy + 0.5f) / Samples - 0.5f - centre;
+                var distance = dx * dx + dy * dy;
+                if (distance > outer * outer) continue;
+                var c = distance >= inner * inner ? outline : fill;
+                sum += new Vector4(c.X * c.W, c.Y * c.W, c.Z * c.W, c.W);
+            }
+            if (sum.W <= 0) continue;
+            var i = (y * size + x) * 4;
+            pixels[i] = ToByte(sum.X / sum.W);
+            pixels[i + 1] = ToByte(sum.Y / sum.W);
+            pixels[i + 2] = ToByte(sum.Z / sum.W);
+            pixels[i + 3] = ToByte(sum.W / (Samples * Samples));
+        }
+        return EncodePng(size, size, pixels);
+    }
+
     /// <summary>
     /// A ring outline, for the detection circle. Drawn at a larger resolution
     /// than the dots because it is stretched to the circle's full width on

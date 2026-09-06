@@ -736,8 +736,10 @@ public sealed unsafe class HuntMapOverlay : IDisposable
                     c => DotTextures.Render(c)),
 
                 // S-rank elimination: a point the S may still use, and one
-                // it cannot. Only drawn with sync on; harmless otherwise.
-                Texture("scand", "dot", _config.SpawnDotColourSCandidate,
+                // it cannot. Candidates remain provisional until the kill cycle is known.
+                Texture("scand", "outlined-" + DotTextures.HexOf(_config.SpawnDotColourEmpty), _config.SpawnDotColourSCandidate,
+                    c => DotTextures.RenderOutlined(_config.SpawnDotColourEmpty, c)),
+                Texture("sconfirmed", "dot", _config.SpawnDotColourSCandidate,
                     c => DotTextures.Render(c)),
                 Texture("sout", "dot", _config.SpawnDotColourSRuledOut,
                     c => DotTextures.Render(c)),
@@ -937,8 +939,10 @@ public sealed unsafe class HuntMapOverlay : IDisposable
                 markSignature += HashCode.Combine(mark.NameId, mark.Instance, mark.WorldId);
             }
 
-            foreach (var sighting in _detector.OtherRanks.Values)
-                markSignature += HashCode.Combine(sighting.NameId, sighting.Instance, sighting.WorldId);
+            foreach (var sighting in _detector.OtherRanks.Values.Where(s => DateTime.UtcNow - s.LastSeenUtc < TimeSpan.FromSeconds(1)))
+                markSignature += HashCode.Combine(sighting.NameId, sighting.Instance, sighting.WorldId,
+                    MathF.Round(sighting.MapPosition.X, 1), MathF.Round(sighting.MapPosition.Y, 1), sighting.HealthPercent, sighting.SpawnPointIndex);
+            if (_sync?.IsConnected == true) markSignature += 1;
 
             markSignature += _sync?.RemoteVersion ?? 0;
             if (markSignature != _lastMarkSignature)
@@ -1015,19 +1019,19 @@ public sealed unsafe class HuntMapOverlay : IDisposable
             // world at once — only this one is on this map.
             var here = _detector.OtherRanks.Values
                 .Where(o => o.TerritoryId == territory && o.Instance == instance
-                            && o.WorldId == worldId)
+                            && o.WorldId == worldId && DateTime.UtcNow - o.LastSeenUtc < TimeSpan.FromSeconds(1))
                 .ToList();
 
             // What other members can see, for this map. Our own sighting
             // wins where both exist; a mark the train already has dead is
-            // not resurrected by somebody's two-minute-old report.
-            if (_sync is not null && _config.SyncShowRemoteMarksOnMap)
+            // not resurrected by a delayed report.
+            if (_sync is not null && _sync.IsConnected && _config.SyncShowRemoteMarksOnMap)
             {
                 var localKeys = here.Select(o => o.Key).ToHashSet();
                 foreach (var remote in _sync.RemoteSightings.Values)
                 {
                     if (remote.TerritoryId != territory || remote.Instance != instance
-                        || remote.WorldId != worldId) continue;
+                        || remote.WorldId != worldId || DateTime.UtcNow - remote.LastSeenUtc > SyncCoordinator.RemoteSightingTtl) continue;
                     if (localKeys.Contains(remote.Key) || deadKeys.Contains(remote.Key)) continue;
                     here.Add(remote);
                 }
@@ -1080,23 +1084,32 @@ public sealed unsafe class HuntMapOverlay : IDisposable
                 // has seen: an A or B on a point since the S last died
                 // rules it out, and so does the point it died on.
                 if (point.Ranks.HasFlag(SpawnRanks.S) && _config.ShowSRankCandidatesOnMap
-                    && _sync?.ZoneFor(territory, worldId, instance) is { } zone
                     && SRankTimerData.ForTerritory(territory) is { } sTimer)
                 {
-                    if (zone.IsRuledOut(pointIndex))
+                    var zone = _sync?.ZoneFor(territory, worldId, instance) ?? new SyncSpawnZone();
+                    var status = _sync?.StatusFor(sTimer.NameId, worldId, instance);
+                    var reliableCycle = status?.KilledAt is not null && !status.Uncertain && status.KilledAt == zone.SinceAt;
+                    var confirmed = SpawnMapping.ConfirmedPoint(points, zone, reliableCycle);
+                    if (confirmed == pointIndex)
                     {
-                        dot = "sout";
-                        var reason = zone.LastSDeathIndex == pointIndex
-                            ? $"{sTimer.Name} spawned here last time"
-                            : zone.EliminatedBy(pointIndex) is { } by
-                                ? $"{ClaimantName(by)} seen here {FormatAge(by.SeenAt)} ago"
-                                : "ruled out";
+                        dot = "sconfirmed";
+                        tooltip += zone.SCurrentIndex == pointIndex
+                            ? $"\nConfirmed spawn point for {sTimer.Name} (observed)."
+                            : $"\nOnly remaining spawn point for {sTimer.Name} (by elimination).";
+                    }
+                    else if (zone.IsRuledOut(pointIndex) || confirmed is not null)
+                    {
+                        // Keep the ordinary point fill; only candidates get a gold outline.
+                        var reason = confirmed is not null ? "the S point is confirmed elsewhere"
+                            : zone.LastSDeathIndex == pointIndex ? $"{sTimer.Name} spawned here last time"
+                            : zone.EliminatedBy(pointIndex) is { } by ? $"{ClaimantName(by)} seen here {FormatAge(by.SeenAt)} ago" : "ruled out";
                         tooltip += $"\nRuled out for {sTimer.Name}: {reason}.";
                     }
                     else
                     {
                         dot = "scand";
-                        tooltip += $"\n{sTimer.Name} could spawn here.";
+                        tooltip += $"\nGold outline: possible spawn point for {sTimer.Name}.";
+                        if (!reliableCycle) tooltip += "\nKill-cycle timing is not confirmed; candidates remain provisional.";
                     }
                 }
 

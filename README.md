@@ -39,7 +39,7 @@ why.
 | `/htrc` | the trigger-mob counter popout — also Narrow-rift's Wee Ea headcount in Ultima Thule and Nunyunuwi's no-FATE-failed clock in Southern Thanalan |
 | `/htra` | name the closest aetheryte to the next mark |
 | `/htrm` | show or hide the control bar above the map |
-| `/htrs` | the S-rank board — windows, kill times and spawn points, shared through sync |
+| `/hhs` or `/htrs` | the S-rank board — windows, kill times and spawn points, shared through sync |
 | `/hunttally` | the kill tally. `/hunttally config` for its settings |
 
 If **Hunt Helper is not installed**, this plugin also answers to its commands,
@@ -198,7 +198,7 @@ What sync does, each with its own switch:
   Reset and Clear All empty it for everyone, and say so.
 - **Live marks.** While a member can see a mark, everyone sees where it is
   and how much health it has, on the in-game map, drawn like their own with
-  who saw it in the tooltip. Kept for two minutes after they lose sight of it.
+  who saw it in the tooltip. Removed when the last observer loses sight of it; missing heartbeats expire after three seconds.
 - **S-rank clocks.** When an S dies in front of any member, the plugin reports
   the exact moment and everyone's window opens on time. Kills can also be
   entered by hand on the S-rank board, and the server can read Faloop's
@@ -318,3 +318,9 @@ Expansion grouping and block dragging edit the shared route once per user action
 Local folding and display preferences stay local. Newly scouted rows append;
 use **Group shared route now** to regroup them. Opening the list never reasserts
 an old local expansion order over another scout's route.
+
+## Sync testing build 0.4.0.2
+
+Requires server 0.3.0 (protocol 4). `/hhs` opens the S-rank board; `/htrs` still works. Filters persist: current world or any selection of worlds across data centers, multiple expansions, available-to-spawn only, and mark/zone search. Available means a known open window, excluding live, unknown and uncertain timers; spawn conditions still apply.
+
+Live map observations refresh every half second independently of train recording. The last observer leaving render range removes the live mark; missing heartbeats expire within three seconds. Idle, full-health A/B sightings match nearby unambiguous spawn points and automatically eliminate them, retrying an initially unmatched position. The exclusions persist until the next S kill. Gold outlines indicate possible S spots; solid gold indicates an observed S origin or the sole remaining spot in a confirmed kill cycle. In-game rendering and patrol matching still need field testing.

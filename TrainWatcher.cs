@@ -96,6 +96,7 @@ public class TrainWatcher : IDisposable
     private double _secondsSinceLastPoll;
     private double _secondsSinceSave;
     private double _secondsSinceScan;
+    private double _secondsSinceRecordScan;
 
     /// <summary>
     /// Raised periodically so the in-progress train can be written to disk.
@@ -270,12 +271,15 @@ public class TrainWatcher : IDisposable
         // B, A and S ranks all the time. Only whether A-ranks get RECORDED into
         // the train is gated by tracking and the pause button.
         _secondsSinceScan += framework.UpdateDelta.TotalSeconds;
-        if (_secondsSinceScan >= Math.Max(1, _config.PollIntervalSeconds))
+        _secondsSinceRecordScan += framework.UpdateDelta.TotalSeconds;
+        if (_secondsSinceScan >= 0.5)
         {
             _secondsSinceScan = 0;
             try
             {
-                _detector.Scan(recordNew: _config.TrackingEnabled && !_config.ScanningPaused);
+                var recordNow = _secondsSinceRecordScan >= Math.Max(1, _config.PollIntervalSeconds);
+                if (recordNow) _secondsSinceRecordScan = 0;
+                _detector.Scan(recordNew: recordNow && _config.TrackingEnabled && !_config.ScanningPaused);
             }
             catch (Exception ex)
             {
