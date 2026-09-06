@@ -292,6 +292,7 @@ public sealed class PongMessage { public DateTime ServerTime { get; set; } }
 
 public sealed class SRankSpawnBroadcast
 {
+    public string Event { get; set; } = "spawn";
     public uint NameId { get; set; }
     public uint WorldId { get; set; }
     public uint Instance { get; set; }
