@@ -359,3 +359,7 @@ Fixed new shared scouting rows remaining at the bottom while Group by expansion 
 ## Testing build 0.4.0.9
 
 `/hha` now has an explicit Instance column and learns zone instances from living local/shared train marks, sightings, and recorded timers. Scouting I2 produces separate I1 and I2 rows for each A rank in the zone; kill times remain specific to mark, world and instance. Missing kills stay unknown, and old instance-zero records are never copied to an instanced timer. No server update is required.
+
+## Testing build 0.4.0.10
+
+In `/hha`, uninstanced cells are blank. The Instance column automatically disappears when no rows passing the current filters have an instance, and returns when instanced rows are present. Kill-time tracking is unchanged.
