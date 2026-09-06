@@ -144,10 +144,11 @@ public static class SRankTimerData
     /// </summary>
     public static SRankCycle Compute(SRankTimer timer, SyncSRankStatus? status, DateTime nowUtc, bool seenUpNow)
     {
+        var up = seenUpNow || (status is not null && ActiveSRankFilter.Status(status, false, nowUtc) is not null);
         if (status?.KilledAt is not { } killed)
         {
             // No kill known. Seen up is still worth saying.
-            return new SRankCycle(seenUpNow ? SRankPhase.Up : SRankPhase.Unknown, 0, null, null, null);
+            return new SRankCycle(up ? SRankPhase.Up : SRankPhase.Unknown, 0, null, null, null);
         }
 
         var min = status.Maintenance ? timer.MaintMinHours : timer.MinHours;
@@ -155,9 +156,6 @@ public static class SRankTimerData
         var opens = killed.AddHours(min);
         var forced = killed.AddHours(max);
         var since = nowUtc - killed;
-
-        var up = seenUpNow
-                 || (status.LastSeenUpAt is { } seen && seen > killed && nowUtc - seen < TimeSpan.FromMinutes(3));
 
         double percent;
         if (nowUtc < opens) percent = 0;
