@@ -553,6 +553,13 @@ public class Configuration : IPluginConfiguration
     /// times. Cleared only by Reset or a successful End Train Now.
     /// </summary>
     public List<PersistedMark> SavedTrain { get; set; } = new();
+    public List<PersistedMark> ResetUndoMarks { get; set; } = new();
+    public List<FlagEntry> ResetUndoFlags { get; set; } = new();
+    public DateTime? ResetUndoAt { get; set; }
+    public string ResetUndoBy { get; set; } = "";
+    public uint? ResetUndoCurrentNameId { get; set; }
+    public uint? ResetUndoCurrentInstance { get; set; }
+    public uint? ResetUndoCurrentWorldId { get; set; }
 
     /// <summary>When the saved train was last written, so its age can be shown.</summary>
     public DateTime? SavedTrainAtUtc { get; set; }

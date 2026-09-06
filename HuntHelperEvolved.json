@@ -13,7 +13,7 @@
     "statistics"
   ],
   "InternalName": "HuntHelperEvolved",
-  "AssemblyVersion": "0.4.0.5",
+  "AssemblyVersion": "0.4.0.6",
   "RepoUrl": "https://github.com/HuntHelperEvolved/HuntHelperEvolved",
   "ApplicableVersion": "any",
   "LoadPriority": 0,
