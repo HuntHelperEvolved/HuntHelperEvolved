@@ -1269,6 +1269,58 @@ public sealed class Plugin : IDalamudPlugin
         _config.Save();
     }
 
+    /// <summary>
+    /// Folds an export code into the train, and says so out loud.
+    ///
+    /// The result goes to chat as well as to the status line, because the
+    /// status line only exists on the main window: importing is offered from
+    /// the popout too, and an import that silently did nothing visible from
+    /// there would be indistinguishable from a dead button.
+    /// </summary>
+    private void ImportTrainCode(string code, string source)
+    {
+        if (string.IsNullOrWhiteSpace(code))
+        {
+            ReportProblem($"Nothing to import — {source} is empty.");
+            return;
+        }
+
+        var imported = TrainExchange.Import(code);
+        if (imported == null)
+        {
+            ReportProblem($"That import code couldn't be read ({source}).");
+            return;
+        }
+
+        var added = _detector.Merge(imported);
+        _lastPostResult = $"Imported {imported.Count} marks ({added} new).";
+        _chatGui.Print($"[Hunt Helper Evolved] {_lastPostResult}");
+    }
+
+    /// <summary>
+    /// Import straight off the clipboard, the way Hunt Helper does it — codes
+    /// arrive pasted into Discord and go back out via Copy, so the trip through
+    /// a text box was only ever ceremony.
+    /// </summary>
+    private void ImportFromClipboard()
+    {
+        string clipboard;
+        try
+        {
+            clipboard = ImGui.GetClipboardText() ?? string.Empty;
+        }
+        catch (Exception ex)
+        {
+            // Reading the clipboard goes out to the OS and can genuinely fail
+            // — another process holding it is enough.
+            _log.Warning(ex, "Could not read the clipboard for a train import.");
+            ReportProblem("Couldn't read the clipboard.");
+            return;
+        }
+
+        ImportTrainCode(clipboard, "the clipboard");
+    }
+
     private void ReportProblem(string message)
     {
         _lastPostResult = message;
@@ -1976,6 +2028,20 @@ public sealed class Plugin : IDalamudPlugin
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip("Names the aetheryte nearest the next mark, and copies a line to your clipboard. No flag — see /htra");
 
+        // Its own row on purpose. This is the one control here that rewrites
+        // the whole list, and it should not sit a mis-click away from Remove
+        // Dead. It lives on the shared control bar rather than the Train tab so
+        // the popout — the window actually open during a train, and where
+        // codes actually arrive — can import without going back to the tab.
+        if (ImGui.Button("Import from Clipboard"))
+        {
+            ImportFromClipboard();
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip(
+                "Reads an export code straight off the clipboard and folds it into this train.\n"
+                + "Marks already here are kept — nothing is overwritten.");
+
         // Row 3
         var tracking = _config.TrackingEnabled;
         if (ImGui.Checkbox("Tracking this train (records exact kill times)", ref tracking))
@@ -2389,18 +2455,11 @@ public sealed class Plugin : IDalamudPlugin
         ImGui.SameLine();
         if (ImGui.Button("Import"))
         {
-            var imported = TrainExchange.Import(_importCode);
-            if (imported == null)
-            {
-                _lastPostResult = "That import code couldn't be read.";
-            }
-            else
-            {
-                var added = _detector.Merge(imported);
-                _importCode = string.Empty;
-                _lastPostResult = $"Imported {imported.Count} marks ({added} new).";
-            }
+            var before = _detector.Marks.Count;
+            ImportTrainCode(_importCode, "the box");
+            if (_detector.Marks.Count != before) _importCode = string.Empty;
         }
+        ImGui.TextDisabled("Imports merge — a mark already in the train is never overwritten by one arriving in a code.");
 
         ImGui.Spacing();
         ImGui.Separator();
