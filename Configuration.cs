@@ -279,6 +279,35 @@ public class Configuration : IPluginConfiguration
     public bool ShowSpicing { get; set; } = true;
 
     /// <summary>
+    /// Sort the train into expansion blocks rather than leaving it in the order
+    /// marks happened to be scouted in.
+    ///
+    /// This genuinely reorders the train rather than only redrawing it: a
+    /// conductor's list IS the route, so a grouping that "Next Mark", the
+    /// export code and the end-of-train report did not follow would be a
+    /// different list from the one on screen.
+    /// </summary>
+    public bool GroupTrainByExpansion { get; set; } = false;
+
+    /// <summary>
+    /// Expansion names in the order the conductor has dragged them into, most
+    /// recent arrangement wins. Anything not named here follows in the usual
+    /// ARR -> Dawntrail order, so this only has to record the deviations.
+    ///
+    /// Stored by name rather than by index because the canonical list grows
+    /// with each expansion, and an index would quietly come to mean a
+    /// different expansion the moment one was added.
+    /// </summary>
+    public List<string> ExpansionOrder { get; set; } = new();
+
+    /// <summary>
+    /// Expansion blocks folded away in the train list. Kept because a
+    /// conductor closes the legs already finished, and having them all spring
+    /// open again on reload would undo that every time.
+    /// </summary>
+    public List<string> CollapsedExpansions { get; set; } = new();
+
+    /// <summary>
     /// Draw A-rank spawn points on the real in-game map. Currently a proof of
     /// concept covering Urqopacha only, and the one feature here that depends
     /// on a third-party library, so it's off by default.

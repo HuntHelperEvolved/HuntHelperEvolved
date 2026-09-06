@@ -193,6 +193,14 @@ public sealed class Plugin : IDalamudPlugin
     private int _dragFromIndex = -1;
     private int _dragToIndex = -1;
 
+    // The same, for dragging whole expansion blocks around when the train is
+    // grouped. Kept separate from the mark drag rather than overloaded onto it:
+    // the two mean different things (one moves a row, one moves a block), and
+    // sharing the fields would let a half-finished block drag be committed as a
+    // mark move. Indices are into the expansions actually present in the list.
+    private int _dragExpansionFrom = -1;
+    private int _dragExpansionTo = -1;
+
     // The mark the conductor is currently on. Tracked by identity rather than
     // list position, so dragging rows or removing marks can't silently change
     // what "current" points at.
@@ -2113,6 +2121,18 @@ public sealed class Plugin : IDalamudPlugin
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip("Only hides them from this list — they stay in the train and in reports.");
 
+        ImGui.SameLine();
+        var grouped = _config.GroupTrainByExpansion;
+        if (ImGui.Checkbox("Group by expansion", ref grouped))
+        {
+            _config.GroupTrainByExpansion = grouped;
+            _config.Save();
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip(
+                "Sorts the train into expansion blocks, keeping scout order inside each one.\n"
+                + "Drag a block heading to move a whole expansion.");
+
         // Row 5 — same setting as the one on the Settings tab, so the two
         // always agree.
         var spicingHere = _config.ShowSpicing;
@@ -2148,6 +2168,26 @@ public sealed class Plugin : IDalamudPlugin
             return;
         }
 
+        // Grouping genuinely reorders the train rather than only redrawing it,
+        // so it happens here, before anything is measured or drawn: everything
+        // below — and Next Mark, the export code and the end-of-train report
+        // with it — then sees one ordinary list in one order. A grouping the
+        // reports did not follow would be a different train from the one on
+        // screen.
+        //
+        // Never while a drag is in progress, or the re-sort would fight the
+        // conductor for the row they are holding.
+        var grouping = _config.GroupTrainByExpansion;
+        if (grouping && _dragFromIndex == -1 && _dragExpansionFrom == -1)
+        {
+            var grouped = GroupByExpansion(allMarks);
+            if (!grouped.SequenceEqual(allMarks))
+            {
+                _detector.ApplyOrder(grouped);
+                allMarks = grouped;
+            }
+        }
+
         // What's shown may be a subset, but ordering maths always works against
         // the full list so hidden dead marks keep their place in the train.
         var marks = _config.HideDeadMarks
@@ -2159,6 +2199,34 @@ public sealed class Plugin : IDalamudPlugin
             ImGui.TextDisabled($"All {allMarks.Count} marks are dead — untick \"Hide dead marks\" to see them.");
             DrawSRankWatchRows();
             return;
+        }
+
+        // Headings describe what is actually on screen, so they are counted
+        // from the filtered list: hide every dead mark in an expansion and its
+        // heading goes too, rather than leaving an empty block behind. The list
+        // is already sorted into blocks by now, so first-seen order here is
+        // display order.
+        var expansionCounts = new Dictionary<string, int>();
+        var expansionUpCounts = new Dictionary<string, int>();
+        var presentExpansions = new List<string>();
+        if (grouping)
+        {
+            foreach (var m in marks)
+            {
+                var e = ExpansionData.ExpansionOf(m.NameId, m.ZoneName);
+                if (expansionCounts.TryGetValue(e, out var seen))
+                {
+                    expansionCounts[e] = seen + 1;
+                }
+                else
+                {
+                    expansionCounts[e] = 1;
+                    presentExpansions.Add(e);
+                }
+
+                if (!m.Dead)
+                    expansionUpCounts[e] = expansionUpCounts.GetValueOrDefault(e) + 1;
+            }
         }
 
         (uint NameId, uint Instance, uint WorldId)? toRemove = null;
@@ -2201,9 +2269,37 @@ public sealed class Plugin : IDalamudPlugin
         var mouseXInWindow = ImGui.GetMousePos().X - ImGui.GetWindowPos().X;
         var dragging = _dragFromIndex != -1;
 
+        // The block the loop is currently inside. Null rather than empty so the
+        // very first mark always opens a block, even in the "Other" one.
+        string? lastExpansion = null;
+        var blockIsFolded = false;
+
         for (var i = 0; i < marks.Count; i++)
         {
             var mark = marks[i];
+
+            // A heading each time the expansion changes. The list is sorted
+            // into blocks by this point, so a change is always the start of a
+            // new one.
+            if (grouping)
+            {
+                var blockExpansion = ExpansionData.ExpansionOf(mark.NameId, mark.ZoneName);
+                if (blockExpansion != lastExpansion)
+                {
+                    lastExpansion = blockExpansion;
+                    blockIsFolded = DrawExpansionHeader(
+                        blockExpansion,
+                        presentExpansions.IndexOf(blockExpansion),
+                        expansionCounts[blockExpansion],
+                        expansionUpCounts.GetValueOrDefault(blockExpansion),
+                        rowHeight);
+                }
+
+                // Skipped before anything is pushed, so a folded block leaves
+                // no half-opened ImGui state behind it.
+                if (blockIsFolded) continue;
+            }
+
             // World included, because the identity is. Two rows for the same
             // mark on two worlds otherwise share an ImGui id, and ImGui cannot
             // tell their buttons apart — clicking the second row's x did
@@ -2430,6 +2526,7 @@ public sealed class Plugin : IDalamudPlugin
 
             // --- drag: only ever RECORDS intent, never mutates the list ---
             if (_dragFromIndex == -1
+                && _dragExpansionFrom == -1
                 && ImGui.IsItemActive()
                 && ImGui.IsMouseDragging(ImGuiMouseButton.Left)
                 && mouseXInWindow < buttonColumnX)
@@ -2437,13 +2534,34 @@ public sealed class Plugin : IDalamudPlugin
                 _dragFromIndex = i;
             }
 
-            if (dragging && ImGui.IsItemHovered())
+            // Grouped, a mark can only be dropped inside its own block. Which
+            // expansion a mark belongs to is a fact about the mark rather than
+            // an arrangement, so a drop that changed it would only be undone by
+            // the next re-sort.
+            var droppableHere = !grouping
+                                || (_dragFromIndex >= 0 && _dragFromIndex < marks.Count
+                                    && ExpansionData.ExpansionOf(
+                                           marks[_dragFromIndex].NameId, marks[_dragFromIndex].ZoneName)
+                                       == ExpansionData.ExpansionOf(mark.NameId, mark.ZoneName));
+
+            if (dragging && ImGui.IsItemHovered() && droppableHere)
             {
                 _dragToIndex = i;
             }
 
+            // A block can also be dropped on any row belonging to another
+            // block. Making the conductor hit the heading itself turned a drag
+            // into a pixel-hunt, and every row of a block means the same place.
+            if (_dragExpansionFrom != -1 && ImGui.IsItemHovered())
+            {
+                var over = presentExpansions.IndexOf(
+                    ExpansionData.ExpansionOf(mark.NameId, mark.ZoneName));
+                if (over >= 0) _dragExpansionTo = over;
+            }
+
             // --- click: a release with no drag in progress ---
             if (!dragging
+                && _dragExpansionFrom == -1
                 && ImGui.IsItemFocused()
                 && mouseXInWindow < buttonColumnX
                 && ImGui.IsMouseReleased(ImGuiMouseButton.Left)
@@ -2478,6 +2596,14 @@ public sealed class Plugin : IDalamudPlugin
             ImGui.EndTooltip();
         }
 
+        if (_dragExpansionFrom >= 0 && _dragExpansionFrom < presentExpansions.Count)
+        {
+            var block = presentExpansions[_dragExpansionFrom];
+            ImGui.BeginTooltip();
+            ImGui.TextUnformatted($"{block} ({expansionCounts[block]})");
+            ImGui.EndTooltip();
+        }
+
         // --- commit the move exactly once, on release, after the loop ---
         if (_dragFromIndex != -1 && ImGui.IsMouseReleased(ImGuiMouseButton.Left))
         {
@@ -2507,12 +2633,198 @@ public sealed class Plugin : IDalamudPlugin
             _dragToIndex = -1;
         }
 
+        // --- and the same for a whole expansion block ---
+        if (_dragExpansionFrom != -1 && ImGui.IsMouseReleased(ImGuiMouseButton.Left))
+        {
+            if (_dragExpansionTo != -1
+                && _dragExpansionTo != _dragExpansionFrom
+                && _dragExpansionFrom < presentExpansions.Count
+                && _dragExpansionTo < presentExpansions.Count)
+            {
+                MoveExpansion(
+                    presentExpansions[_dragExpansionFrom],
+                    presentExpansions[_dragExpansionTo],
+                    marks);
+            }
+
+            _dragExpansionFrom = -1;
+            _dragExpansionTo = -1;
+        }
+
         if (toRemove.HasValue) _detector.Remove(toRemove.Value);
 
         ImGui.Spacing();
-        ImGui.TextDisabled("Click a mark to echo + flag it. Drag a row and release where you want it.");
+        ImGui.TextDisabled(grouping
+            ? "Click a mark to echo + flag it. Click a heading to fold it away, drag one to move the whole expansion."
+            : "Click a mark to echo + flag it. Drag a row and release where you want it.");
 
         DrawSRankWatchRows();
+    }
+
+    /// <summary>
+    /// One expansion block heading, and the drag that reorders whole blocks.
+    ///
+    /// Like the mark drag it sits above, this only ever RECORDS where a drop
+    /// would land. Nothing moves until the mouse is released, after the list
+    /// has finished drawing — see DrawTrainList for why that matters.
+    /// </summary>
+    private bool DrawExpansionHeader(
+        string expansion, int index, int count, int upCount, float rowHeight)
+    {
+        var collapsed = _config.CollapsedExpansions.Contains(expansion);
+
+        ImGui.PushID($"expansion_{expansion}");
+        ImGui.Spacing();
+
+        // The up-count only earns its place while the block is shut, when the
+        // rows that would have said it are not on screen.
+        var label = collapsed
+            ? $"▶ {expansion} ({count} — {upCount} up)"
+            : $"▼ {expansion} ({count})";
+
+        ImGui.PushStyleColor(ImGuiCol.Text, new Vector4(0.62f, 0.78f, 1f, 1f));
+        ImGui.Selectable(label, _dragExpansionFrom == index,
+            ImGuiSelectableFlags.None, new Vector2(ImGui.GetWindowWidth(), rowHeight));
+        ImGui.PopStyleColor();
+
+        // Not decoration, and not optional. While an item is active — which a
+        // heading being dragged is — ImGui refuses to report any OTHER item as
+        // hovered unless the active one has allowed overlap. Without this the
+        // drop target is never found, the drag records nowhere to land, and
+        // releasing does nothing at all. The mark rows have always called it,
+        // which is why their drag worked and this one silently did not.
+        ImGui.SetItemAllowOverlap();
+
+        // Everything about the heading is read once, here, while it is
+        // unambiguously the last item drawn. SetTooltip below opens a window of
+        // its own, and reading the item's rectangle after that has no business
+        // being relied on.
+        var headerMin = ImGui.GetItemRectMin();
+        var headerMax = ImGui.GetItemRectMax();
+        var headerHovered = ImGui.IsItemHovered();
+        var headerActive = ImGui.IsItemActive();
+
+        // Click to fold the block away, drag to move it: the same split the
+        // mark rows use, where a click flags and a drag reorders.
+        if (_dragExpansionFrom == -1
+            && headerHovered
+            && ImGui.IsMouseReleased(ImGuiMouseButton.Left)
+            && Math.Abs(ImGui.GetMouseDragDelta().Y) < 0.1f)
+        {
+            if (collapsed) _config.CollapsedExpansions.Remove(expansion);
+            else _config.CollapsedExpansions.Add(expansion);
+
+            _config.Save();
+            collapsed = !collapsed;
+        }
+
+        if (_dragExpansionFrom != -1 && _dragExpansionTo == index && _dragExpansionFrom != index)
+        {
+            var edgeY = _dragExpansionTo < _dragExpansionFrom ? headerMin.Y : headerMax.Y;
+            ImGui.GetWindowDrawList().AddLine(
+                new Vector2(headerMin.X, edgeY),
+                new Vector2(headerMax.X, edgeY),
+                ImGui.GetColorU32(ImGuiCol.DragDropTarget),
+                2.5f);
+        }
+
+        if (_dragExpansionFrom == -1
+            && _dragFromIndex == -1
+            && headerActive
+            && ImGui.IsMouseDragging(ImGuiMouseButton.Left))
+        {
+            _dragExpansionFrom = index;
+        }
+
+        if (_dragExpansionFrom != -1 && headerHovered)
+            _dragExpansionTo = index;
+
+        if (_dragExpansionFrom == -1 && _dragFromIndex == -1 && headerHovered)
+            ImGui.SetTooltip(collapsed
+                ? "Click to open this expansion. Drag to move it up or down the train."
+                : "Click to fold this expansion away. Drag to move it up or down the train.");
+
+        ImGui.PopID();
+        return collapsed;
+    }
+
+    /// <summary>
+    /// The train sorted into expansion blocks.
+    ///
+    /// OrderBy is a stable sort, which is the whole trick: marks keep the order
+    /// they were scouted — or dragged — into within their own block, and only
+    /// the blocks themselves move.
+    /// </summary>
+    private List<DetectedMark> GroupByExpansion(List<DetectedMark> marks)
+    {
+        var order = ExpansionDisplayOrder(marks);
+        return marks
+            .OrderBy(m => order.IndexOf(ExpansionData.ExpansionOf(m.NameId, m.ZoneName)))
+            .ToList();
+    }
+
+    /// <summary>
+    /// Every expansion in the order its block should appear.
+    ///
+    /// The order the expansions ALREADY stand in comes before the usual
+    /// ARR -> Dawntrail one, and that is the important part. Ticking the box
+    /// should fold the train into blocks, not rearrange it: a list imported
+    /// Dawntrail -> Shadowbringers -> Endwalker was put in that order on
+    /// purpose, and re-sorting it into the order the expansions were released
+    /// is a change nobody asked for.
+    ///
+    /// Reading the order back out of the list is a fixed point — once grouped,
+    /// first appearance IS block order — so it settles on the first frame and
+    /// never drifts afterwards.
+    ///
+    /// A dragged arrangement outranks both, because it is the one the conductor
+    /// actually asked for.
+    /// </summary>
+    private List<string> ExpansionDisplayOrder(IEnumerable<DetectedMark> marks)
+    {
+        var order = new List<string>();
+
+        foreach (var name in _config.ExpansionOrder)
+            if (!order.Contains(name)) order.Add(name);
+
+        foreach (var mark in marks)
+        {
+            var name = ExpansionData.ExpansionOf(mark.NameId, mark.ZoneName);
+            if (!order.Contains(name)) order.Add(name);
+        }
+
+        // And last, expansions with nothing in the train at all, so a block has
+        // somewhere to appear the moment its first mark is scouted.
+        foreach (var name in ExpansionData.Expansions)
+            if (!order.Contains(name)) order.Add(name);
+
+        if (!order.Contains(ExpansionData.NoExpansion))
+            order.Add(ExpansionData.NoExpansion);
+
+        return order;
+    }
+
+    /// <summary>
+    /// Puts one expansion where another currently sits, and records the whole
+    /// resulting arrangement.
+    ///
+    /// The full order is saved rather than only the pair that moved, because an
+    /// expansion with nothing in the train is not on screen to be dragged —
+    /// recording only the visible ones would let the rest drift about as marks
+    /// were scouted.
+    /// </summary>
+    private void MoveExpansion(string moving, string target, IEnumerable<DetectedMark> marks)
+    {
+        var order = ExpansionDisplayOrder(marks);
+        var from = order.IndexOf(moving);
+        var to = order.IndexOf(target);
+        if (from < 0 || to < 0 || from == to) return;
+
+        order.RemoveAt(from);
+        order.Insert(to, moving);
+
+        _config.ExpansionOrder = order;
+        _config.Save();
     }
 
     /// <summary>
