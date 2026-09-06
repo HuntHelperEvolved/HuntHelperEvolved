@@ -325,8 +325,8 @@ public sealed class SRankWindow
             {
                 var hp = row.SeenUp
                     ? LiveHp(row, worldId)
-                    : row.Status?.LastSeenHp;
-                var text = hp is { } h ? $"UP — {h:F0}%" : "UP";
+                    : null;
+                var text = hp is { } h ? $"UP — {h:F0}%" : row.SeenUp ? "UP" : "REPORTED UP";
                 ImGui.TextColored(UpColour, text);
                 if (ImGui.IsItemHovered() && row.Status?.SpawnedAt is { } spawned)
                     ImGui.SetTooltip($"Seen since {Local(spawned)}");

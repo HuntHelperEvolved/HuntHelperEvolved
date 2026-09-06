@@ -121,6 +121,7 @@ public sealed class Plugin : IDalamudPlugin
     // Sharing with a group through their own server. See Sync/.
     private readonly SyncCoordinator _sync;
     private readonly SRankWindow _srankWindow;
+    private readonly ActiveSRankWindow _activeSRankWindow;
     private readonly ARankWindow _arankWindow;
     private int _counterDcIndex;
     private int _counterWorldIndex;
@@ -370,6 +371,7 @@ public sealed class Plugin : IDalamudPlugin
             typeof(Plugin).Assembly.GetName().Version?.ToString(4) ?? "0.0.0");
         _sync.RemoteTrainCleared += OnRemoteTrainCleared;
         _sync.SRankSpawned += OnRemoteSRankSpawn;
+        _activeSRankWindow = new ActiveSRankWindow(_config, _sync, _worldData);
         _srankWindow = new SRankWindow(_config, _sync, _worldData, _detector);
         _arankWindow = new ARankWindow(_config, _sync, _worldData, _detector);
         // After the detector exists, since the gates read straight off it.
@@ -422,6 +424,7 @@ public sealed class Plugin : IDalamudPlugin
         {
             HelpMessage = "Open the S-rank board: windows, kill times and spawn points, shared through sync.",
         });
+        _commandManager.AddHandler("/hhsa", new CommandInfo((_, _) => _activeSRankWindow.Toggle()) { HelpMessage = "Open active S-rank reports across all covered worlds." });
         _commandManager.AddHandler("/hhs", new CommandInfo(OnSRankCommand)
         { HelpMessage = "Open the S-rank board with world, expansion and availability filters." });
         _commandManager.AddHandler("/hha", new CommandInfo((_, _) => _arankWindow.Toggle()) { HelpMessage = "Open the A-rank respawn window board." });
@@ -960,6 +963,8 @@ public sealed class Plugin : IDalamudPlugin
         UpdateAutoAdvance();
         DrawTrainPopout();
         DrawCounterPopout();
+        DrainPendingSpawnAlerts();
+        _activeSRankWindow.Draw();
         _srankWindow.Draw();
         _arankWindow.Draw();
         DrawReleaseNotesWindow();
@@ -4254,6 +4259,7 @@ public sealed class Plugin : IDalamudPlugin
         _commandManager.RemoveHandler(MapCommand);
         _commandManager.RemoveHandler(SRankCommand);
         _commandManager.RemoveHandler("/hhs");
+        _commandManager.RemoveHandler("/hhsa");
         _commandManager.RemoveHandler("/hha");
         _commandManager.RemoveHandler(TallyCommand);
 
@@ -4275,7 +4281,27 @@ public sealed class Plugin : IDalamudPlugin
     private readonly Sync.SpawnAlertFilter _spawnAlertFilter = new();
     private string _lastCommunityAlert = "No community spawn/release received this session.";
 
+    private readonly Queue<Sync.SRankSpawnBroadcast> _pendingSpawnAlerts = new();
     private void OnRemoteSRankSpawn(Sync.SRankSpawnBroadcast spawn)
+    {
+        if (_objectTable.LocalPlayer is null || _detector.CurrentWorldId() == 0)
+        {
+            if (_pendingSpawnAlerts.Count >= 100) _pendingSpawnAlerts.Dequeue();
+            _pendingSpawnAlerts.Enqueue(spawn);
+            _lastCommunityAlert = "S-rank alert queued until loading finishes (up to two minutes).";
+            return;
+        }
+        ShowSpawnAlert(spawn);
+    }
+    private void DrainPendingSpawnAlerts()
+    {
+        if (!_config.SyncEnabled) { _pendingSpawnAlerts.Clear(); return; }
+        while (_pendingSpawnAlerts.TryPeek(out var pending) && DateTime.UtcNow - pending.SpawnedAt > TimeSpan.FromMinutes(2))
+        { _pendingSpawnAlerts.Dequeue(); _lastCommunityAlert = "Queued S-rank alert expired during loading."; }
+        if (_objectTable.LocalPlayer is null || _detector.CurrentWorldId() == 0) return;
+        while (_pendingSpawnAlerts.TryDequeue(out var spawn)) ShowSpawnAlert(spawn);
+    }
+    private void ShowSpawnAlert(Sync.SRankSpawnBroadcast spawn, bool test = false)
     {
         _lastCommunityAlert = $"{DateTime.Now:HH:mm:ss}: {spawn.Event} received for mark {spawn.NameId}, world {spawn.WorldId}.";
         _log.Information(_lastCommunityAlert);
@@ -4290,9 +4316,10 @@ public sealed class Plugin : IDalamudPlugin
             ? destination.Value.DcIndex == current.Value.DcIndex
             : _config.SyncSpawnDataCenters.Contains(dc.Id);
         if (!allowed) { _lastCommunityAlert += " Excluded by DC filter."; return; }
-        if (!_spawnAlertFilter.Accept(spawn, true, DateTime.UtcNow)) { _lastCommunityAlert += " Duplicate or invalid event time."; return; }
-        _lastCommunityAlert += " Shown in chat.";
-        _chatGui.Print($"[Hunt Helper Evolved] S rank {(spawn.Event == "release" ? "released" : "reported spawned")}: {mark.Name} — {_worldData.NameOf(spawn.WorldId)} ({dc.Name}), {mark.Zone}{ExpansionData.InstanceGlyph(spawn.Instance)} [{spawn.Source}]");
+        if (!(test ? new Sync.SpawnAlertFilter() : _spawnAlertFilter).Accept(spawn, true, DateTime.UtcNow)) { _lastCommunityAlert += " Duplicate or invalid event time."; return; }
+        _chatGui.Print($"[Hunt Helper Evolved] {(test ? "TEST — " : "")}S rank {(spawn.Event == "release" ? "released" : "reported spawned")}: {mark.Name} — {_worldData.NameOf(spawn.WorldId)} ({dc.Name}), {mark.Zone}{ExpansionData.InstanceGlyph(spawn.Instance)} [{spawn.Source}]");
+        _lastCommunityAlert += test ? " Test shown in chat." : " Shown in chat.";
+        _log.Information(_lastCommunityAlert);
         if (_config.SyncSpawnSound)
         {
             try { FFXIVClientStructs.FFXIV.Client.UI.UIGlobals.PlayChatSoundEffect(6); }
@@ -4488,10 +4515,15 @@ public sealed class Plugin : IDalamudPlugin
                 }
             ImGui.TextWrapped("Alerts arrive for the first group S-rank sighting and for public Faloop spawns/releases. Your server must follow the selected data centres. Historical snapshots do not trigger alerts.");
             ImGui.TextWrapped("Server coverage: " + string.Join(", ", _sync.Faloop.DataCenters));
+            if (ImGui.Button("Test S-rank chat alert"))
+                ShowSpawnAlert(new Sync.SRankSpawnBroadcast { NameId = Sync.SRankTimerData.All[0].NameId,
+                    WorldId = _detector.CurrentWorldId(), SpawnedAt = DateTime.UtcNow, Source = "Local test" }, test: true);
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip("Local chat/sound test using your current world and alert settings. No report is sent to the server.");
             ImGui.TextWrapped(_lastCommunityAlert);
             ImGui.TextDisabled($"Last server feed message: {_sync.Faloop.LastLiveMessageAt?.ToLocalTime().ToString("HH:mm:ss") ?? "none"}; last broadcast alert: {_sync.Faloop.LastAlertAt?.ToLocalTime().ToString("HH:mm:ss") ?? "none"}");
         }
 
+        if (ImGui.Button("Active S ranks (/hhsa)")) _activeSRankWindow.Toggle();
         if (ImGui.Button("Open the S-rank board"))
             _srankWindow.Toggle();
         ImGui.SameLine();

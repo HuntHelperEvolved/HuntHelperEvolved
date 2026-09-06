@@ -661,6 +661,7 @@ public class Configuration : IPluginConfiguration
     public Vector4 SpawnDotColourSRuledOut { get; set; } = new(0.35f, 0.35f, 0.35f, 0.45f);
 
     /// <summary>Show the S-rank window at all, and remember whether it was open.</summary>
+    public bool ActiveSRankWindowOpen { get; set; } = false;
     public bool SRankWindowOpen { get; set; } = false;
 
     /// <summary>Which expansion the S-rank window is filtered to; -1 for all.</summary>

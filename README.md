@@ -344,3 +344,9 @@ Server 0.3.2 emits an alert on the first group S sighting per kill cycle, includ
 **Undo reset — keep locally**, beside **Reset train tracking now**, recovers the last nonempty train/watches cleared locally or by another sync user. The backup survives reloads. Recovery disables this client's train sharing before restoring, preserving the group's current train. It keeps the saved order, retains newer edits, and appends marks added since reset. Sightings and timer sync remain available. Reset now emits one shared clear instead of two.
 
 Anonymous Faloop access remains under investigation: a fresh Guest browser on Crystal returned the same window-only permissions as the server, but no active spawn was present to compare. The absence of an advertised spawn permission alone does not establish that every anonymous website view is unable to display active reports.
+
+## Testing build 0.4.0.7
+
+`/hhsa` opens active S-rank reports across all worlds supplied by the server, with mark/world/DC/zone search and hideable columns. It distinguishes a currently visible scout sighting from a fresh Faloop active report. Community entries clear when absent from the next complete DC snapshot or killed, and expire after five minutes without confirmation. Server coverage is still configured separately from the plugin's notification filters.
+
+S-rank alerts received while loading are queued for up to two minutes. The Sync tab includes **Test S-rank chat alert**, which uses the actual chat/sound handler and current alert settings, labels the message TEST, and sends nothing to the server. Server delivery and plugin filtering have automated coverage; actual Dalamud chat/sound display must be checked in game.

@@ -118,6 +118,10 @@ public sealed class SyncSRankStatus
     public float? LastSeenHp { get; set; }
     public DateTime? SpawnedAt { get; set; }
 
+    /// <summary>Freshness of a positive Faloop active report; independent of live scout visibility.</summary>
+    public DateTime? FaloopActiveAt { get; set; }
+    public DateTime? FaloopActiveUntil { get; set; }
+
     /// <summary>
     /// The kill is a bound, not an observation: Faloop recorded the mark as
     /// sniped, so it died unreported some time after KilledAt. No honest
