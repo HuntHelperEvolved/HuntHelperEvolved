@@ -4474,7 +4474,7 @@ public sealed class Plugin : IDalamudPlugin
                 _config.SyncShowRemoteMarksOnMap = remote;
                 _config.Save();
             }
-            ImGui.TextDisabled("Drawn like your own, with who saw it and how long ago in the tooltip. Kept for two minutes after they lose sight of it.");
+            ImGui.TextDisabled("Drawn like your own, with who saw it and how long ago in the tooltip. Removed when nobody sees it; missing heartbeats expire after three seconds.");
 
             var candidates = _config.ShowSRankCandidatesOnMap;
             if (ImGui.Checkbox("Which spawn points the S can still use", ref candidates))
@@ -4485,6 +4485,13 @@ public sealed class Plugin : IDalamudPlugin
             ImGui.TextDisabled("An S cannot spawn where an A or B has spawned since it last died, nor twice running where it died. Possible points have a gold outline. A confirmed point is filled gold; ruled-out points keep their normal fill.");
 
             const ImGuiColorEditFlags flags = ImGuiColorEditFlags.AlphaBar | ImGuiColorEditFlags.AlphaPreviewHalf;
+            var outlineWidth = _config.SpawnCandidateOutlineWidth;
+            if (ImGui.SliderInt("S candidate outline width", ref outlineWidth, 1, 12, "%d / 32"))
+            {
+                _config.SpawnCandidateOutlineWidth = outlineWidth;
+                _config.Save();
+            }
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip("Outline thickness relative to the 32-pixel spot texture. Scales with spot size and map zoom.");
             var candidate = _config.SpawnDotColourSCandidate;
             if (ImGui.ColorEdit4("S candidate outline / confirmed fill", ref candidate, flags))
             {

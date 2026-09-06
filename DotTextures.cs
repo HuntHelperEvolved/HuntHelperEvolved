@@ -95,13 +95,13 @@ public static class DotTextures
     }
 
     /// <summary>An ordinary filled point with a separately coloured outline.</summary>
-    public static byte[] RenderOutlined(Vector4 fill, Vector4 outline)
+    public static byte[] RenderOutlined(Vector4 fill, Vector4 outline, int width = 6)
     {
         const int size = Size;
         var pixels = new byte[size * size * 4];
         var centre = (size - 1) / 2f;
         var outer = size / 2f;
-        var inner = outer - 3f;
+        var inner = outer - Math.Clamp(width, 1, 12);
         for (var y = 0; y < size; y++)
         for (var x = 0; x < size; x++)
         {

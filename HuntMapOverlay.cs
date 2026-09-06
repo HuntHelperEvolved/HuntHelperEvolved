@@ -69,6 +69,7 @@ public sealed unsafe class HuntMapOverlay : IDisposable
     private MapOverlayController? _overlay;
     private bool _enabled;
     private bool _needsRefresh = true;
+    private readonly Dictionary<(uint, uint, uint), (MapMarkerNode Dot, MarkLabelMarker? Label)> _liveNodes = new();
     private uint _lastTerritory;
 
     // Instance and world are part of "which map am I looking at" just as much
@@ -274,6 +275,7 @@ public sealed unsafe class HuntMapOverlay : IDisposable
         if (_overlay == null) return 0;
 
         var placed = 0;
+        var retained = new HashSet<(uint, uint, uint)>();
 
         foreach (var sighting in live)
         {
@@ -308,21 +310,37 @@ public sealed unsafe class HuntMapOverlay : IDisposable
             var world = MapCoordinates.ToWorld(
                 _dataManager, mapId, sighting.MapPosition.X, sighting.MapPosition.Y);
 
-            _overlay.AddMarker(new MapMarkerNode
+            retained.Add(sighting.Key);
+            if (!_liveNodes.TryGetValue(sighting.Key, out var nodes))
             {
-                AllowAnyMap = false,
-                MapId = mapId,
-                Position = world,
-                TexturePath = dots[dot],
-                Size = new Vector2(_config.SpawnDotSize * LiveMarkScale, _config.SpawnDotSize * LiveMarkScale),
-                TextTooltip = $"{sighting.Name}  ({sighting.Rank} rank) — UP{SeenBy(sighting)}\n"
-                              + $"{sighting.MapPosition.X:F1}, {sighting.MapPosition.Y:F1}",
-            });
+                var node = new MapMarkerNode
+                {
+                    AllowAnyMap = false, MapId = mapId, Position = world, TexturePath = dots[dot],
+                    Size = new Vector2(_config.SpawnDotSize * LiveMarkScale, _config.SpawnDotSize * LiveMarkScale),
+                };
+                _overlay.AddMarker(node);
+                nodes = (node, AddMarkLabel(mapId, sighting.MapPosition, sighting, _config.SpawnDotSize * LiveMarkScale));
+                _liveNodes[sighting.Key] = nodes;
+            }
+            nodes.Dot.Position = world;
+            nodes.Dot.TextTooltip = $"{sighting.Name}  ({sighting.Rank} rank) — UP{SeenBy(sighting)}\n{sighting.MapPosition.X:F1}, {sighting.MapPosition.Y:F1}";
+            if (nodes.Label is { } label)
+            {
+                label.Position = world;
+                label.TextProvider = () => $"{sighting.Name}\n{sighting.HealthPercent:0.#}%";
+            }
             placed++;
 
-            AddMarkLabel(mapId, sighting.MapPosition, sighting, _config.SpawnDotSize * LiveMarkScale);
+
         }
 
+        foreach (var key in _liveNodes.Keys.Where(k => !retained.Contains(k)).ToList())
+        {
+            var nodes = _liveNodes[key];
+            _overlay.RemoveMarker(nodes.Dot);
+            if (nodes.Label is not null) _overlay.RemoveMarker(nodes.Label);
+            _liveNodes.Remove(key);
+        }
         return placed;
     }
 
@@ -357,13 +375,13 @@ public sealed unsafe class HuntMapOverlay : IDisposable
         return $"{(int)age.TotalDays}d {age.Hours}h";
     }
 
-    private void AddMarkLabel(uint mapId, Vector2 mapPosition, OtherRankSighting sighting, float dotSize)
+    private MarkLabelMarker? AddMarkLabel(uint mapId, Vector2 mapPosition, OtherRankSighting sighting, float dotSize)
     {
-        if (_overlay == null || !_config.ShowMarkLabelsOnMap) return;
+        if (_overlay == null || !_config.ShowMarkLabelsOnMap) return null;
 
         var world = MapCoordinates.ToWorld(_dataManager, mapId, mapPosition.X, mapPosition.Y);
 
-        _overlay.AddMarker(new MarkLabelMarker(
+        var label = new MarkLabelMarker(
             _config.MarkLabelColour,
             _config.MarkLabelOutlineColour,
             _config.MarkLabelFontSize,
@@ -374,7 +392,9 @@ public sealed unsafe class HuntMapOverlay : IDisposable
             MapId = mapId,
             Position = world,
             TextProvider = () => $"{sighting.Name}\n{sighting.HealthPercent:0.#}%",
-        });
+        };
+        _overlay.AddMarker(label);
+        return label;
     }
 
     /// <summary>
@@ -685,7 +705,7 @@ public sealed unsafe class HuntMapOverlay : IDisposable
         + DotTextures.HexOf(_config.SpawnDotColourB) + "-"
         + DotTextures.HexOf(_config.SpawnDotColourA) + "-"
         + DotTextures.HexOf(_config.SpawnDotColourS) + "-"
-        + DotTextures.HexOf(_config.SpawnDotColourSCandidate) + "-"
+        + DotTextures.HexOf(_config.SpawnDotColourSCandidate) + "-" + _config.SpawnCandidateOutlineWidth + "-"
         + DotTextures.HexOf(_config.SpawnDotColourSRuledOut) + "-"
         + DotTextures.HexOf(_config.SsMinionColour) + "-"
         + DotTextures.HexOf(_config.PlayerCircleColour) + "t"
@@ -737,8 +757,8 @@ public sealed unsafe class HuntMapOverlay : IDisposable
 
                 // S-rank elimination: a point the S may still use, and one
                 // it cannot. Candidates remain provisional until the kill cycle is known.
-                Texture("scand", "outlined-" + DotTextures.HexOf(_config.SpawnDotColourEmpty), _config.SpawnDotColourSCandidate,
-                    c => DotTextures.RenderOutlined(_config.SpawnDotColourEmpty, c)),
+                Texture("scand", "outlined-" + _config.SpawnCandidateOutlineWidth + "-" + DotTextures.HexOf(_config.SpawnDotColourEmpty), _config.SpawnDotColourSCandidate,
+                    c => DotTextures.RenderOutlined(_config.SpawnDotColourEmpty, c, _config.SpawnCandidateOutlineWidth)),
                 Texture("sconfirmed", "dot", _config.SpawnDotColourSCandidate,
                     c => DotTextures.Render(c)),
                 Texture("sout", "dot", _config.SpawnDotColourSRuledOut,
@@ -869,6 +889,7 @@ public sealed unsafe class HuntMapOverlay : IDisposable
                 if (_enabled)
                 {
                     _overlay.RemoveAllMarkers();
+                    _liveNodes.Clear();
                     _overlay.Disable();
                     _enabled = false;
                     Status = "Off.";
@@ -899,6 +920,7 @@ public sealed unsafe class HuntMapOverlay : IDisposable
                 if (_enabled)
                 {
                     _overlay.RemoveAllMarkers();
+                    _liveNodes.Clear();
                     _overlay.Disable();
                     _enabled = false;
                 }
@@ -922,85 +944,6 @@ public sealed unsafe class HuntMapOverlay : IDisposable
                 _needsRefresh = true;
             }
 
-            // Re-place when the detected marks change, so a dot lights up as
-            // soon as something is found there.
-            //
-            // Each mark contributes its whole identity rather than its name id.
-            // Summing name ids could not tell one mark in two instances from
-            // two marks, so a change that swapped one for the other left the
-            // total identical and the map unrefreshed. Summed rather than
-            // combined in sequence so the result does not depend on what order
-            // the dictionaries happen to enumerate in.
-            long markSignature = 0;
-
-            foreach (var mark in _detector.Marks.Values)
-            {
-                if (mark.Dead) continue;
-                markSignature += HashCode.Combine(mark.NameId, mark.Instance, mark.WorldId);
-            }
-
-            foreach (var sighting in _detector.OtherRanks.Values.Where(s => DateTime.UtcNow - s.LastSeenUtc < TimeSpan.FromSeconds(1)))
-                markSignature += HashCode.Combine(sighting.NameId, sighting.Instance, sighting.WorldId,
-                    MathF.Round(sighting.MapPosition.X, 1), MathF.Round(sighting.MapPosition.Y, 1), sighting.HealthPercent, sighting.SpawnPointIndex);
-            if (_sync?.IsConnected == true) markSignature += 1;
-
-            markSignature += _sync?.RemoteVersion ?? 0;
-            if (markSignature != _lastMarkSignature)
-            {
-                _lastMarkSignature = markSignature;
-                _needsRefresh = true;
-            }
-
-            // Recolouring changes which file each marker points at, so the
-            // markers have to be rebuilt for it to show. EnsureDotFiles below
-            // redraws them and updates the signature on this same pass.
-            if (DotSignature() != _dotSignature)
-                _needsRefresh = true;
-
-            var drawSignature = DrawSignature();
-            if (drawSignature != _drawSignature)
-            {
-                _drawSignature = drawSignature;
-                _needsRefresh = true;
-            }
-
-            if (!_needsRefresh) return;
-            _needsRefresh = false;
-
-            _overlay.RemoveAllMarkers();
-
-            var dots = EnsureDotFiles();
-            if (dots == null)
-            {
-                // The markers are already gone and the refresh already spent,
-                // so leaving it here would leave the map bare for good. Ask
-                // for another pass instead.
-                _needsRefresh = true;
-                Status = "Could not prepare the dot images — see /xllog.";
-                return;
-            }
-
-            var mapId = _dataManager.GetExcelSheet<Lumina.Excel.Sheets.TerritoryType>()
-                .GetRowOrDefault(territory)?.Map.RowId ?? 0;
-            if (mapId == 0)
-            {
-                // Transient during a zone change. Same reasoning as above.
-                _needsRefresh = true;
-                Status = "Could not resolve the map id for this zone.";
-                return;
-            }
-
-            var guides = DrawPlayerGuides(mapId, dots, out var guidesWaiting);
-            if (guidesWaiting) _needsRefresh = true;
-
-            var points = SpawnPointData.For(territory);
-
-            // Live A-ranks come from the train list; B and S from the separate
-            // sighting store, which never touches the train.
-            // A-ranks come from sightings rather than the train, so they still
-            // show with recording paused. Anything already killed in the train
-            // is excluded so a dead mark doesn't stay lit.
-            //
             // Keyed on the whole identity, not the name id. The same mark is up
             // in every instance and on every world at once, and they are
             // different marks: killing one in instance 1 was blanking the live
@@ -1055,6 +998,76 @@ public sealed unsafe class HuntMapOverlay : IDisposable
             var live = here
                 .Where(o => o.Rank != HuntRank.A || !deadKeys.Contains(o.Key))
                 .ToList();
+
+
+            // Only mapping changes rebuild static markers. Heartbeats and live movement
+            // update existing nodes below, keeping their textures attached.
+            long markSignature = 0;
+            var mapping = _sync?.ZoneFor(territory, worldId, instance);
+            if (mapping is not null)
+            {
+                markSignature = HashCode.Combine(mapping.SCurrentIndex, mapping.LastSDeathIndex, mapping.SinceAt);
+                foreach (var excluded in mapping.Eliminated) markSignature += HashCode.Combine(excluded.Index);
+            }
+            if (SRankTimerData.ForTerritory(territory) is { } timer)
+            {
+                var status = _sync?.StatusFor(timer.NameId, worldId, instance);
+                markSignature += HashCode.Combine(status?.KilledAt, status?.Uncertain);
+            }
+            if (markSignature != _lastMarkSignature)
+            {
+                _lastMarkSignature = markSignature;
+                _needsRefresh = true;
+            }
+
+            // Recolouring changes which file each marker points at, so the
+            // markers have to be rebuilt for it to show. EnsureDotFiles below
+            // redraws them and updates the signature on this same pass.
+            if (DotSignature() != _dotSignature)
+                _needsRefresh = true;
+
+            var drawSignature = DrawSignature();
+            if (drawSignature != _drawSignature)
+            {
+                _drawSignature = drawSignature;
+                _needsRefresh = true;
+            }
+
+            var mapId = _dataManager.GetExcelSheet<Lumina.Excel.Sheets.TerritoryType>()
+                .GetRowOrDefault(territory)?.Map.RowId ?? 0;
+            if (mapId == 0)
+            {
+                // Transient during a zone change. Same reasoning as above.
+                _needsRefresh = true;
+                Status = "Could not resolve the map id for this zone.";
+                return;
+            }
+
+            if (!_needsRefresh)
+            {
+                if (_dotPaths is not null) DrawLiveMarks(mapId, _dotPaths, _config.ShowMarksOnMap ? live : Enumerable.Empty<OtherRankSighting>());
+                return;
+            }
+            _needsRefresh = false;
+
+            _overlay.RemoveAllMarkers();
+            _liveNodes.Clear();
+
+            var dots = EnsureDotFiles();
+            if (dots == null)
+            {
+                // The markers are already gone and the refresh already spent,
+                // so leaving it here would leave the map bare for good. Ask
+                // for another pass instead.
+                _needsRefresh = true;
+                Status = "Could not prepare the dot images — see /xllog.";
+                return;
+            }
+
+            var guides = DrawPlayerGuides(mapId, dots, out var guidesWaiting);
+            if (guidesWaiting) _needsRefresh = true;
+
+            var points = SpawnPointData.For(territory);
 
             var placed = 0;
 
@@ -1156,6 +1169,7 @@ public sealed unsafe class HuntMapOverlay : IDisposable
             try
             {
                 _overlay?.RemoveAllMarkers();
+                _liveNodes.Clear();
                 _overlay?.Disable();
             }
             catch
@@ -1175,6 +1189,7 @@ public sealed unsafe class HuntMapOverlay : IDisposable
             if (_overlay != null)
             {
                 _overlay.RemoveAllMarkers();
+                _liveNodes.Clear();
                 _overlay.Disable();
                 _overlay.Dispose();
                 _overlay = null;
