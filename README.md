@@ -338,3 +338,9 @@ S candidate outlines default to 6/32 of the spot texture width (previously 3/32)
 Right-click S- or A-board column headers to show/hide columns; ImGui saves the layout. ARR A-rank bounds now follow the per-mark timing definitions in Faloop's public client, rather than one generic 3–4 hour value.
 
 Server 0.3.2 emits an alert on the first group S sighting per kill cycle, including when a polling snapshot already knew the spawn. Group and Faloop spawn notifications share client duplicate suppression; public release alerts remain independent. Faloop live sessions now load their configured DC after socket authentication, matching its web client, with a separate connection/session per DC. Server logs retain event decisions for field verification.
+
+## Testing build 0.4.0.6
+
+**Undo reset — keep locally**, beside **Reset train tracking now**, recovers the last nonempty train/watches cleared locally or by another sync user. The backup survives reloads. Recovery disables this client's train sharing before restoring, preserving the group's current train. It keeps the saved order, retains newer edits, and appends marks added since reset. Sightings and timer sync remain available. Reset now emits one shared clear instead of two.
+
+Anonymous Faloop access remains under investigation: a fresh Guest browser on Crystal returned the same window-only permissions as the server, but no active spawn was present to compare. The absence of an advertised spawn permission alone does not establish that every anonymous website view is unable to display active reports.

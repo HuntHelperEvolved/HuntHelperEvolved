@@ -3440,12 +3440,19 @@ public sealed class Plugin : IDalamudPlugin
         ImGui.Spacing();
         if (ImGui.Button("Reset train tracking now"))
         {
+            CaptureResetUndo("You");
+            _ownResetPendingAt = _sync.IsConnected && _config.SyncShareTrain ? DateTime.UtcNow : null;
             _watcher.ResetNow();
-            _detector.Clear();
             _currentMark = null;
             _config.Flags.Clear();
             _config.Save();
             ClearSavedTrain();
+        }
+        if (_config.ResetUndoAt is { } resetAt)
+        {
+            ImGui.SameLine();
+            if (ImGui.Button("Undo reset — keep locally")) UndoTrainReset();
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip($"Recover {_config.ResetUndoMarks.Count} marks and {_config.ResetUndoFlags.Count} watches from {resetAt.ToLocalTime():ddd HH:mm:ss} ({_config.ResetUndoBy}). Turns train sharing off for this client; merges any marks already present without changing the shared train.");
         }
         ImGui.TextDisabled("Clears tracking and S-rank watches without posting anything — use if you need to abandon a train.");
         if (_config.SyncEnabled && _config.SyncShareTrain)
@@ -4293,14 +4300,59 @@ public sealed class Plugin : IDalamudPlugin
         }
     }
 
+    private DateTime? _ownResetPendingAt;
+    private void CaptureResetUndo(string by)
+    {
+        var marks = _detector.ToPersisted();
+        if (marks.Count == 0 && _config.Flags.Count == 0) return;
+        _config.ResetUndoMarks = marks;
+        _config.ResetUndoFlags = CloneWatches(_config.Flags);
+        _config.ResetUndoAt = DateTime.UtcNow;
+        _config.ResetUndoBy = by;
+        _config.ResetUndoCurrentNameId = _currentMark?.NameId;
+        _config.ResetUndoCurrentInstance = _currentMark?.Instance;
+        _config.ResetUndoCurrentWorldId = _currentMark?.WorldId;
+        _config.Save();
+    }
+    private static List<FlagEntry> CloneWatches(IEnumerable<FlagEntry> watches) => watches.Select(f => new FlagEntry
+    { Label=f.Label, SpawnStatus=f.SpawnStatus, TerritoryId=f.TerritoryId, HasLocation=f.HasLocation, X=f.X, Y=f.Y }).ToList();
+
+    private void UndoTrainReset()
+    {
+        if (_config.ResetUndoAt is null) return;
+        // Stop applying/publishing train changes before restoring; sightings and timers stay connected.
+        _config.SyncShareTrain = false;
+        var restored = TrainResetRecovery.Merge(_config.ResetUndoMarks, _detector.ToPersisted(),
+            m => (m.NameId,m.Instance,m.WorldId),
+            m => new[]{m.LastSeenUtc,m.DeathObservedAtUtc ?? DateTime.MinValue,m.SnipedAtUtc ?? DateTime.MinValue}.Max());
+        for (var i=0; i<restored.Count; i++) restored[i].Order=i;
+        var watches = CloneWatches(_config.ResetUndoFlags);
+        foreach (var current in CloneWatches(_config.Flags))
+        {
+            var index=watches.FindIndex(w=>w.Label==current.Label && w.TerritoryId==current.TerritoryId && w.X==current.X && w.Y==current.Y);
+            if (index<0) watches.Add(current); else watches[index]=current;
+        }
+        _watcher.ResetNow();
+        _detector.LoadPersisted(restored);
+        _config.Flags = watches;
+        _currentMark = _config.ResetUndoCurrentNameId is { } name && _config.ResetUndoCurrentInstance is { } instance
+            ? (name, instance, _config.ResetUndoCurrentWorldId ?? 0) : null;
+        _config.ResetUndoMarks.Clear(); _config.ResetUndoFlags.Clear(); _config.ResetUndoAt=null;
+        _config.Save(); PersistTrain();
+        _chatGui.Print("[Hunt Helper Evolved] Train reset undone locally. Train sharing is off; the group's current train is unchanged.");
+    }
+
     private void OnRemoteTrainCleared(string by)
     {
+        var ownEcho = _ownResetPendingAt is { } at && DateTime.UtcNow-at < TimeSpan.FromSeconds(30) && by == _sync.DisplayName();
+        if (!ownEcho) CaptureResetUndo(by);
+        if (ownEcho) _ownResetPendingAt=null;
         _watcher.ResetNow();
         _currentMark = null;
         _config.Flags.Clear();
         _config.Save();
         ClearSavedTrain();
-        _chatGui.Print($"[Hunt Helper Evolved] {by} cleared the shared train.");
+        _chatGui.Print($"[Hunt Helper Evolved] {by} cleared the shared train. Use Undo reset in train settings to recover it locally.");
     }
 
     /// <summary>
