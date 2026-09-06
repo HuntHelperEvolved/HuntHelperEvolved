@@ -63,7 +63,23 @@ public sealed class Plugin : IDalamudPlugin
     private const int MaxAdditionalScouts = 3;
 
     // The only S-ranks the group actually checks for during trains.
-    private static readonly string[] SimpleSRanks = { "Ophioneus", "Tyger" };
+    /// <summary>
+    /// The S ranks a train actually stops for, and the zone each is watched in.
+    ///
+    /// Deliberately not every S rank in the game: a conductor checks a handful
+    /// on the way past, and a list of fifty to scroll through would be a worse
+    /// answer to the same question. Narrow-rift is absent because it needs a
+    /// spawn point picking as well, and has its own control below.
+    ///
+    /// Territory ids are the same ones the rest of the plugin uses, cross-
+    /// checked against SsMinionSpawns rather than typed from memory.
+    /// </summary>
+    private static readonly (string Name, uint TerritoryId)[] SimpleSRanks =
+    {
+        ("Ophioneus", 961),      // Elpis
+        ("Tyger", 813),          // Lakeland
+        ("Neyoozoteel", 1189),   // Yak T'el
+    };
 
     // Narrow-rift's known spawn points (Territory 960 / Map 699, Ultima Thule —
     // confirmed via arealmremapped.com; coordinates from Narrow-rift's own
@@ -95,6 +111,7 @@ public sealed class Plugin : IDalamudPlugin
     private const uint AetheryteIconId = 60453;
     private readonly HuntCounter _counter;
     private readonly SpawnWatchCounters _spawnWatch;
+    private readonly TrainIpcProvider _trainIpc;
     private readonly WorldData _worldData;
     private readonly HuntMapOverlay _mapOverlay;
     private readonly SsEventWatcher _ssEvent;
@@ -333,6 +350,9 @@ public sealed class Plugin : IDalamudPlugin
         _counter = new HuntCounter(chatGui, clientState, objectTable, _config);
         _spawnWatch = new SpawnWatchCounters(framework, clientState, objectTable, fateTable, _log);
         _worldData = new WorldData(dataManager);
+
+        // After the detector exists, since the gates read straight off it.
+        _trainIpc = new TrainIpcProvider(_pluginInterface, _detector, _log);
 
         // KamiToolKit needs one-time initialisation before any of its
         // controllers can be enabled — without it, AddonController.Enable()
@@ -752,6 +772,7 @@ public sealed class Plugin : IDalamudPlugin
                 Dead = d.Dead,
                 LastSeenUtc = d.LastSeenUtc,
                 DeathObservedAtUtc = d.DeathObservedAtUtc,
+                SnipedAtUtc = d.SnipedAtUtc,
             }).ToList();
         }
 
@@ -760,6 +781,22 @@ public sealed class Plugin : IDalamudPlugin
 
         var now = DateTime.UtcNow;
         var tracked = _watcher.GetTrackedSnapshot();
+
+        // Sniped is recorded on our own rows, because that is the list with the
+        // button on it — but the report may well be built from Hunt Helper's,
+        // which is still the default. Carrying it across is what stops the fix
+        // depending on a setting the conductor never turned on.
+        //
+        // Keyed without the world, because Hunt Helper's list has no world in
+        // it to match against. First one wins: the same mark up on two worlds
+        // is two rows here and one there, and there is nothing in the Hunt
+        // Helper record that could tell them apart.
+        var snipedTimes = new Dictionary<(uint, uint), DateTime?>();
+        foreach (var d in _detector.Ordered())
+        {
+            if (d.SnipedAtUtc == null) continue;
+            snipedTimes.TryAdd((d.NameId, d.Instance), d.SnipedAtUtc);
+        }
 
         var marks = list.Select(m => new TrackedMark
         {
@@ -771,13 +808,29 @@ public sealed class Plugin : IDalamudPlugin
             DeathObservedAtUtc = m.Dead
                 ? (tracked.TryGetValue((m.MobID, m.Instance), out var t) ? t.DeathObservedAtUtc : null) ?? now
                 : null,
+            SnipedAtUtc = snipedTimes.GetValueOrDefault((m.MobID, m.Instance)),
         }).ToList();
 
         var seenKeys = marks.Select(m => (m.ModelId, m.Instance)).ToHashSet();
         foreach (var (key, trackedMark) in tracked)
         {
-            if (!seenKeys.Contains(key))
-                marks.Add(trackedMark);
+            if (seenKeys.Contains(key)) continue;
+
+            // A copy, not the watcher's own object. GetTrackedSnapshot copies
+            // the dictionary but not the marks in it, and this runs every frame
+            // the Marks Slain preview is open — writing a sniped time back into
+            // live tracking state would make merely looking at the report
+            // change it.
+            marks.Add(new TrackedMark
+            {
+                Name = trackedMark.Name,
+                ModelId = trackedMark.ModelId,
+                Instance = trackedMark.Instance,
+                Dead = trackedMark.Dead,
+                LastSeenUtc = trackedMark.LastSeenUtc,
+                DeathObservedAtUtc = trackedMark.DeathObservedAtUtc,
+                SnipedAtUtc = trackedMark.SnipedAtUtc ?? snipedTimes.GetValueOrDefault(key),
+            });
         }
 
         return marks;
@@ -1275,6 +1328,58 @@ public sealed class Plugin : IDalamudPlugin
         _config.SavedCurrentInstance = null;
         _config.SavedCurrentWorldId = null;
         _config.Save();
+    }
+
+    /// <summary>
+    /// Folds an export code into the train, and says so out loud.
+    ///
+    /// The result goes to chat as well as to the status line, because the
+    /// status line only exists on the main window: importing is offered from
+    /// the popout too, and an import that silently did nothing visible from
+    /// there would be indistinguishable from a dead button.
+    /// </summary>
+    private void ImportTrainCode(string code, string source)
+    {
+        if (string.IsNullOrWhiteSpace(code))
+        {
+            ReportProblem($"Nothing to import — {source} is empty.");
+            return;
+        }
+
+        var imported = TrainExchange.Import(code);
+        if (imported == null)
+        {
+            ReportProblem($"That import code couldn't be read ({source}).");
+            return;
+        }
+
+        var added = _detector.Merge(imported);
+        _lastPostResult = $"Imported {imported.Count} marks ({added} new).";
+        _chatGui.Print($"[Hunt Helper Evolved] {_lastPostResult}");
+    }
+
+    /// <summary>
+    /// Import straight off the clipboard, the way Hunt Helper does it — codes
+    /// arrive pasted into Discord and go back out via Copy, so the trip through
+    /// a text box was only ever ceremony.
+    /// </summary>
+    private void ImportFromClipboard()
+    {
+        string clipboard;
+        try
+        {
+            clipboard = ImGui.GetClipboardText() ?? string.Empty;
+        }
+        catch (Exception ex)
+        {
+            // Reading the clipboard goes out to the OS and can genuinely fail
+            // — another process holding it is enough.
+            _log.Warning(ex, "Could not read the clipboard for a train import.");
+            ReportProblem("Couldn't read the clipboard.");
+            return;
+        }
+
+        ImportTrainCode(clipboard, "the clipboard");
     }
 
     private void ReportProblem(string message)
@@ -1984,6 +2089,20 @@ public sealed class Plugin : IDalamudPlugin
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip("Names the aetheryte nearest the next mark, and copies a line to your clipboard. No flag — see /htra");
 
+        // Its own row on purpose. This is the one control here that rewrites
+        // the whole list, and it should not sit a mis-click away from Remove
+        // Dead. It lives on the shared control bar rather than the Train tab so
+        // the popout — the window actually open during a train, and where
+        // codes actually arrive — can import without going back to the tab.
+        if (ImGui.Button("Import from Clipboard"))
+        {
+            ImportFromClipboard();
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip(
+                "Reads an export code straight off the clipboard and folds it into this train.\n"
+                + "Marks already here are kept — nothing is overwritten.");
+
         // Row 3
         var tracking = _config.TrackingEnabled;
         if (ImGui.Checkbox("Tracking this train (records exact kill times)", ref tracking))
@@ -2045,6 +2164,7 @@ public sealed class Plugin : IDalamudPlugin
         if (allMarks.Count == 0)
         {
             ImGui.TextDisabled("No marks detected yet — fly near one and it'll appear here.");
+            DrawSRankWatchRows();
             return;
         }
 
@@ -2077,6 +2197,7 @@ public sealed class Plugin : IDalamudPlugin
         if (marks.Count == 0)
         {
             ImGui.TextDisabled($"All {allMarks.Count} marks are dead — untick \"Hide dead marks\" to see them.");
+            DrawSRankWatchRows();
             return;
         }
 
@@ -2330,9 +2451,59 @@ public sealed class Plugin : IDalamudPlugin
                 mark.Dead = dead;
                 mark.DeathObservedAtUtc = dead ? DateTime.UtcNow : null;
 
+                // Un-ticking dead undoes a sniped mark too. Otherwise the row
+                // would say the mark is alive while the report went on giving
+                // it a respawn window.
+                if (!dead) mark.SnipedAtUtc = null;
+
                 // Keep the map honest: a mark ticked dead shouldn't stay lit.
                 if (dead) _detector.RemoveSighting(mark.NameId, mark.Instance, mark.WorldId);
             }
+            ImGui.SetItemAllowOverlap();
+
+            // Sniped: already gone when the train arrived.
+            //
+            // Deliberately not the same button as the tick beside it. That one
+            // means "it died just now", and clicking it for a mark somebody
+            // else killed hours ago is what put a kill time — and therefore a
+            // respawn window — in the report that nobody had witnessed. This
+            // one records only when the mark was found missing, which is all
+            // that is actually known.
+            ImGui.SameLine();
+            ImGui.SetCursorPosX(buttonColumnX + (_config.ShowSpicing ? 132 : 100));
+
+            // Read before drawing, for the same reason the spicing button does:
+            // the click flips it mid-row, and a push that went unmatched by its
+            // pop is an ImGui style stack imbalance, which crashes natively.
+            var wasSniped = mark.SnipedAtUtc != null;
+            if (wasSniped) ImGui.PushStyleColor(ImGuiCol.Text, new Vector4(1f, 0.75f, 0.3f, 1f));
+
+            if (ImGuiComponents.IconButton(FontAwesomeIcon.Crosshairs))
+            {
+                if (mark.SnipedAtUtc != null)
+                {
+                    mark.SnipedAtUtc = null;
+                }
+                else
+                {
+                    // It is dead — but nobody here saw it die, so no observed
+                    // death time is recorded. Last seen alive and found-gone
+                    // are the two ends of the window, and the report works it
+                    // out from those.
+                    mark.SnipedAtUtc = DateTime.UtcNow;
+                    mark.DeathObservedAtUtc = null;
+                    mark.Dead = true;
+                    _detector.RemoveSighting(mark.NameId, mark.Instance, mark.WorldId);
+                }
+            }
+
+            if (wasSniped) ImGui.PopStyleColor();
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip(wasSniped
+                    ? $"Sniped — found gone at {mark.SnipedAtUtc!.Value.ToLocalTime():t}. Click to unset.\n"
+                      + "The report gives a window running from when it was last seen alive."
+                    : "Sniped — the mark was already gone when the train got here.\n"
+                      + "Records a spawn window from last seen alive, rather than a kill time nobody saw.");
             ImGui.SetItemAllowOverlap();
 
             ImGui.Separator();
@@ -2486,6 +2657,8 @@ public sealed class Plugin : IDalamudPlugin
         ImGui.TextDisabled(grouping
             ? "Click a mark to echo + flag it. Click a heading to fold it away, drag one to move the whole expansion."
             : "Click a mark to echo + flag it. Drag a row and release where you want it.");
+
+        DrawSRankWatchRows();
     }
 
     /// <summary>
@@ -2654,6 +2827,82 @@ public sealed class Plugin : IDalamudPlugin
         _config.Save();
     }
 
+    /// <summary>
+    /// The Spawned / Didn't Spawn pair for one watch.
+    ///
+    /// Shared by the Conductor tab and the train list rather than written out
+    /// twice, because the two are the same fact about the same object and
+    /// writing them separately is how they would come to disagree.
+    /// </summary>
+    private void DrawSpawnStatusBoxes(FlagEntry flag)
+    {
+        var spawned = flag.SpawnStatus == SpawnStatus.Spawned;
+        var notSpawned = flag.SpawnStatus == SpawnStatus.NotSpawned;
+
+        if (ImGui.Checkbox("Spawned", ref spawned))
+        {
+            flag.SpawnStatus = spawned ? SpawnStatus.Spawned : SpawnStatus.Unknown;
+            _config.Save();
+        }
+
+        ImGui.SameLine();
+        if (ImGui.Checkbox("Didn't Spawn", ref notSpawned))
+        {
+            flag.SpawnStatus = notSpawned ? SpawnStatus.NotSpawned : SpawnStatus.Unknown;
+            _config.Save();
+        }
+    }
+
+    /// <summary>
+    /// The Conductor tab's S-rank watches, repeated under the train.
+    ///
+    /// The same FlagEntry objects, not copies: a box ticked here is ticked
+    /// there, and either way it is the same answer that reaches the end-of-
+    /// train report.
+    ///
+    /// Adding and removing watches stays on the Conductor tab. This is the
+    /// during-the-train view, and the only question it has to answer is whether
+    /// the thing was up — an S rank gets checked in passing, between marks, and
+    /// walking back to a settings tab to record it is exactly when it gets
+    /// forgotten instead.
+    /// </summary>
+    private void DrawSRankWatchRows()
+    {
+        if (!_config.ShowSRankWatchesInTrainList) return;
+        if (_config.Flags.Count == 0) return;
+
+        ImGui.Spacing();
+        ImGui.Separator();
+        ImGui.PushStyleColor(ImGuiCol.Text, new Vector4(0.62f, 0.78f, 1f, 1f));
+        ImGui.TextUnformatted("S-rank watches");
+        ImGui.PopStyleColor();
+
+        for (var i = 0; i < _config.Flags.Count; i++)
+        {
+            var flag = _config.Flags[i];
+            ImGui.PushID($"srankwatch{i}");
+
+            // Boxes before the label, unlike the Conductor tab. Watch labels
+            // run to very different lengths — "Tyger" against "Narrow-rift —
+            // Spawn 3 (23.4, 33.1)" — and a label first would move the boxes
+            // for every row, in the one window being clicked at while running.
+            DrawSpawnStatusBoxes(flag);
+
+            ImGui.SameLine();
+            var colour = flag.SpawnStatus switch
+            {
+                SpawnStatus.Spawned => new Vector4(0.45f, 0.95f, 0.5f, 1f),
+                SpawnStatus.NotSpawned => new Vector4(0.55f, 0.55f, 0.55f, 1f),
+                _ => Vector4.One,
+            };
+            ImGui.PushStyleColor(ImGuiCol.Text, colour);
+            ImGui.TextUnformatted(flag.Label);
+            ImGui.PopStyleColor();
+
+            ImGui.PopID();
+        }
+    }
+
     private void DrawTrainTab()
     {
         ImGui.Spacing();
@@ -2701,18 +2950,11 @@ public sealed class Plugin : IDalamudPlugin
         ImGui.SameLine();
         if (ImGui.Button("Import"))
         {
-            var imported = TrainExchange.Import(_importCode);
-            if (imported == null)
-            {
-                _lastPostResult = "That import code couldn't be read.";
-            }
-            else
-            {
-                var added = _detector.Merge(imported);
-                _importCode = string.Empty;
-                _lastPostResult = $"Imported {imported.Count} marks ({added} new).";
-            }
+            var before = _detector.Marks.Count;
+            ImportTrainCode(_importCode, "the box");
+            if (_detector.Marks.Count != before) _importCode = string.Empty;
         }
+        ImGui.TextDisabled("Imports merge — a mark already in the train is never overwritten by one arriving in a code.");
 
         ImGui.Spacing();
         ImGui.Separator();
@@ -3179,18 +3421,30 @@ public sealed class Plugin : IDalamudPlugin
                 _config.Save();
             }
         }
-        ImGui.TextDisabled("Lakeland (Tyger), Ultima Thule (Narrow-rift), Elpis (Ophioneus). Only you see it.");
+        ImGui.TextDisabled("Lakeland (Tyger), Ultima Thule (Narrow-rift), Elpis (Ophioneus), Yak T'el (Neyoozoteel). Only you see it.");
+
+        ImGui.Spacing();
+        var watchesInList = _config.ShowSRankWatchesInTrainList;
+        if (ImGui.Checkbox("Show these watches on the train list", ref watchesInList))
+        {
+            _config.ShowSRankWatchesInTrainList = watchesInList;
+            _config.Save();
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip(
+                "Puts the Spawned / Didn't Spawn boxes under the train itself, so they can be\n"
+                + "ticked from the popout without coming back to this tab.");
 
         ImGui.Spacing();
 
-        foreach (var name in SimpleSRanks)
+        foreach (var (name, territoryId) in SimpleSRanks)
         {
             if (ImGui.Button($"Watch {name}"))
             {
                 _config.Flags.Add(new FlagEntry
                 {
                     Label = name,
-                    TerritoryId = name == "Tyger" ? 813u : 961u, // Lakeland / Elpis
+                    TerritoryId = territoryId,
                 });
                 _config.Save();
             }
@@ -3225,20 +3479,7 @@ public sealed class Plugin : IDalamudPlugin
 
             ImGui.TextWrapped(flag.Label);
 
-            var spawned = flag.SpawnStatus == SpawnStatus.Spawned;
-            var notSpawned = flag.SpawnStatus == SpawnStatus.NotSpawned;
-
-            if (ImGui.Checkbox("Spawned", ref spawned))
-            {
-                flag.SpawnStatus = spawned ? SpawnStatus.Spawned : SpawnStatus.Unknown;
-                _config.Save();
-            }
-            ImGui.SameLine();
-            if (ImGui.Checkbox("Didn't Spawn", ref notSpawned))
-            {
-                flag.SpawnStatus = notSpawned ? SpawnStatus.NotSpawned : SpawnStatus.Unknown;
-                _config.Save();
-            }
+            DrawSpawnStatusBoxes(flag);
             ImGui.SameLine();
             if (ImGui.Button("Remove"))
             {
@@ -3379,6 +3620,45 @@ public sealed class Plugin : IDalamudPlugin
         }
 
         var entries = TrainReport.BuildEntries(marks);
+
+        DrawReportEntries(entries.Where(e => !e.Sniped).ToList());
+
+        // Its own section, exactly as the posted report has it — this is the
+        // preview of that report, and a preview laid out differently from the
+        // thing it previews is worse than none.
+        var sniped = entries.Where(e => e.Sniped).ToList();
+        if (sniped.Count > 0)
+        {
+            ImGui.Spacing();
+            ImGui.Separator();
+            ImGui.Spacing();
+            ImGui.TextWrapped("Sniped (found gone — time is when the train got there)");
+            ImGui.Spacing();
+            DrawReportEntries(sniped);
+        }
+
+        var neverSeen = TrainReport.BuildSniped(marks);
+        if (neverSeen.Count > 0)
+        {
+            ImGui.Spacing();
+            ImGui.Separator();
+            ImGui.Spacing();
+            ImGui.TextWrapped("Assumed Sniped (not seen this train)");
+            foreach (var (expansion, names) in neverSeen)
+            {
+                ImGui.TextWrapped($"{expansion}: {string.Join(", ", names)}");
+            }
+        }
+    }
+
+    /// <summary>
+    /// One run of report entries, split into expansion blocks. Shared by the
+    /// killed and sniped sections for the same reason the posted report shares
+    /// its own: the only difference between the two should be which marks are
+    /// in them.
+    /// </summary>
+    private void DrawReportEntries(List<TrainReportEntry> entries)
+    {
         string? lastExpansion = null;
 
         foreach (var entry in entries)
@@ -3392,29 +3672,16 @@ public sealed class Plugin : IDalamudPlugin
 
             var localTime = entry.KillTimeUtc.ToLocalTime().ToString("g");
 
-            if (entry.Location == null || entry.MinHours == null || entry.MaxHours == null)
+            if (!entry.HasWindow)
             {
                 ImGui.TextWrapped($"{localTime} — {entry.Name} — no fixed respawn timer");
                 continue;
             }
 
-            var openLocal = entry.KillTimeUtc.AddHours(entry.MinHours.Value).ToLocalTime().ToString("t");
-            var capLocal = entry.KillTimeUtc.AddHours(entry.MaxHours.Value).ToLocalTime().ToString("t");
+            var openLocal = entry.WindowOpensUtc!.Value.ToLocalTime().ToString("t");
+            var capLocal = entry.WindowCapsUtc!.Value.ToLocalTime().ToString("t");
             var instanceGlyph = ExpansionData.InstanceGlyph(entry.Instance);
             ImGui.TextWrapped($"{localTime} — {entry.Location} — {entry.Name}{instanceGlyph} — window {openLocal} → {capLocal}");
-        }
-
-        var sniped = TrainReport.BuildSniped(marks);
-        if (sniped.Count > 0)
-        {
-            ImGui.Spacing();
-            ImGui.Separator();
-            ImGui.Spacing();
-            ImGui.TextWrapped("Assumed Sniped (not seen this train)");
-            foreach (var (expansion, names) in sniped)
-            {
-                ImGui.TextWrapped($"{expansion}: {string.Join(", ", names)}");
-            }
         }
     }
 
@@ -3703,6 +3970,14 @@ public sealed class Plugin : IDalamudPlugin
             ImGui.SameLine();
             ImGui.TextDisabled("Changes in this and previous versions, and who to thank.");
             ImGui.Spacing();
+
+            // Worth stating rather than leaving to the log. Whether the HH.*
+            // gates are answered here decides whether somebody's other plugin
+            // can see this train at all, and it is not otherwise visible.
+            ImGui.TextDisabled(_trainIpc.ClaimedHuntHelperGates
+                ? "IPC: other plugins can read this train through Hunt Helper's own gates."
+                : "IPC: Hunt Helper is installed and keeps its gates. Other plugins see its train, not this one.");
+            ImGui.Spacing();
         }
 
         if (ImGui.CollapsingHeader("Teleport"))
@@ -3870,6 +4145,8 @@ public sealed class Plugin : IDalamudPlugin
         HuntTally.Service.ClientState.Logout -= OnTallyLogout;
         HuntTally.Service.Framework.Update -= OnTallyFrameworkUpdate;
         _seeder.Dispose();
+
+        _trainIpc.Dispose();
 
         _pluginInterface.UiBuilder.OpenMainUi -= ToggleTallyWindow;
         _tallyWindows.RemoveAllWindows();
