@@ -122,6 +122,7 @@ public sealed class Plugin : IDalamudPlugin
     private readonly SyncCoordinator _sync;
     private readonly SRankWindow _srankWindow;
     private readonly ActiveSRankWindow _activeSRankWindow;
+    private readonly LifestreamTravel _srankTravel;
     private readonly ARankWindow _arankWindow;
     private int _counterDcIndex;
     private int _counterWorldIndex;
@@ -371,7 +372,8 @@ public sealed class Plugin : IDalamudPlugin
             typeof(Plugin).Assembly.GetName().Version?.ToString(4) ?? "0.0.0");
         _sync.RemoteTrainCleared += OnRemoteTrainCleared;
         _sync.SRankSpawned += OnRemoteSRankSpawn;
-        _activeSRankWindow = new ActiveSRankWindow(_config, _sync, _worldData);
+        _srankTravel = new LifestreamTravel(_pluginInterface, framework, _detector, _chatGui, _log);
+        _activeSRankWindow = new ActiveSRankWindow(_config, _sync, _worldData, _srankTravel);
         _srankWindow = new SRankWindow(_config, _sync, _worldData, _detector);
         _arankWindow = new ARankWindow(_config, _sync, _worldData, _detector);
         // After the detector exists, since the gates read straight off it.
@@ -4226,6 +4228,7 @@ public sealed class Plugin : IDalamudPlugin
         _mapOverlay.Dispose();
         _ssEvent.Dispose();
         _sync.RemoteTrainCleared -= OnRemoteTrainCleared;
+        _srankTravel.Dispose();
         _sync.SRankSpawned -= OnRemoteSRankSpawn;
         _sync.Dispose();
 
@@ -4310,7 +4313,14 @@ public sealed class Plugin : IDalamudPlugin
             : _config.SyncSpawnDataCenters.Contains(dc.Id);
         if (!allowed) { _lastCommunityAlert += " Excluded by DC filter."; return; }
         if (!(test ? new Sync.SpawnAlertFilter() : _spawnAlertFilter).Accept(spawn, true, DateTime.UtcNow)) { _lastCommunityAlert += " Duplicate or invalid event time."; return; }
-        _chatGui.Print($"[Hunt Helper Evolved] {(test ? "TEST — " : "")}S rank {(spawn.Event == "release" ? "released" : "reported spawned")}: {mark.Name} — {_worldData.NameOf(spawn.WorldId)} ({dc.Name}), {mark.Zone}{ExpansionData.InstanceGlyph(spawn.Instance)} [{spawn.Source}]");
+        var position = SpawnPosition(spawn.X, spawn.Y);
+        _notifier.SendRelay(new OtherRankSighting
+        {
+            NameId=spawn.NameId, Name=mark.Name, Rank=HuntRank.S, Instance=spawn.Instance,
+            WorldId=spawn.WorldId, WorldName=_worldData.NameOf(spawn.WorldId), TerritoryId=mark.TerritoryId,
+            MapId=_detector.GetMapId(mark.TerritoryId), MapPosition=position ?? Vector2.Zero,
+            HealthPercent=float.NaN,
+        },position is not null,test,spawn.Event=="release");
         _lastCommunityAlert += test ? " Test shown in chat." : " Shown in chat.";
         _log.Information(_lastCommunityAlert);
         if (_config.SyncSpawnSound)
@@ -4319,6 +4329,9 @@ public sealed class Plugin : IDalamudPlugin
             catch (Exception ex) { _log.Debug(ex, "Could not play S-rank alert sound."); }
         }
     }
+
+    private static Vector2? SpawnPosition(float? x, float? y) => x is { } px && y is { } py
+        && float.IsFinite(px) && float.IsFinite(py) && px >= 1 && px <= 100 && py >= 1 && py <= 100 ? new Vector2(px,py) : null;
 
     private DateTime? _ownResetPendingAt;
     private void CaptureResetUndo(string by)
@@ -4510,8 +4523,8 @@ public sealed class Plugin : IDalamudPlugin
             ImGui.TextWrapped("Server coverage: " + string.Join(", ", _sync.Faloop.DataCenters));
             if (ImGui.Button("Test S-rank chat alert"))
                 ShowSpawnAlert(new Sync.SRankSpawnBroadcast { NameId = Sync.SRankTimerData.All[0].NameId,
-                    WorldId = _detector.CurrentWorldId(), SpawnedAt = DateTime.UtcNow, Source = "Local test" }, test: true);
-            if (ImGui.IsItemHovered()) ImGui.SetTooltip("Local chat/sound test using your current world and alert settings. No report is sent to the server.");
+                    WorldId = _detector.CurrentWorldId(), SpawnedAt = DateTime.UtcNow, X = 21.5f, Y = 21.5f, Source = "Local test" }, test: true);
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip("Local chat/sound/map-link test with example coordinates using your current world and alert settings. No report is sent to the server.");
             ImGui.TextWrapped(_lastCommunityAlert);
             ImGui.TextDisabled($"Last server feed message: {_sync.Faloop.LastLiveMessageAt?.ToLocalTime().ToString("HH:mm:ss") ?? "none"}; last broadcast alert: {_sync.Faloop.LastAlertAt?.ToLocalTime().ToString("HH:mm:ss") ?? "none"}");
         }

@@ -26,6 +26,7 @@ public sealed class SRankWindow
     private readonly WorldData _worldData;
     private readonly MarkDetector _detector;
 
+    private readonly Dictionary<(uint, DateTime?), ConditionWindow?> _conditionWindows = new();
     private int _killedMinutesAgo;
     private int _maintenanceMinutesAgo;
 
@@ -126,13 +127,14 @@ public sealed class SRankWindow
         ImGui.TextDisabled("Right-click a column header to choose which columns to show.");
         const ImGuiTableFlags flags = ImGuiTableFlags.RowBg | ImGuiTableFlags.BordersInnerH | ImGuiTableFlags.ScrollY
                                       | ImGuiTableFlags.Resizable | ImGuiTableFlags.Hideable | ImGuiTableFlags.SizingStretchProp;
-        if (!ImGui.BeginTable("sranks", 9, flags)) return;
+        if (!ImGui.BeginTable("sranksConditions", 10, flags)) return;
 
         ImGui.TableSetupScrollFreeze(0, 1);
         ImGui.TableSetupColumn("Mark", ImGuiTableColumnFlags.WidthStretch, 1.6f);
         ImGui.TableSetupColumn("World", ImGuiTableColumnFlags.WidthStretch, 1.1f);
         ImGui.TableSetupColumn("Zone", ImGuiTableColumnFlags.WidthStretch, 1.6f);
         ImGui.TableSetupColumn("Status", ImGuiTableColumnFlags.WidthStretch, 1.4f);
+        ImGui.TableSetupColumn("Conditions", ImGuiTableColumnFlags.WidthStretch, 1.5f);
         ImGui.TableSetupColumn("Opens", ImGuiTableColumnFlags.WidthStretch, 0.9f);
         ImGui.TableSetupColumn("Ready by", ImGuiTableColumnFlags.WidthStretch, 0.9f);
         ImGui.TableSetupColumn("Killed", ImGuiTableColumnFlags.WidthStretch, 1.5f);
@@ -289,6 +291,7 @@ public sealed class SRankWindow
 
         ImGui.TableNextColumn();
         ImGui.Text($"{timer.Name}{ExpansionData.InstanceGlyph(row.Instance)}");
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip(SpawnConditionData.Description(timer.Name));
 
         ImGui.TableNextColumn();
         ImGui.TextDisabled(_worldData.NameOf(worldId));
@@ -297,6 +300,9 @@ public sealed class SRankWindow
 
         ImGui.TableNextColumn();
         DrawStatusCell(row, worldId, now);
+
+        ImGui.TableNextColumn();
+        DrawConditionCell(row, now);
 
         ImGui.TableNextColumn();
         ImGui.Text(window.OpensAtUtc is { } opens ? Local(opens) : "—");
@@ -315,6 +321,34 @@ public sealed class SRankWindow
 
         ImGui.PopID();
     }
+
+    private void DrawConditionCell(Row row, DateTime now)
+    {
+        var gate=row.Window.OpensAtUtc;
+        var reliable=row.Status?.KilledAt is not null && !row.Status.Uncertain;
+        if(row.Window.Phase==SRankPhase.Up) { ImGui.TextDisabled("Already reported up"); return; }
+        if(!SpawnConditionData.HasTimedCondition(row.Timer.Name))
+        {
+            if(reliable && gate is { } opens && opens>now) ImGui.TextColored(ForcedColour,"Opens in "+Countdown(opens-now));
+            else ImGui.TextDisabled("No timed restriction");
+            return;
+        }
+        var key=(row.Timer.NameId,gate);
+        if(!_conditionWindows.TryGetValue(key,out var window) || window is null || window.Value.End<=now)
+        {
+            window=SpawnConditionData.Next(row.Timer.Name,gate is { } opens && opens>now ? opens : now);
+            _conditionWindows[key]=window;
+        }
+        if(window is not { } w) { ImGui.TextDisabled("Forecast unavailable"); return; }
+        var start=gate is { } g && g>w.Start ? g : w.Start;
+        if(now<start) ImGui.TextColored(ForcedColour,"In "+Countdown(start-now));
+        else ImGui.TextColored(reliable ? UpColour : WindowColour,(reliable ? "Open: " : "Condition: ")+Countdown(w.End-now));
+        if(ImGui.IsItemHovered()) ImGui.SetTooltip(SpawnConditionData.Description(row.Timer.Name)
+            + "\nCountdown uses real time; green means the respawn window and timed restrictions are open."
+            + "\nRequired kills, gathering and player actions still apply; their completion is not verified."
+            + (!reliable ? "\nKill time is unknown or uncertain, so spawn availability cannot be confirmed." : ""));
+    }
+    private static string Countdown(TimeSpan span) => $"{(int)Math.Max(0,span.TotalHours):00}:{Math.Max(0,span.Minutes):00}:{Math.Max(0,span.Seconds):00}";
 
     private void DrawStatusCell(Row row, uint worldId, DateTime now)
     {
