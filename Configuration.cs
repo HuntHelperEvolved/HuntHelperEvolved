@@ -68,6 +68,9 @@ public class PersistedMark
     public bool IsCustom { get; set; }
     public string ZoneName { get; set; } = string.Empty;
     public bool Spiced { get; set; }
+
+    /// <summary>When the train found this mark already gone. See DetectedMark.SnipedAtUtc.</summary>
+    public DateTime? SnipedAtUtc { get; set; }
 }
 
 /// <summary>Per-mark auto-reset settings for the trigger-mob counters.</summary>
