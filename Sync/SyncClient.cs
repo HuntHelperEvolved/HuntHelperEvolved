@@ -10,285 +10,181 @@ using System.Threading.Tasks;
 
 namespace HuntHelperEvolved.Sync;
 
-/// <summary>
-/// The socket to the sync server, and nothing else: connect, say hello,
-/// keep a queue in each direction, reconnect when it drops.
-///
-/// Everything game-side happens on the framework thread, and this class
-/// never touches the game. Received frames are parked in a queue for the
-/// coordinator to drain on that thread; outgoing frames are queued here
-/// from it and written by one writer task. The hello is built by the
-/// coordinator too, ahead of time, so the socket thread never asks the
-/// game anything.
-/// </summary>
+/// <summary>One socket worker per generation. Game state is only read by the coordinator.</summary>
 public sealed class SyncClient : IDisposable
 {
     public enum ConnectionState { Off, Connecting, Connected, Failed }
-
-    private const int OutboxCapacity = 2048;
-    private static readonly TimeSpan ConnectTimeout = TimeSpan.FromSeconds(15);
-
+    private const int MaxMessageBytes = 4 * 1024 * 1024;
     private readonly IPluginLog _log;
+    private readonly object _gate = new();
     private readonly ConcurrentQueue<(string Type, JObject Payload)> _inbox = new();
-
     private Channel<string>? _outbox;
     private CancellationTokenSource? _cts;
-    private Task? _runner;
-    private Uri? _uri;
-    private Func<HelloMessage>? _hello;
+    private CancellationTokenSource? _connection;
     private int _generation;
-
-    public ConnectionState State { get; private set; } = ConnectionState.Off;
+    public ConnectionState State { get; private set; }
     public string StatusText { get; private set; } = "Off.";
-
-    /// <summary>
-    /// Set when the server refused us for a reason retrying will not fix —
-    /// wrong password, protocol mismatch. Cleared by Start.
-    /// </summary>
     public bool FatalError { get; private set; }
-
     public bool IsConnected => State == ConnectionState.Connected;
     public DateTime? ConnectedAtUtc { get; private set; }
+    public SyncClient(IPluginLog log) => _log = log;
 
-    public SyncClient(IPluginLog log)
-    {
-        _log = log;
-    }
-
-    /// <summary>Begins connecting, and keeps trying until Stop. Safe to call again with new settings.</summary>
     public void Start(Uri uri, Func<HelloMessage> hello)
     {
         Stop();
-        _uri = uri;
-        _hello = hello;
-        FatalError = false;
-        _cts = new CancellationTokenSource();
-        var generation = Interlocked.Increment(ref _generation);
-        _runner = Task.Run(() => RunAsync(uri, hello, generation, _cts.Token));
+        lock (_gate)
+        {
+            var cts = new CancellationTokenSource();
+            _cts = cts;
+            var generation = ++_generation;
+            FatalError = false;
+            _ = Task.Run(async () =>
+            {
+                try { await RunAsync(uri, hello, generation, cts.Token).ConfigureAwait(false); }
+                finally { lock (_gate) { if (_cts == cts) _cts = null; cts.Dispose(); } }
+            });
+        }
     }
 
     public void Stop()
     {
-        var cts = _cts;
-        _cts = null;
-        if (cts is null) return;
-
-        try { cts.Cancel(); } catch { /* already gone */ }
-        cts.Dispose();
-        _outbox?.Writer.TryComplete();
-        _outbox = null;
-        State = ConnectionState.Off;
-        StatusText = "Off.";
-        ConnectedAtUtc = null;
-        while (_inbox.TryDequeue(out _)) { }
+        lock (_gate)
+        {
+            ++_generation;
+            _cts?.Cancel();
+            _cts = null;
+            _connection?.Cancel();
+            _connection = null;
+            _outbox?.Writer.TryComplete();
+            _outbox = null;
+            State = ConnectionState.Off;
+            StatusText = "Off.";
+            ConnectedAtUtc = null;
+            while (_inbox.TryDequeue(out _)) { }
+        }
     }
 
     public bool TryDequeue(out string type, out JObject payload)
     {
-        if (_inbox.TryDequeue(out var item))
-        {
-            type = item.Type;
-            payload = item.Payload;
-            return true;
-        }
-
+        if (_inbox.TryDequeue(out var item)) { type = item.Type; payload = item.Payload; return true; }
         type = string.Empty;
         payload = null!;
         return false;
     }
 
-    /// <summary>
-    /// Queues a message. Dropped silently when not connected: the coordinator
-    /// resends everything that matters from scratch after each welcome, so
-    /// nothing queued before then would be worth delivering.
-    /// </summary>
     public void Send(object message)
     {
-        if (State != ConnectionState.Connected) return;
-        var outbox = _outbox;
-        if (outbox is null) return;
-
-        if (!outbox.Writer.TryWrite(SyncProtocol.Serialize(message)))
+        lock (_gate)
         {
-            // The server is not draining us. Drop the connection; the
-            // reconnect brings a fresh snapshot, which is the honest fix.
-            _log.Warning("Sync outbox is full; reconnecting.");
-            outbox.Writer.TryComplete();
+            if (!IsConnected || _outbox is null) return;
+            if (!_outbox.Writer.TryWrite(SyncProtocol.Serialize(message))) _connection?.Cancel();
         }
+    }
+
+    private void Publish(int generation, Action change)
+    {
+        lock (_gate) { if (generation == _generation) change(); }
     }
 
     private async Task RunAsync(Uri uri, Func<HelloMessage> hello, int generation, CancellationToken ct)
     {
-        var backoffSeconds = 2;
-
+        var backoff = 2;
         while (!ct.IsCancellationRequested)
         {
-            if (generation != _generation) return;
-
-            State = ConnectionState.Connecting;
-            StatusText = $"Connecting to {uri.Host}…";
-
             using var socket = new ClientWebSocket();
-            socket.Options.KeepAliveInterval = TimeSpan.FromSeconds(20);
-
-            var outbox = Channel.CreateBounded<string>(new BoundedChannelOptions(OutboxCapacity)
-            {
-                FullMode = BoundedChannelFullMode.Wait,
-                SingleReader = true,
-            });
-
-            var welcomed = false;
+            using var connection = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            var token = connection.Token;
+            var queue = Channel.CreateBounded<string>(new BoundedChannelOptions(2048)
+            { SingleReader = true, FullMode = BoundedChannelFullMode.Wait });
+            Task? writer = null;
+            var fatal = false;
+            Publish(generation, () => { State = ConnectionState.Connecting; StatusText = $"Connecting to {uri.Host}…"; _connection = connection; });
             try
             {
-                using (var connectCts = CancellationTokenSource.CreateLinkedTokenSource(ct))
+                using (var timeout = CancellationTokenSource.CreateLinkedTokenSource(token))
                 {
-                    connectCts.CancelAfter(ConnectTimeout);
-                    await socket.ConnectAsync(uri, connectCts.Token).ConfigureAwait(false);
+                    timeout.CancelAfter(TimeSpan.FromSeconds(15));
+                    await socket.ConnectAsync(uri, timeout.Token).ConfigureAwait(false);
+                    await socket.SendAsync(Encoding.UTF8.GetBytes(SyncProtocol.Serialize(hello())), WebSocketMessageType.Text, true, timeout.Token).ConfigureAwait(false);
                 }
-
-                var helloJson = SyncProtocol.Serialize(hello());
-                await socket.SendAsync(Encoding.UTF8.GetBytes(helloJson), WebSocketMessageType.Text, true, ct).ConfigureAwait(false);
-
-                _outbox = outbox;
-                var writer = WriteLoopAsync(socket, outbox, ct);
-                welcomed = await ReadLoopAsync(socket, ct).ConfigureAwait(false);
-
-                outbox.Writer.TryComplete();
-                try { await writer.ConfigureAwait(false); } catch { /* closing */ }
+                writer = WriteAsync(socket, queue, connection);
+                var welcomed = false;
+                while (!token.IsCancellationRequested)
+                {
+                    using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
+                    timeout.CancelAfter(TimeSpan.FromSeconds(welcomed ? 90 : 15));
+                    var payload = await ReadAsync(socket, timeout.Token).ConfigureAwait(false);
+                    if (payload is null) break;
+                    var type = payload.Value<string>("type") ?? string.Empty;
+                    if (type == ServerMessageTypes.Error && payload.Value<string>("code") is "auth" or "protocol")
+                    {
+                        fatal = true;
+                        Publish(generation, () => { FatalError = true; StatusText = payload.Value<string>("message") ?? "Connection refused."; });
+                    }
+                    if (type == ServerMessageTypes.Welcome)
+                    {
+                        if (welcomed || payload.Value<int>("protocol") != SyncProtocol.Version)
+                            throw new InvalidOperationException("Unexpected sync protocol or duplicate welcome.");
+                        welcomed = true;
+                        backoff = 2;
+                        Publish(generation, () => { _outbox = queue; State = ConnectionState.Connected; StatusText = "Connected."; ConnectedAtUtc = DateTime.UtcNow; });
+                    }
+                    else if (!welcomed && type != ServerMessageTypes.Error)
+                        throw new InvalidOperationException("Server did not send a welcome.");
+                    Publish(generation, () =>
+                    {
+                        if (_inbox.Count >= 4096) connection.Cancel();
+                        else _inbox.Enqueue((type, payload));
+                    });
+                    if (fatal) break;
+                }
             }
-            catch (OperationCanceledException) when (ct.IsCancellationRequested)
-            {
-                break;
-            }
+            catch (OperationCanceledException) { }
             catch (Exception ex)
             {
-                State = ConnectionState.Failed;
-                StatusText = $"Connection failed: {Shorten(ex.Message)}";
                 _log.Debug(ex, "Sync connection failed.");
+                Publish(generation, () => StatusText = "Connection failed; reconnecting…");
             }
             finally
             {
-                _outbox = null;
-                ConnectedAtUtc = null;
-                if (socket.State is WebSocketState.Open or WebSocketState.CloseReceived)
-                {
-                    try
-                    {
-                        using var closeCts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
-                        await socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "bye", closeCts.Token).ConfigureAwait(false);
-                    }
-                    catch { /* already gone */ }
-                }
+                connection.Cancel();
+                queue.Writer.TryComplete();
+                if (writer is not null) { try { await writer.ConfigureAwait(false); } catch { } }
+                socket.Abort();
+                Publish(generation, () => { _outbox = null; _connection = null; ConnectedAtUtc = null; State = ConnectionState.Failed; });
             }
-
-            if (ct.IsCancellationRequested) break;
-
-            if (FatalError)
-            {
-                State = ConnectionState.Failed;
-                break;
-            }
-
-            if (State == ConnectionState.Connected || welcomed)
-            {
-                State = ConnectionState.Failed;
-                StatusText = "Disconnected; reconnecting…";
-                backoffSeconds = 2;
-            }
-
-            try { await Task.Delay(TimeSpan.FromSeconds(backoffSeconds), ct).ConfigureAwait(false); }
-            catch (OperationCanceledException) { break; }
-            backoffSeconds = Math.Min(backoffSeconds * 2, 60);
-        }
-
-        if (!FatalError)
-        {
-            State = ConnectionState.Off;
-            StatusText = "Off.";
+            if (fatal || ct.IsCancellationRequested) return;
+            Publish(generation, () => StatusText = "Disconnected; reconnecting…");
+            try { await Task.Delay(TimeSpan.FromSeconds(backoff), ct).ConfigureAwait(false); }
+            catch (OperationCanceledException) { return; }
+            backoff = Math.Min(backoff * 2, 60);
         }
     }
 
-    private static async Task WriteLoopAsync(ClientWebSocket socket, Channel<string> outbox, CancellationToken ct)
+    private static async Task WriteAsync(ClientWebSocket socket, Channel<string> queue, CancellationTokenSource connection)
     {
         try
         {
-            await foreach (var json in outbox.Reader.ReadAllAsync(ct).ConfigureAwait(false))
-            {
-                await socket.SendAsync(Encoding.UTF8.GetBytes(json), WebSocketMessageType.Text, true, ct).ConfigureAwait(false);
-            }
+            await foreach (var json in queue.Reader.ReadAllAsync(connection.Token).ConfigureAwait(false))
+                await socket.SendAsync(Encoding.UTF8.GetBytes(json), WebSocketMessageType.Text, true, connection.Token).ConfigureAwait(false);
         }
-        catch (OperationCanceledException) { }
-        catch (WebSocketException) { }
-        catch (ObjectDisposedException) { }
+        finally { connection.Cancel(); }
     }
 
-    /// <summary>Reads until the socket closes. True if a welcome arrived at any point.</summary>
-    private async Task<bool> ReadLoopAsync(ClientWebSocket socket, CancellationToken ct)
+    private static async Task<JObject?> ReadAsync(ClientWebSocket socket, CancellationToken ct)
     {
-        var buffer = new byte[32 * 1024];
+        var buffer = new byte[16384];
         using var message = new System.IO.MemoryStream();
-        var welcomed = false;
-
-        while (socket.State == WebSocketState.Open && !ct.IsCancellationRequested)
+        while (true)
         {
-            message.SetLength(0);
-            WebSocketReceiveResult result;
-            do
-            {
-                result = await socket.ReceiveAsync(buffer, ct).ConfigureAwait(false);
-                if (result.MessageType == WebSocketMessageType.Close)
-                {
-                    StatusText = $"Server closed the connection ({result.CloseStatusDescription ?? "no reason"}).";
-                    return welcomed;
-                }
-                message.Write(buffer, 0, result.Count);
-            } while (!result.EndOfMessage);
-
-            var text = Encoding.UTF8.GetString(message.GetBuffer(), 0, (int)message.Length);
-
-            JObject payload;
-            try
-            {
-                payload = JObject.Parse(text);
-            }
-            catch (Exception ex)
-            {
-                _log.Warning($"Sync: unreadable frame from the server: {Shorten(ex.Message)}");
-                continue;
-            }
-
-            var type = payload.Value<string>("type") ?? string.Empty;
-
-            switch (type)
-            {
-                case ServerMessageTypes.Welcome:
-                    welcomed = true;
-                    State = ConnectionState.Connected;
-                    ConnectedAtUtc = DateTime.UtcNow;
-                    StatusText = "Connected.";
-                    break;
-
-                case ServerMessageTypes.Error:
-                {
-                    var code = payload.Value<string>("code") ?? string.Empty;
-                    var reason = payload.Value<string>("message") ?? "The server refused the connection.";
-                    if (code is "auth" or "protocol")
-                    {
-                        FatalError = true;
-                        StatusText = reason;
-                    }
-                    break;
-                }
-            }
-
-            _inbox.Enqueue((type, payload));
+            var result = await socket.ReceiveAsync(buffer, ct).ConfigureAwait(false);
+            if (result.MessageType == WebSocketMessageType.Close) return null;
+            if (result.MessageType != WebSocketMessageType.Text) throw new InvalidOperationException("Expected JSON text.");
+            if (message.Length + result.Count > MaxMessageBytes) throw new InvalidOperationException("Sync message too large.");
+            message.Write(buffer, 0, result.Count);
+            if (result.EndOfMessage) break;
         }
-
-        return welcomed;
+        return JObject.Parse(Encoding.UTF8.GetString(message.GetBuffer(), 0, (int)message.Length));
     }
-
-    private static string Shorten(string message) =>
-        message.Length > 160 ? message[..160] + "…" : message;
-
     public void Dispose() => Stop();
 }

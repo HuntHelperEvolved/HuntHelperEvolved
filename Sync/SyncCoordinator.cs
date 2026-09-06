@@ -67,9 +67,18 @@ public sealed class SyncCoordinator : IDisposable
 
     private List<SyncWorld>? _worlds;
     private HelloMessage _hello = new();
-    private string _lastPlayerName = string.Empty;
     private string _appliedSettings = string.Empty;
     private bool _applying;
+    private List<SyncMark> _localTrainBackup = new();
+    public int LocalBackupCount => _localTrainBackup.Count;
+    public void UploadLocalBackup()
+    {
+        if (!IsConnected || !_config.SyncShareTrain || _localTrainBackup.Count == 0) return;
+        _client.Send(new TrainUpsertMessage { Marks = _localTrainBackup });
+        _localTrainBackup = new();
+        _config.SyncLocalTrainBackup = _localTrainBackup;
+        _config.Save();
+    }
 
     private double _sinceDiff, _sincePing, _sinceHello, _sincePresence;
     private (uint World, uint Territory, uint Instance) _lastPresence;
@@ -77,6 +86,7 @@ public sealed class SyncCoordinator : IDisposable
     public SyncClient Client => _client;
     public bool IsConnected => _client.IsConnected;
     public string ServerVersion { get; private set; } = string.Empty;
+    public string ServerName { get; private set; } = string.Empty;
     public string LastError { get; private set; } = string.Empty;
 
     /// <summary>
@@ -119,6 +129,7 @@ public sealed class SyncCoordinator : IDisposable
         _objectTable = objectTable;
         _log = log;
         _config = config;
+        _localTrainBackup = config.SyncLocalTrainBackup ?? new();
         _detector = detector;
         _worldData = worldData;
         _pluginVersion = pluginVersion;
@@ -127,6 +138,7 @@ public sealed class SyncCoordinator : IDisposable
         _framework.Update += OnUpdate;
         _detector.Cleared += OnDetectorCleared;
         _detector.Scanned += OnScanned;
+        _detector.SightingObservedDead += OnSightingDeath;
 
         ApplySettings();
     }
@@ -136,6 +148,7 @@ public sealed class SyncCoordinator : IDisposable
         _framework.Update -= OnUpdate;
         _detector.Cleared -= OnDetectorCleared;
         _detector.Scanned -= OnScanned;
+        _detector.SightingObservedDead -= OnSightingDeath;
         _client.Dispose();
     }
 
@@ -147,10 +160,10 @@ public sealed class SyncCoordinator : IDisposable
     /// Reads the sync settings and (re)connects if they changed. Called by
     /// the settings UI once an edit is finished, not on every keystroke.
     /// </summary>
-    public void ApplySettings()
+    public void ApplySettings(bool force = false)
     {
-        var wanted = $"{_config.SyncEnabled}|{_config.SyncServerUrl}|{_config.SyncPassword}";
-        if (wanted == _appliedSettings) return;
+        var wanted = $"{_config.SyncEnabled}|{_config.SyncServerUrl}|{_config.SyncPassword}|{_config.SyncDisplayName}|{_config.SyncShareTrain}";
+        if (!force && wanted == _appliedSettings) return;
         _appliedSettings = wanted;
 
         _client.Stop();
@@ -179,7 +192,7 @@ public sealed class SyncCoordinator : IDisposable
             if (IsConnected)
             {
                 var others = Math.Max(0, _clients.Count - 1);
-                return $"Connected (server {ServerVersion}) — {others} other{(others == 1 ? "" : "s")} online.";
+                return $"Connected to {ServerName} (server {ServerVersion}) — {others} other{(others == 1 ? "" : "s")} online.";
             }
 
             return _client.StatusText;
@@ -242,8 +255,7 @@ public sealed class SyncCoordinator : IDisposable
         try
         {
             DrainInbox();
-            if (!_client.IsConnected) return;
-
+            ExpireRemote();
             var dt = framework.UpdateDelta.TotalSeconds;
 
             _sinceHello += dt;
@@ -252,6 +264,8 @@ public sealed class SyncCoordinator : IDisposable
                 _sinceHello = 0;
                 RefreshHello();
             }
+
+            if (!_client.IsConnected) return;
 
             _sinceDiff += dt;
             if (_sinceDiff >= DiffInterval.TotalSeconds)
@@ -366,6 +380,8 @@ public sealed class SyncCoordinator : IDisposable
                 break;
 
             case ServerMessageTypes.Pong:
+                if (payload["faloop"] is JObject faloop)
+                    _faloop = SyncProtocol.Deserialize<SyncFaloopStatus>(faloop)!;
                 break;
         }
     }
@@ -373,13 +389,14 @@ public sealed class SyncCoordinator : IDisposable
     private void ApplyWelcome(WelcomeMessage welcome)
     {
         ServerVersion = welcome.ServerVersion;
+        ServerName = string.IsNullOrEmpty(welcome.ServerName) ? "group server" : welcome.ServerName;
         LastError = string.Empty;
         _clients = welcome.Clients;
         _faloop = welcome.Faloop;
 
         // A fresh snapshot replaces everything remembered from before the
-        // reconnect. The train is merged, not replaced: whatever was scouted
-        // while offline is still real, and the next diff sends it up.
+        // reconnect. The server train is authoritative; local rows are kept
+        // as an explicit upload option so deleted marks never return silently.
         _remote.Clear();
         foreach (var s in welcome.Sightings) AddRemoteSighting(s);
 
@@ -396,6 +413,16 @@ public sealed class SyncCoordinator : IDisposable
 
         if (_config.SyncShareTrain)
         {
+            var backup = _localTrainBackup.ToDictionary(m => m.Key);
+            var sharedKeys = welcome.Marks.Select(m => m.Key).ToHashSet();
+            foreach (var local in _detector.Marks.Values.Where(m => !sharedKeys.Contains(m.Key)))
+                backup[local.Key] = ToSyncMark(local, 0);
+            _localTrainBackup = backup.Values.ToList();
+            _config.SyncLocalTrainBackup = _localTrainBackup;
+            _config.Save();
+            _applying = true;
+            try { foreach (var key in _detector.Marks.Keys.ToList()) _detector.Remove(key); }
+            finally { _applying = false; }
             ApplyMarks(welcome.Marks);
             ApplyOrder(welcome.Order);
         }
@@ -471,7 +498,11 @@ public sealed class SyncCoordinator : IDisposable
                 if (local.Dead)
                     _detector.RemoveSighting(key.NameId, key.Instance, key.WorldId);
 
-                _known[key] = new KnownMark(Signature(local), m.Revision, local.Dead);
+                // Remember the canonical signature, not any unsent local edit.
+                var canonical = new DetectedMark { Dead = m.Dead, DeathObservedAtUtc = m.DeathAt,
+                    Spiced = m.Spiced, Name = m.Name, ZoneName = m.ZoneName, IsCustom = m.IsCustom,
+                    TerritoryId = m.TerritoryId, MapId = m.MapId, MapPosition = new Vector2(m.X, m.Y), LastSeenUtc = m.LastSeen };
+                _known[key] = new KnownMark(Signature(canonical), m.Revision, m.Dead);
             }
         }
         finally
@@ -558,7 +589,7 @@ public sealed class SyncCoordinator : IDisposable
         // Our own reports come back to us too. They are already on the map
         // from the local scan, and once that expires the map should say the
         // mark is gone — not keep it lit on the strength of our own echo.
-        if (string.Equals(s.Reporter, DisplayName(), StringComparison.Ordinal)) return;
+
 
         var key = s.Key;
         if (!_remote.TryGetValue(key, out var existing))
@@ -660,6 +691,9 @@ public sealed class SyncCoordinator : IDisposable
             _client.Send(new TrainClearMessage());
     }
 
+    private void OnSightingDeath(OtherRankSighting sighting, DateTime at) =>
+        ReportMarkDeath(sighting.NameId, sighting.Instance, sighting.TerritoryId, at, sighting.Rank == HuntRank.S);
+
     private void OnScanned()
     {
         if (!IsConnected || !_config.SyncShareSightings) return;
@@ -711,7 +745,7 @@ public sealed class SyncCoordinator : IDisposable
                 Y = s.MapPosition.Y,
                 HpPercent = s.HealthPercent,
                 SeenAt = s.LastSeenUtc,
-                SpawnPointIndex = NearestSpawnPoint(s.TerritoryId, s.MapPosition),
+                SpawnPointIndex = s.SpawnPointIndex,
             });
             _sentSightings[key] = (s.HealthPercent, s.MapPosition, now);
         }
@@ -720,29 +754,6 @@ public sealed class SyncCoordinator : IDisposable
 
         foreach (var key in _sentSightings.Where(kv => now - kv.Value.At > SentSightingMemory).Select(kv => kv.Key).ToList())
             _sentSightings.Remove(key);
-    }
-
-    /// <summary>
-    /// The closest known spawn point within the match radius, by the same
-    /// rule the map uses to light a dot. Null when the mark is off-point.
-    /// </summary>
-    public int? NearestSpawnPoint(uint territoryId, Vector2 mapPosition)
-    {
-        var points = SpawnPointData.For(territoryId);
-        if (points.Length == 0) return null;
-
-        var radius = Math.Max(0.5f, _config.SpawnPointMatchRadius);
-        var best = -1;
-        var bestDistance = float.MaxValue;
-        for (var i = 0; i < points.Length; i++)
-        {
-            var d = Vector2.Distance(new Vector2(points[i].X, points[i].Y), mapPosition);
-            if (d > radius || d >= bestDistance) continue;
-            bestDistance = d;
-            best = i;
-        }
-
-        return best >= 0 ? best : null;
     }
 
     private void MaybeSendPresence()
@@ -763,7 +774,7 @@ public sealed class SyncCoordinator : IDisposable
     /// </summary>
     public void ReportMarkDeath(uint nameId, uint instance, uint territoryId, DateTime killedAtUtc, bool isSRank)
     {
-        if (!IsConnected) return;
+        if (!IsConnected || (!_config.SyncShareSightings && !_config.SyncReportSRankKills)) return;
 
         var world = _detector.CurrentWorldId();
         var key = (nameId, instance, world);
@@ -781,7 +792,7 @@ public sealed class SyncCoordinator : IDisposable
         {
             x = seen.MapPosition.X;
             y = seen.MapPosition.Y;
-            point = NearestSpawnPoint(seen.TerritoryId, seen.MapPosition);
+            point = seen.SpawnPointIndex;
         }
 
         _client.Send(new SRankKillMessage
@@ -846,7 +857,9 @@ public sealed class SyncCoordinator : IDisposable
     public bool IsSeenUp(uint nameId, uint worldId, uint instance)
     {
         var key = (nameId, instance, worldId);
-        return _detector.OtherRanks.ContainsKey(key) || _remote.ContainsKey(key);
+        var now = DateTime.UtcNow;
+        return (_detector.OtherRanks.TryGetValue(key, out var local) && now - local.LastSeenUtc < RemoteSightingTtl)
+            || (_remote.TryGetValue(key, out var remote) && now - remote.LastSeenUtc < RemoteSightingTtl);
     }
 
     public string DisplayName()
@@ -854,17 +867,7 @@ public sealed class SyncCoordinator : IDisposable
         var chosen = _config.SyncDisplayName?.Trim();
         if (!string.IsNullOrEmpty(chosen)) return chosen;
 
-        try
-        {
-            var name = _objectTable.LocalPlayer?.Name.TextValue;
-            if (!string.IsNullOrWhiteSpace(name)) _lastPlayerName = name;
-        }
-        catch
-        {
-            // Not in the world yet; the last known name will do.
-        }
-
-        return string.IsNullOrEmpty(_lastPlayerName) ? "Anonymous" : _lastPlayerName;
+        return "Anonymous";
     }
 
     // -----------------------------------------------------------------------
