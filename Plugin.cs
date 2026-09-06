@@ -95,6 +95,7 @@ public sealed class Plugin : IDalamudPlugin
     private const uint AetheryteIconId = 60453;
     private readonly HuntCounter _counter;
     private readonly SpawnWatchCounters _spawnWatch;
+    private readonly TrainIpcProvider _trainIpc;
     private readonly WorldData _worldData;
     private readonly HuntMapOverlay _mapOverlay;
     private readonly SsEventWatcher _ssEvent;
@@ -325,6 +326,9 @@ public sealed class Plugin : IDalamudPlugin
         _counter = new HuntCounter(chatGui, clientState, objectTable, _config);
         _spawnWatch = new SpawnWatchCounters(framework, clientState, objectTable, fateTable, _log);
         _worldData = new WorldData(dataManager);
+
+        // After the detector exists, since the gates read straight off it.
+        _trainIpc = new TrainIpcProvider(_pluginInterface, _detector, _log);
 
         // KamiToolKit needs one-time initialisation before any of its
         // controllers can be enabled — without it, AddonController.Enable()
@@ -3391,6 +3395,14 @@ public sealed class Plugin : IDalamudPlugin
             ImGui.SameLine();
             ImGui.TextDisabled("Changes in this and previous versions, and who to thank.");
             ImGui.Spacing();
+
+            // Worth stating rather than leaving to the log. Whether the HH.*
+            // gates are answered here decides whether somebody's other plugin
+            // can see this train at all, and it is not otherwise visible.
+            ImGui.TextDisabled(_trainIpc.ClaimedHuntHelperGates
+                ? "IPC: other plugins can read this train through Hunt Helper's own gates."
+                : "IPC: Hunt Helper is installed and keeps its gates. Other plugins see its train, not this one.");
+            ImGui.Spacing();
         }
 
         if (ImGui.CollapsingHeader("Teleport"))
@@ -3558,6 +3570,8 @@ public sealed class Plugin : IDalamudPlugin
         HuntTally.Service.ClientState.Logout -= OnTallyLogout;
         HuntTally.Service.Framework.Update -= OnTallyFrameworkUpdate;
         _seeder.Dispose();
+
+        _trainIpc.Dispose();
 
         _pluginInterface.UiBuilder.OpenMainUi -= ToggleTallyWindow;
         _tallyWindows.RemoveAllWindows();
