@@ -54,6 +54,18 @@ public class DetectedMark
     public bool Spiced;
 
     /// <summary>
+    /// When the train arrived to find this mark already gone — killed by
+    /// somebody else after it was scouted.
+    ///
+    /// Not a kill time, and deliberately not stored as one. All this says is
+    /// when the mark was found missing, which is the LATEST it can have died;
+    /// the earliest is LastSeenUtc, when it was last seen standing there. The
+    /// truth is somewhere between the two, and the report says so rather than
+    /// picking one and calling it the kill.
+    /// </summary>
+    public DateTime? SnipedAtUtc;
+
+    /// <summary>
     /// What makes this mark this mark. Compare against it rather than picking
     /// fields off by hand — the same mark is up on every world at once, and a
     /// comparison that forgets to say which one silently matches the wrong row.
@@ -209,10 +221,12 @@ public sealed class MarkDetector
 
         foreach (var mark in incoming)
         {
-            // An import code carries no world. It is a scout list for wherever
-            // you are, so it is stamped with that rather than left at zero,
-            // which would make every imported mark a stranger to the live one
-            // standing on the same spot.
+            // Our own codes carry the world they were scouted on, so this only
+            // catches a Hunt Helper code or one exported before that field
+            // existed. Such a list is a scout for wherever you are, so it is
+            // stamped with that rather than left at zero, which would make
+            // every imported mark a stranger to the live one standing on the
+            // same spot.
             if (mark.WorldId == 0)
             {
                 mark.WorldId = worldId;
@@ -525,6 +539,7 @@ public sealed class MarkDetector
             IsCustom = m.IsCustom,
             ZoneName = m.ZoneName,
             Spiced = m.Spiced,
+            SnipedAtUtc = m.SnipedAtUtc,
         }).ToList();
 
     /// <summary>
@@ -564,6 +579,7 @@ public sealed class MarkDetector
                 IsCustom = p.IsCustom,
                 ZoneName = p.ZoneName,
                 Spiced = p.Spiced,
+                SnipedAtUtc = p.SnipedAtUtc,
             };
 
             _marks[(mark.NameId, mark.Instance, mark.WorldId)] = mark;

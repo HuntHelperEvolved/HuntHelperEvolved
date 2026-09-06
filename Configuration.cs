@@ -68,6 +68,9 @@ public class PersistedMark
     public bool IsCustom { get; set; }
     public string ZoneName { get; set; } = string.Empty;
     public bool Spiced { get; set; }
+
+    /// <summary>When the train found this mark already gone. See DetectedMark.SnipedAtUtc.</summary>
+    public DateTime? SnipedAtUtc { get; set; }
 }
 
 /// <summary>Per-mark auto-reset settings for the trigger-mob counters.</summary>
@@ -569,6 +572,16 @@ public class Configuration : IPluginConfiguration
     /// than the rest of the plugin — if it ever misbehaves, the message can stay.
     /// </summary>
     public bool SRankZoneReminderSound { get; set; } = true;
+
+    /// <summary>
+    /// Repeat the Conductor tab's S-rank watches under the train list, with
+    /// their Spawned / Didn't Spawn boxes.
+    ///
+    /// The train popout is the window open while a train is running, and an
+    /// S rank is checked in passing, between marks — walking back to a settings
+    /// tab to record the answer is exactly when it gets forgotten instead.
+    /// </summary>
+    public bool ShowSRankWatchesInTrainList { get; set; } = true;
 
     /// <summary>
     /// Extra names credited alongside the submitting character on a scouting
