@@ -3150,6 +3150,45 @@ public sealed class Plugin : IDalamudPlugin
         }
 
         var entries = TrainReport.BuildEntries(marks);
+
+        DrawReportEntries(entries.Where(e => !e.Sniped).ToList());
+
+        // Its own section, exactly as the posted report has it — this is the
+        // preview of that report, and a preview laid out differently from the
+        // thing it previews is worse than none.
+        var sniped = entries.Where(e => e.Sniped).ToList();
+        if (sniped.Count > 0)
+        {
+            ImGui.Spacing();
+            ImGui.Separator();
+            ImGui.Spacing();
+            ImGui.TextWrapped("Sniped (found gone — time is when the train got there)");
+            ImGui.Spacing();
+            DrawReportEntries(sniped);
+        }
+
+        var neverSeen = TrainReport.BuildSniped(marks);
+        if (neverSeen.Count > 0)
+        {
+            ImGui.Spacing();
+            ImGui.Separator();
+            ImGui.Spacing();
+            ImGui.TextWrapped("Assumed Sniped (not seen this train)");
+            foreach (var (expansion, names) in neverSeen)
+            {
+                ImGui.TextWrapped($"{expansion}: {string.Join(", ", names)}");
+            }
+        }
+    }
+
+    /// <summary>
+    /// One run of report entries, split into expansion blocks. Shared by the
+    /// killed and sniped sections for the same reason the posted report shares
+    /// its own: the only difference between the two should be which marks are
+    /// in them.
+    /// </summary>
+    private void DrawReportEntries(List<TrainReportEntry> entries)
+    {
         string? lastExpansion = null;
 
         foreach (var entry in entries)
@@ -3162,31 +3201,17 @@ public sealed class Plugin : IDalamudPlugin
             }
 
             var localTime = entry.KillTimeUtc.ToLocalTime().ToString("g");
-            var note = entry.Sniped ? " (sniped — found gone)" : string.Empty;
 
             if (!entry.HasWindow)
             {
-                ImGui.TextWrapped($"{localTime} — {entry.Name} — no fixed respawn timer{note}");
+                ImGui.TextWrapped($"{localTime} — {entry.Name} — no fixed respawn timer");
                 continue;
             }
 
             var openLocal = entry.WindowOpensUtc!.Value.ToLocalTime().ToString("t");
             var capLocal = entry.WindowCapsUtc!.Value.ToLocalTime().ToString("t");
             var instanceGlyph = ExpansionData.InstanceGlyph(entry.Instance);
-            ImGui.TextWrapped($"{localTime} — {entry.Location} — {entry.Name}{instanceGlyph} — window {openLocal} → {capLocal}{note}");
-        }
-
-        var sniped = TrainReport.BuildSniped(marks);
-        if (sniped.Count > 0)
-        {
-            ImGui.Spacing();
-            ImGui.Separator();
-            ImGui.Spacing();
-            ImGui.TextWrapped("Assumed Sniped (not seen this train)");
-            foreach (var (expansion, names) in sniped)
-            {
-                ImGui.TextWrapped($"{expansion}: {string.Join(", ", names)}");
-            }
+            ImGui.TextWrapped($"{localTime} — {entry.Location} — {entry.Name}{instanceGlyph} — window {openLocal} → {capLocal}");
         }
     }
 
