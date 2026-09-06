@@ -26,9 +26,6 @@ public sealed class SRankWindow
     private readonly WorldData _worldData;
     private readonly MarkDetector _detector;
 
-    private int _dcIndex;
-    private int _worldIndex;
-    private uint _followedWorld;
     private int _killedMinutesAgo;
     private int _maintenanceMinutesAgo;
 
@@ -38,6 +35,13 @@ public sealed class SRankWindow
         _sync = sync;
         _worldData = worldData;
         _detector = detector;
+        if (_config.SRankWindowExpansions is null)
+        {
+            _config.SRankWindowExpansions = _config.SRankWindowExpansion >= 0
+                ? SRankTimerData.All.Where(t => t.ExpansionOrder == _config.SRankWindowExpansion).Select(t => t.Expansion).Distinct().ToList()
+                : SRankTimerData.Expansions.ToList();
+            _config.Save();
+        }
     }
 
     public bool Visible
@@ -97,23 +101,35 @@ public sealed class SRankWindow
             if (ImGui.IsItemHovered()) ImGui.SetTooltip(faloop.Status);
         }
 
-        var worldId = DrawWorldPicker();
+        var worlds = DrawWorldPicker();
         ImGui.SameLine();
         DrawExpansionFilter();
-
-        ImGui.Spacing();
-        DrawMaintenanceRow(worldId);
-        ImGui.Spacing();
-
+        var available = _config.SRankWindowAvailableOnly;
+        if (ImGui.Checkbox("Available to spawn only", ref available)) { _config.SRankWindowAvailableOnly = available; _config.Save(); }
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip("Show marks whose known respawn window has opened, excluding live sightings, unknown and uncertain timers. Spawn conditions still need to be met.");
+        ImGui.SameLine();
+        var search = _config.SRankWindowSearch;
+        ImGui.SetNextItemWidth(220);
+        if (ImGui.InputTextWithHint("##srankSearch", "Search mark or zone", ref search, 100)) { _config.SRankWindowSearch = search; _config.Save(); }
+        if (ImGui.CollapsingHeader("Record maintenance"))
+        {
+            if (worlds.Count == 1) { ImGui.TextDisabled(_worldData.NameOf(worlds[0])); DrawMaintenanceRow(worlds[0]); }
+            else ImGui.TextDisabled("Select exactly one world to record a maintenance reset.");
+        }
         var now = DateTime.UtcNow;
-        var rows = BuildRows(worldId, now);
+        var rows = worlds.SelectMany(world => BuildRows(world, now).Select(row => (Row:row, World:world)))
+            .OrderBy(r => r.Row.Window.Phase switch { SRankPhase.Up => 0, SRankPhase.Forced => 1, SRankPhase.Window => 2, SRankPhase.Uncertain => 3, SRankPhase.Cooldown => 4, _ => 5 })
+            .ThenByDescending(r => r.Row.Window.Percent).ThenBy(r => r.Row.Window.OpensAtUtc ?? DateTime.MaxValue)
+            .ThenBy(r => r.Row.Timer.Name).ThenBy(r => _worldData.NameOf(r.World)).ToList();
+        ImGui.TextDisabled($"{rows.Count} marks across {worlds.Count} selected worlds. Server feed: {string.Join(", ", _sync.Faloop.DataCenters)}");
 
         const ImGuiTableFlags flags = ImGuiTableFlags.RowBg | ImGuiTableFlags.BordersInnerH | ImGuiTableFlags.ScrollY
                                       | ImGuiTableFlags.Resizable | ImGuiTableFlags.SizingStretchProp;
-        if (!ImGui.BeginTable("sranks", 8, flags)) return;
+        if (!ImGui.BeginTable("sranks", 9, flags)) return;
 
         ImGui.TableSetupScrollFreeze(0, 1);
         ImGui.TableSetupColumn("Mark", ImGuiTableColumnFlags.WidthStretch, 1.6f);
+        ImGui.TableSetupColumn("World", ImGuiTableColumnFlags.WidthStretch, 1.1f);
         ImGui.TableSetupColumn("Zone", ImGuiTableColumnFlags.WidthStretch, 1.6f);
         ImGui.TableSetupColumn("Status", ImGuiTableColumnFlags.WidthStretch, 1.4f);
         ImGui.TableSetupColumn("Opens", ImGuiTableColumnFlags.WidthStretch, 0.9f);
@@ -124,7 +140,7 @@ public sealed class SRankWindow
         ImGui.TableHeadersRow();
 
         foreach (var row in rows)
-            DrawRow(row, worldId, now);
+            DrawRow(row.Row, row.World, now);
 
         ImGui.EndTable();
     }
@@ -133,54 +149,53 @@ public sealed class SRankWindow
     // Header controls
     // -----------------------------------------------------------------------
 
-    private uint DrawWorldPicker()
+    private List<uint> DrawWorldPicker()
     {
-        var dcs = _worldData.DataCenters;
-        if (dcs.Count == 0)
+        var current = _config.SRankWindowCurrentWorld;
+        if (ImGui.Checkbox("Current world", ref current)) { _config.SRankWindowCurrentWorld = current; _config.Save(); }
+        if (current) { ImGui.SameLine(); ImGui.TextDisabled(_detector.CurrentWorldName()); return _detector.CurrentWorldId() == 0 ? new() : new() { _detector.CurrentWorldId() }; }
+        ImGui.SameLine(); ImGui.SetNextItemWidth(190);
+        if (ImGui.BeginCombo("##srankWorlds", $"Worlds ({_config.SRankWindowWorlds.Count})"))
         {
-            ImGui.TextDisabled(_detector.CurrentWorldName());
-            return _detector.CurrentWorldId();
-        }
-
-        // Follow the player's world until a world is picked by hand.
-        var live = _detector.CurrentWorldId();
-        if (live != 0 && live != _followedWorld)
-        {
-            _followedWorld = live;
-            if (_worldData.LocateWorld(live) is { } located)
+            foreach (var dc in _worldData.DataCenters)
             {
-                _dcIndex = located.DcIndex;
-                _worldIndex = located.WorldIndex;
+                if (!ImGui.TreeNode(dc.Name)) continue;
+                var worlds = _worldData.WorldsIn(dc.Id);
+                var all = worlds.All(w => _config.SRankWindowWorlds.Contains(w.RowId));
+                if (ImGui.Checkbox("All##" + dc.Id, ref all))
+                {
+                    foreach (var world in worlds)
+                    { _config.SRankWindowWorlds.Remove(world.RowId); if (all) _config.SRankWindowWorlds.Add(world.RowId); }
+                    _config.Save();
+                }
+                foreach (var world in worlds)
+                {
+                    var selected = _config.SRankWindowWorlds.Contains(world.RowId);
+                    if (ImGui.Checkbox(world.Name, ref selected))
+                    { if (selected) _config.SRankWindowWorlds.Add(world.RowId); else _config.SRankWindowWorlds.Remove(world.RowId); _config.Save(); }
+                }
+                ImGui.TreePop();
             }
+            ImGui.EndCombo();
         }
-
-        var dcNames = dcs.Select(d => d.Name).ToArray();
-        _dcIndex = Math.Clamp(_dcIndex, 0, dcs.Count - 1);
-        ImGui.SetNextItemWidth(130);
-        if (ImGui.Combo("##srankDc", ref _dcIndex, dcNames, dcNames.Length))
-            _worldIndex = 0;
-
-        var worlds = _worldData.WorldsIn(dcs[_dcIndex].Id);
-        if (worlds.Count == 0) return live;
-
-        var worldNames = worlds.Select(w => w.Name).ToArray();
-        _worldIndex = Math.Clamp(_worldIndex, 0, worlds.Count - 1);
-        ImGui.SameLine();
-        ImGui.SetNextItemWidth(130);
-        ImGui.Combo("##srankWorld", ref _worldIndex, worldNames, worldNames.Length);
-        return worlds[_worldIndex].RowId;
+        return _config.SRankWindowWorlds.Distinct().Where(w => _worldData.LocateWorld(w) is not null).ToList();
     }
 
     private void DrawExpansionFilter()
     {
-        var names = new[] { "All expansions" }.Concat(SRankTimerData.Expansions).ToArray();
-        var index = Math.Clamp(_config.SRankWindowExpansion + 1, 0, names.Length - 1);
-        ImGui.SetNextItemWidth(150);
-        if (ImGui.Combo("##srankExpansion", ref index, names, names.Length))
+        var chosen = _config.SRankWindowExpansions!;
+        ImGui.SetNextItemWidth(180);
+        if (!ImGui.BeginCombo("##srankExpansions", $"Expansions ({chosen.Count})")) return;
+        var all = SRankTimerData.Expansions.All(chosen.Contains);
+        if (ImGui.Checkbox("All expansions", ref all))
+        { chosen.Clear(); if (all) chosen.AddRange(SRankTimerData.Expansions); _config.Save(); }
+        foreach (var name in SRankTimerData.Expansions)
         {
-            _config.SRankWindowExpansion = index - 1;
-            _config.Save();
+            var selected = chosen.Contains(name);
+            if (ImGui.Checkbox(name, ref selected))
+            { if (selected) chosen.Add(name); else chosen.Remove(name); _config.Save(); }
         }
+        ImGui.EndCombo();
     }
 
     private void DrawMaintenanceRow(uint worldId)
@@ -216,11 +231,12 @@ public sealed class SRankWindow
     private List<Row> BuildRows(uint worldId, DateTime now)
     {
         var rows = new List<Row>();
-        var filter = _config.SRankWindowExpansion;
 
         foreach (var timer in SRankTimerData.All)
         {
-            if (filter >= 0 && timer.ExpansionOrder != filter) continue;
+            if (!_config.SRankWindowExpansions!.Contains(timer.Expansion)) continue;
+            if (!string.IsNullOrWhiteSpace(_config.SRankWindowSearch)
+                && !(timer.Name + " " + timer.Zone).Contains(_config.SRankWindowSearch, StringComparison.OrdinalIgnoreCase)) continue;
 
             // One row per instance the server knows about, else instance 0.
             var instances = _sync.SRankStatuses.Keys
@@ -237,7 +253,9 @@ public sealed class SRankWindow
             {
                 var status = _sync.StatusFor(timer.NameId, worldId, instance);
                 var seenUp = _sync.IsSeenUp(timer.NameId, worldId, instance);
-                rows.Add(new Row(timer, instance, status, SRankTimerData.Compute(timer, status, now, seenUp), seenUp));
+                var cycle = SRankTimerData.Compute(timer, status, now, seenUp);
+                if (_config.SRankWindowAvailableOnly && !SRankBoardFilter.Available(cycle.Phase)) continue;
+                rows.Add(new Row(timer, instance, status, cycle, seenUp));
             }
         }
 
@@ -265,12 +283,14 @@ public sealed class SRankWindow
     {
         var timer = row.Timer;
         var window = row.Window;
-        ImGui.PushID($"{timer.NameId}_{row.Instance}");
+        ImGui.PushID($"{worldId}_{timer.NameId}_{row.Instance}");
         ImGui.TableNextRow();
 
         ImGui.TableNextColumn();
         ImGui.Text($"{timer.Name}{ExpansionData.InstanceGlyph(row.Instance)}");
 
+        ImGui.TableNextColumn();
+        ImGui.TextDisabled(_worldData.NameOf(worldId));
         ImGui.TableNextColumn();
         ImGui.TextDisabled(timer.Zone);
 

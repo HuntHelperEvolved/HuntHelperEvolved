@@ -276,7 +276,7 @@ public sealed class MarkDetector
     public void Scan(bool recordNew = true)
     {
         var territoryId = _clientState.TerritoryType;
-        if (territoryId == 0) return;
+        if (territoryId == 0) { _otherRanks.Clear(); Scanned?.Invoke(); return; }
 
         var mapId = GetMapId(territoryId);
         var instance = GetCurrentInstance();
@@ -284,24 +284,10 @@ public sealed class MarkDetector
         var worldName = CurrentWorldName();
         var now = DateTime.UtcNow;
 
-        // A mark we have stopped seeing is no longer there to show. One scan
-        // interval plus a little slack: any shorter and a mark simply missed by
-        // one pass would be wrongly dropped.
-        //
-        // Arriving somewhere new is the exception, and it gets no slack at all.
-        // Sightings are only ever expired for the scope being stood in, so
-        // another instance's — or another world's — sit there untouched however
-        // long you are away. Walking back in and keeping them for a few seconds
-        // would put marks on the map that may well be dead by now, on the
-        // strength of having seen them last time. Everything remembered here is
-        // dropped instead, and the sweep below immediately re-adds whatever is
-        // actually present.
+        // Live sightings belong only to the current world, instance and scan.
         var scope = (territoryId, instance, worldId);
-        var arrived = scope != _lastScannedScope;
+        if (scope != _lastScannedScope) _otherRanks.Clear();
         _lastScannedScope = scope;
-
-        var stale = arrived ? 0 : Math.Max(2, _config.PollIntervalSeconds) + 1;
-        ExpireStaleSightings(territoryId, instance, worldId, stale);
 
         foreach (var obj in _objectTable)
         {
@@ -361,6 +347,9 @@ public sealed class MarkDetector
             MarkDetected?.Invoke(_marks[key]);
         }
 
+        // A live icon needs an object in this exact pass. Train history is kept separately.
+        foreach (var key in _otherRanks.Where(p => p.Value.LastSeenUtc != now).Select(p => p.Key).ToList())
+            _otherRanks.Remove(key);
         Scanned?.Invoke();
     }
 
@@ -436,6 +425,8 @@ public sealed class MarkDetector
             existing.LastSeenUtc = now;
             existing.MapPosition = MapCoordinates.FromWorld(_dataManager, mapId, mob.Position.X, mob.Position.Z);
             existing.HealthPercent = HealthPercentOf(mob);
+            if (existing.SpawnPointIndex is null && CanMatchSpawnPoint(mob))
+                existing.SpawnPointIndex = MatchSpawnPoint(territoryId, existing.MapPosition, rank);
             return;
         }
 
@@ -452,8 +443,7 @@ public sealed class MarkDetector
             MapPosition = MapCoordinates.FromWorld(_dataManager, mapId, mob.Position.X, mob.Position.Z),
             LastSeenUtc = now,
             HealthPercent = HealthPercentOf(mob),
-            SpawnPointIndex = !mob.StatusFlags.HasFlag(Dalamud.Game.ClientState.Objects.Enums.StatusFlags.InCombat)
-                && mob.MaxHp > 0 && mob.CurrentHp == mob.MaxHp
+            SpawnPointIndex = CanMatchSpawnPoint(mob)
                 ? MatchSpawnPoint(territoryId, MapCoordinates.FromWorld(_dataManager, mapId, mob.Position.X, mob.Position.Z), rank) : null,
             ZoneName = GetZoneName(territoryId),
         };
@@ -469,22 +459,13 @@ public sealed class MarkDetector
     /// which would divide to infinity; an unknown mark is reported as untouched
     /// rather than as a mark on the point of dying.
     /// </summary>
-    private static int? MatchSpawnPoint(uint territory, Vector2 position, HuntRank rank)
-    {
-        var points = SpawnPointData.For(territory);
-        var wanted = rank == HuntRank.S ? SpawnRanks.S : rank == HuntRank.A ? SpawnRanks.A : SpawnRanks.B;
-        int? best = null;
-        var distance = 0.5f;
-        for (var i = 0; i < points.Length; i++)
-        {
-            if (!points[i].Ranks.HasFlag(wanted)) continue;
-            var d = Vector2.Distance(position, new Vector2(points[i].X, points[i].Y));
-            if (d >= distance) continue;
-            best = i;
-            distance = d;
-        }
-        return best;
-    }
+    private static bool CanMatchSpawnPoint(Dalamud.Game.ClientState.Objects.Types.IBattleNpc mob) =>
+        !mob.StatusFlags.HasFlag(Dalamud.Game.ClientState.Objects.Enums.StatusFlags.InCombat)
+        && mob.MaxHp > 0 && mob.CurrentHp == mob.MaxHp;
+
+    private static int? MatchSpawnPoint(uint territory, Vector2 position, HuntRank rank) =>
+        Sync.SpawnMapping.Match(SpawnPointData.For(territory), position,
+            rank == HuntRank.S ? SpawnRanks.S : rank == HuntRank.A ? SpawnRanks.A : SpawnRanks.B);
 
     private static float HealthPercentOf(Dalamud.Game.ClientState.Objects.Types.IBattleNpc mob)
     {
@@ -514,39 +495,6 @@ public sealed class MarkDetector
     /// </summary>
     public void RemoveSighting(uint nameId, uint instance, uint worldId) =>
         _otherRanks.Remove((nameId, instance, worldId));
-
-    /// <summary>
-    /// Drops sightings for marks that have gone from a spot we're still
-    /// standing next to — almost always because they were just killed.
-    ///
-    /// A sighting says a mark is there NOW. Anything not seen for a scan or two
-    /// is not visible any more — killed, despawned, or simply left behind — and
-    /// the dot goes out.
-    ///
-    /// This used to expire only marks close enough that we ought to still be
-    /// able to see them, keeping the rest as scouting information. That made a
-    /// dot lit once stay lit for the session however far away it was, which
-    /// reads as a mark that is still up. The train list is where a scouted mark
-    /// is remembered; this store is only what the map is showing, and the map
-    /// should show what is actually there.
-    /// </summary>
-    public void ExpireStaleSightings(uint territoryId, uint instance, uint worldId, double staleSeconds)
-    {
-        var now = DateTime.UtcNow;
-        foreach (var (key, sighting) in _otherRanks.ToList())
-        {
-            if (sighting.TerritoryId != territoryId) continue;
-            if (sighting.Instance != instance) continue;
-
-            // Only judge the world we are on. Somewhere else's sightings are
-            // not visible from here, and "not visible" would expire every one
-            // of them the moment you changed world.
-            if (sighting.WorldId != worldId) continue;
-            if ((now - sighting.LastSeenUtc).TotalSeconds < staleSeconds) continue;
-
-            _otherRanks.Remove(key);
-        }
-    }
 
     /// <summary>Zone name straight from the game's own data, so it's always correct.</summary>
     public string GetZoneName(uint territoryId)

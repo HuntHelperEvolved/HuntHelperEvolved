@@ -420,6 +420,8 @@ public sealed class Plugin : IDalamudPlugin
         {
             HelpMessage = "Open the S-rank board: windows, kill times and spawn points, shared through sync.",
         });
+        _commandManager.AddHandler("/hhs", new CommandInfo(OnSRankCommand)
+        { HelpMessage = "Open the S-rank board with world, expansion and availability filters." });
         RegisterHuntHelperAliases();
 
         _commandManager.AddHandler(TallyCommand, new CommandInfo(OnTallyCommand)
@@ -4240,6 +4242,7 @@ public sealed class Plugin : IDalamudPlugin
         _commandManager.RemoveHandler(NextAetheryteCommand);
         _commandManager.RemoveHandler(MapCommand);
         _commandManager.RemoveHandler(SRankCommand);
+        _commandManager.RemoveHandler("/hhs");
         _commandManager.RemoveHandler(TallyCommand);
 
         foreach (var alias in _claimedAliases)
@@ -4427,7 +4430,7 @@ public sealed class Plugin : IDalamudPlugin
         if (ImGui.Button("Open the S-rank board"))
             _srankWindow.Toggle();
         ImGui.SameLine();
-        ImGui.TextDisabled("Windows, kill times and spawn points for every S rank. Also /htrs.");
+        ImGui.TextDisabled("Windows, kill times and spawn points for every S rank. Also /hhs or /htrs.");
 
         ImGui.Spacing();
         ImGui.Separator();
@@ -4479,22 +4482,17 @@ public sealed class Plugin : IDalamudPlugin
                 _config.ShowSRankCandidatesOnMap = candidates;
                 _config.Save();
             }
-            ImGui.TextDisabled("An S cannot spawn where an A or B has spawned since it last died, nor twice running where it died. Points still possible are coloured; the rest are dimmed.");
+            ImGui.TextDisabled("An S cannot spawn where an A or B has spawned since it last died, nor twice running where it died. Possible points have a gold outline. A confirmed point is filled gold; ruled-out points keep their normal fill.");
 
             const ImGuiColorEditFlags flags = ImGuiColorEditFlags.AlphaBar | ImGuiColorEditFlags.AlphaPreviewHalf;
             var candidate = _config.SpawnDotColourSCandidate;
-            if (ImGui.ColorEdit4("Possible S spawn", ref candidate, flags))
+            if (ImGui.ColorEdit4("S candidate outline / confirmed fill", ref candidate, flags))
             {
                 _config.SpawnDotColourSCandidate = candidate;
                 _config.Save();
             }
 
-            var ruledOut = _config.SpawnDotColourSRuledOut;
-            if (ImGui.ColorEdit4("Ruled out for the S", ref ruledOut, flags))
-            {
-                _config.SpawnDotColourSRuledOut = ruledOut;
-                _config.Save();
-            }
+
         }
 
         ImGui.Spacing();

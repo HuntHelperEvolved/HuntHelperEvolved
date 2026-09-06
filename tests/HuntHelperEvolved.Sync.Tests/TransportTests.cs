@@ -28,7 +28,7 @@ public class TransportTests
                 await socket.ReceiveAsync(buffer, context.RequestAborted);
                 var version = context.Request.Query["v"].ToString();
                 if (version == "old") await Task.Delay(150, context.RequestAborted);
-                var json = "{\"type\":\"welcome\",\"protocol\":3,\"serverVersion\":\"" + version + "\"}";
+                var json = "{\"type\":\"welcome\",\"protocol\":4,\"serverVersion\":\"" + version + "\"}";
                 await socket.SendAsync(Encoding.UTF8.GetBytes(json), WebSocketMessageType.Text, true, context.RequestAborted);
                 while (socket.State == WebSocketState.Open) await socket.ReceiveAsync(buffer, context.RequestAborted);
             }

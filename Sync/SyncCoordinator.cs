@@ -25,11 +25,10 @@ public sealed class SyncCoordinator : IDisposable
     private static readonly TimeSpan PingInterval = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan HelloRefresh = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan PresenceInterval = TimeSpan.FromSeconds(2);
-    private static readonly TimeSpan SightingHeartbeat = TimeSpan.FromSeconds(15);
-    private static readonly TimeSpan SentSightingMemory = TimeSpan.FromSeconds(60);
+    private static readonly TimeSpan SightingHeartbeat = TimeSpan.FromSeconds(1);
 
     /// <summary>Matches the server's own expiry, so both forget at the same moment.</summary>
-    public static readonly TimeSpan RemoteSightingTtl = TimeSpan.FromSeconds(120);
+    public static readonly TimeSpan RemoteSightingTtl = TimeSpan.FromSeconds(3);
 
     private static readonly TimeSpan KillDedupe = TimeSpan.FromMinutes(5);
 
@@ -62,7 +61,7 @@ public sealed class SyncCoordinator : IDisposable
     private List<SyncPresence> _clients = new();
     private SyncFaloopStatus _faloop = new();
 
-    private readonly Dictionary<(uint NameId, uint Instance, uint WorldId), (float Hp, Vector2 Pos, DateTime At)> _sentSightings = new();
+    private readonly Dictionary<(uint NameId, uint Instance, uint WorldId), (float Hp, Vector2 Pos, DateTime At, int? Point)> _sentSightings = new();
     private readonly Dictionary<(uint NameId, uint Instance, uint WorldId), DateTime> _reportedKills = new();
 
     private List<SyncWorld>? _worlds;
@@ -757,7 +756,7 @@ public sealed class SyncCoordinator : IDisposable
 
     private void OnScanned()
     {
-        if (!IsConnected || !_config.SyncShareSightings) return;
+        if (!IsConnected) return;
 
         try
         {
@@ -771,50 +770,27 @@ public sealed class SyncCoordinator : IDisposable
 
     private void PublishSightings()
     {
-        var territory = _clientState.TerritoryType;
-        var instance = MarkDetector.GetCurrentInstance();
-        var world = _detector.CurrentWorldId();
         var now = DateTime.UtcNow;
-        var batch = new List<SyncSighting>();
-
-        foreach (var s in _detector.OtherRanks.Values)
+        var visible = _config.SyncShareSightings ? _detector.OtherRanks.Values.Where(s => !s.IsRemote
+            && s.TerritoryId == _clientState.TerritoryType && s.Instance == MarkDetector.GetCurrentInstance()
+            && s.WorldId == _detector.CurrentWorldId() && now - s.LastSeenUtc < TimeSpan.FromSeconds(1)).ToList()
+            : new List<OtherRankSighting>();
+        var changed = visible.Count != _sentSightings.Count || visible.Any(s =>
+            !_sentSightings.TryGetValue(s.Key, out var prev) || Math.Abs(prev.Hp - s.HealthPercent) >= 1f
+            || Vector2.Distance(prev.Pos, s.MapPosition) >= 0.3f || prev.Point != s.SpawnPointIndex
+            || now - prev.At >= SightingHeartbeat);
+        if (!changed) return;
+        // Protocol 4: the complete visible set. Empty withdraws this player's observations only.
+        var batch = visible.Select(s => new SyncSighting
         {
-            if (s.IsRemote) continue;
-            if (s.TerritoryId != territory || s.Instance != instance || s.WorldId != world) continue;
-
-            // Only what this pass actually saw; a sighting a scan or two old
-            // is on its way out.
-            if ((now - s.LastSeenUtc).TotalSeconds > 2) continue;
-
-            var key = s.Key;
-            var send = !_sentSightings.TryGetValue(key, out var prev)
-                       || Math.Abs(prev.Hp - s.HealthPercent) >= 1f
-                       || Vector2.Distance(prev.Pos, s.MapPosition) >= 0.3f
-                       || now - prev.At >= SightingHeartbeat;
-            if (!send) continue;
-
-            batch.Add(new SyncSighting
-            {
-                NameId = s.NameId,
-                Instance = s.Instance,
-                WorldId = s.WorldId,
-                Name = s.Name,
-                Rank = SsEventMobs.Contains(s.NameId) ? "SS" : s.Rank.ToString(),
-                TerritoryId = s.TerritoryId,
-                MapId = s.MapId,
-                X = s.MapPosition.X,
-                Y = s.MapPosition.Y,
-                HpPercent = s.HealthPercent,
-                SeenAt = s.LastSeenUtc,
-                SpawnPointIndex = s.SpawnPointIndex,
-            });
-            _sentSightings[key] = (s.HealthPercent, s.MapPosition, now);
-        }
-
-        if (batch.Count > 0) _client.Send(new SightingsMessage { Sightings = batch });
-
-        foreach (var key in _sentSightings.Where(kv => now - kv.Value.At > SentSightingMemory).Select(kv => kv.Key).ToList())
-            _sentSightings.Remove(key);
+            NameId = s.NameId, Instance = s.Instance, WorldId = s.WorldId, Name = s.Name,
+            Rank = SsEventMobs.Contains(s.NameId) ? "SS" : s.Rank.ToString(), TerritoryId = s.TerritoryId,
+            MapId = s.MapId, X = s.MapPosition.X, Y = s.MapPosition.Y, HpPercent = s.HealthPercent,
+            SeenAt = s.LastSeenUtc, SpawnPointIndex = s.SpawnPointIndex
+        }).ToList();
+        _client.Send(new SightingsMessage { Sightings = batch });
+        _sentSightings.Clear();
+        foreach (var s in visible) _sentSightings[s.Key] = (s.HealthPercent, s.MapPosition, now, s.SpawnPointIndex);
     }
 
     private void MaybeSendPresence()
@@ -920,7 +896,7 @@ public sealed class SyncCoordinator : IDisposable
         var key = (nameId, instance, worldId);
         var now = DateTime.UtcNow;
         return (_detector.OtherRanks.TryGetValue(key, out var local) && now - local.LastSeenUtc < RemoteSightingTtl)
-            || (_remote.TryGetValue(key, out var remote) && now - remote.LastSeenUtc < RemoteSightingTtl);
+            || (IsConnected && _remote.TryGetValue(key, out var remote) && now - remote.LastSeenUtc < RemoteSightingTtl);
     }
 
     public string DisplayName()

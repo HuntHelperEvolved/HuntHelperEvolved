@@ -656,6 +656,11 @@ public class Configuration : IPluginConfiguration
 
     /// <summary>Which expansion the S-rank window is filtered to; -1 for all.</summary>
     public int SRankWindowExpansion { get; set; } = -1;
+    public bool SRankWindowCurrentWorld { get; set; } = true;
+    public List<uint> SRankWindowWorlds { get; set; } = new();
+    public List<string>? SRankWindowExpansions { get; set; }
+    public bool SRankWindowAvailableOnly { get; set; }
+    public string SRankWindowSearch { get; set; } = "";
 
     [NonSerialized]
     private IDalamudPluginInterface? _pluginInterface;

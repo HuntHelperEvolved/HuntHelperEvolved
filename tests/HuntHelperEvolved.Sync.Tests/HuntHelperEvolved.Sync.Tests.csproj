@@ -17,5 +17,8 @@
     <Compile Include="../../Sync/SyncProtocol.cs" Link="SyncProtocol.cs" />
     <Compile Include="../../Sync/SyncClient.cs" Link="SyncClient.cs" />
     <Compile Include="../../Sync/SRankTimerData.cs" Link="SRankTimerData.cs" />
+    <Compile Include="../../Sync/SpawnMapping.cs" Link="SpawnMapping.cs" />
+    <Compile Include="../../Sync/SRankBoardFilter.cs" Link="SRankBoardFilter.cs" />
+    <Compile Include="../../SpawnPointData.cs" Link="SpawnPointData.cs" />
   </ItemGroup>
 </Project>
