@@ -11,7 +11,34 @@ public record TrainReportEntry(
     string Name,
     uint Instance,
     double? MinHours,
-    double? MaxHours);
+    double? MaxHours,
+    bool Sniped,
+    DateTime LastAliveUtc)
+{
+    /// <summary>Whether a respawn window can be worked out for this mark at all.</summary>
+    public bool HasWindow => Location != null && MinHours != null && MaxHours != null;
+
+    /// <summary>
+    /// The earliest the mark can come back.
+    ///
+    /// For one we watched die, that is its kill time plus the minimum. For one
+    /// found already sniped it is the last time it was seen ALIVE plus the
+    /// minimum: it could have died the moment we last looked at it, and a
+    /// window measured from when we noticed it was gone would send people to
+    /// stand there after it had already respawned.
+    /// </summary>
+    public DateTime? WindowOpensUtc =>
+        MinHours == null ? null : (Sniped ? LastAliveUtc : KillTimeUtc).AddHours(MinHours.Value);
+
+    /// <summary>
+    /// The latest it can come back: the kill time plus the maximum. For a
+    /// sniped mark that kill time is the moment it was found gone, which is
+    /// the latest it can possibly have died — so the same arithmetic gives the
+    /// honest far edge without a special case.
+    /// </summary>
+    public DateTime? WindowCapsUtc =>
+        MaxHours == null ? null : KillTimeUtc.AddHours(MaxHours.Value);
+}
 
 /// <summary>
 /// Builds the kill-ordered entry list and Assumed Sniped groups from a set of
@@ -27,7 +54,11 @@ public static class TrainReport
             .Select(m =>
             {
                 var info = ExpansionData.Lookup(m.ModelId);
-                var killTime = EnsureUtc(m.DeathObservedAtUtc ?? m.LastSeenUtc);
+
+                // Sniped wins over an observed death: the two should never both
+                // be set, and if a conductor has managed it, the one they
+                // clicked deliberately is the one they meant.
+                var killTime = EnsureUtc(m.SnipedAtUtc ?? m.DeathObservedAtUtc ?? m.LastSeenUtc);
                 return new TrainReportEntry(
                     killTime,
                     info?.Expansion ?? "No fixed timer",
@@ -35,7 +66,9 @@ public static class TrainReport
                     m.Name,
                     m.Instance,
                     info?.MinHours,
-                    info?.MaxHours);
+                    info?.MaxHours,
+                    m.SnipedAtUtc != null,
+                    EnsureUtc(m.LastSeenUtc));
             })
             .OrderBy(e => e.KillTimeUtc)
             .ToList();
@@ -45,6 +78,11 @@ public static class TrainReport
     /// Named marks belonging to any expansion actually represented in this train
     /// that were never observed at all — most likely killed by someone else
     /// before the train got there.
+    ///
+    /// Distinct from a mark marked sniped on the list, which WAS seen: that one
+    /// has a last-seen-alive time and so has a window worth publishing, while
+    /// these have nothing to measure from and are named only so nobody assumes
+    /// the train simply forgot them.
     /// </summary>
     public static List<(string Expansion, List<string> Marks)> BuildSniped(List<TrackedMark> marks)
     {

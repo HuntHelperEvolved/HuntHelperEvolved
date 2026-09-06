@@ -80,6 +80,48 @@ public sealed class SyncCoordinator : IDisposable
         _config.Save();
     }
 
+    private long _watchRevision;
+    private string _watchKnown = "[]";
+    private string? _watchSent;
+    public int LocalWatchBackupCount => _config.SyncLocalWatchBackup.Count;
+    public void UploadWatchBackup()
+    {
+        if (!IsConnected || !_config.SyncShareTrain) return;
+        var merged = ReadLocalWatches();
+        foreach (var watch in _config.SyncLocalWatchBackup)
+        {
+            var index = merged.FindIndex(w => w.Label == watch.Label && w.TerritoryId == watch.TerritoryId && w.X == watch.X && w.Y == watch.Y);
+            if (index < 0) merged.Add(watch); else merged[index] = watch;
+        }
+        SetLocalWatches(merged);
+        _config.SyncLocalWatchBackup.Clear(); _config.Save();
+    }
+    private List<SyncWatch> ReadLocalWatches() => _config.Flags.Select(f => new SyncWatch
+    { Label = f.Label, SpawnStatus = (int)f.SpawnStatus, TerritoryId = f.TerritoryId, HasLocation = f.HasLocation, X = f.X, Y = f.Y }).ToList();
+    private void SetLocalWatches(List<SyncWatch> watches)
+    {
+        _config.Flags = watches.Select(w => new FlagEntry { Label = w.Label, SpawnStatus = (SpawnStatus)w.SpawnStatus,
+            TerritoryId = w.TerritoryId, HasLocation = w.HasLocation, X = w.X, Y = w.Y }).ToList();
+        _config.Save();
+    }
+    private void ApplyWatches(WatchesBroadcast state, bool joining = false)
+    {
+        if (!_config.SyncShareTrain || (!joining && state.Revision < _watchRevision)) return;
+        var local = ReadLocalWatches(); var localJson = SyncProtocol.Serialize(local);
+        var incoming = SyncProtocol.Serialize(state.Watches);
+        var conflictingLocalEdit = _watchSent != incoming && localJson != _watchKnown && localJson != incoming;
+        if ((joining || !state.Accepted || conflictingLocalEdit) && local.Count > 0 && localJson != incoming)
+        {
+            foreach (var watch in local)
+                if (!_config.SyncLocalWatchBackup.Any(w => SyncProtocol.Serialize(w) == SyncProtocol.Serialize(watch)))
+                    _config.SyncLocalWatchBackup.Add(watch);
+        }
+        var preserveLaterEdit = !joining && state.Accepted && _watchSent == incoming && localJson != _watchSent;
+        _watchRevision = state.Revision; _watchKnown = incoming; _watchSent = null;
+        if (!preserveLaterEdit) SetLocalWatches(state.Watches);
+        if (!state.Accepted || (!joining && conflictingLocalEdit)) LastError = "S-rank watches changed on the server. Your list was saved locally; review before uploading it again.";
+    }
+
     private double _sinceDiff, _sincePing, _sinceHello, _sincePresence;
     private (uint World, uint Territory, uint Instance) _lastPresence;
 
@@ -363,6 +405,10 @@ public sealed class SyncCoordinator : IDisposable
                 Bump();
                 break;
 
+            case "train.watches":
+                ApplyWatches(SyncProtocol.Deserialize<WatchesBroadcast>(payload)!);
+                break;
+
             case "srank.spawn":
                 SRankSpawned?.Invoke(SyncProtocol.Deserialize<SRankSpawnBroadcast>(payload)!);
                 break;
@@ -393,6 +439,8 @@ public sealed class SyncCoordinator : IDisposable
 
     private void ApplyWelcome(WelcomeMessage welcome)
     {
+        _watchSent = null;
+        ApplyWatches(welcome.WatchState, joining: true);
         ServerVersion = welcome.ServerVersion;
         ServerName = string.IsNullOrEmpty(welcome.ServerName) ? "group server" : welcome.ServerName;
         LastError = string.Empty;
@@ -461,7 +509,7 @@ public sealed class SyncCoordinator : IDisposable
                         Dead = m.Dead,
                         FirstSeenUtc = m.FirstSeen,
                         LastSeenUtc = m.LastSeen,
-                        DeathObservedAtUtc = m.DeathAt,
+                        DeathObservedAtUtc = m.DeathAt, SnipedAtUtc = m.SnipedAt,
                         IsCustom = m.IsCustom,
                         ZoneName = m.ZoneName,
                         Spiced = m.Spiced,
@@ -491,6 +539,7 @@ public sealed class SyncCoordinator : IDisposable
                     {
                         local.Dead = m.Dead;
                         local.DeathObservedAtUtc = m.DeathAt;
+                        local.SnipedAtUtc = m.SnipedAt;
                         local.Spiced = m.Spiced;
                         local.IsCustom = m.IsCustom;
                         if (!string.IsNullOrEmpty(m.Name)) local.Name = m.Name;
@@ -504,7 +553,7 @@ public sealed class SyncCoordinator : IDisposable
                     _detector.RemoveSighting(key.NameId, key.Instance, key.WorldId);
 
                 // Remember the canonical signature, not any unsent local edit.
-                var canonical = new DetectedMark { Dead = m.Dead, DeathObservedAtUtc = m.DeathAt,
+                var canonical = new DetectedMark { Dead = m.Dead, DeathObservedAtUtc = m.DeathAt, SnipedAtUtc = m.SnipedAt,
                     Spiced = m.Spiced, Name = m.Name, ZoneName = m.ZoneName, IsCustom = m.IsCustom,
                     TerritoryId = m.TerritoryId, MapId = m.MapId, MapPosition = new Vector2(m.X, m.Y), LastSeenUtc = m.LastSeen };
                 _known[key] = new KnownMark(Signature(canonical), m.Revision, m.Dead);
@@ -654,6 +703,13 @@ public sealed class SyncCoordinator : IDisposable
     {
         if (!_config.SyncShareTrain) return;
 
+        var watches = ReadLocalWatches();
+        var watchJson = SyncProtocol.Serialize(watches);
+        if (_watchSent is null && watchJson != _watchKnown)
+        {
+            _watchSent = watchJson;
+            _client.Send(new WatchesMessage { BaseRevision = _watchRevision, Watches = watches });
+        }
         var upserts = new List<SyncMark>();
         var newlyDead = new List<SyncKey>();
         var present = new HashSet<(uint, uint, uint)>();
@@ -909,6 +965,7 @@ public sealed class SyncCoordinator : IDisposable
         h.Add(m.Dead);
         h.Add(m.DeathObservedAtUtc?.Ticks / TimeSpan.TicksPerSecond ?? 0);
         h.Add(m.Spiced);
+        h.Add(m.SnipedAtUtc?.Ticks ?? 0);
         h.Add(m.Name);
         h.Add(m.ZoneName);
         h.Add(m.IsCustom);
@@ -935,6 +992,7 @@ public sealed class SyncCoordinator : IDisposable
         FirstSeen = AsUtc(m.FirstSeenUtc),
         LastSeen = AsUtc(m.LastSeenUtc),
         DeathAt = m.DeathObservedAtUtc is { } d ? AsUtc(d) : null,
+        SnipedAt = m.SnipedAtUtc is { } sniped ? AsUtc(sniped) : null,
         IsCustom = m.IsCustom,
         ZoneName = m.ZoneName,
         Spiced = m.Spiced,
