@@ -366,7 +366,7 @@ public sealed class Plugin : IDalamudPlugin
         // see. Connects straight away if sync is on in the saved settings.
         _sync = new SyncCoordinator(
             framework, clientState, objectTable, _log, _config, _detector, _worldData,
-            typeof(Plugin).Assembly.GetName().Version?.ToString(3) ?? "0.0.0");
+            typeof(Plugin).Assembly.GetName().Version?.ToString(4) ?? "0.0.0");
         _sync.RemoteTrainCleared += OnRemoteTrainCleared;
         _sync.SRankSpawned += OnRemoteSRankSpawn;
         _srankWindow = new SRankWindow(_config, _sync, _worldData, _detector);
@@ -4261,19 +4261,25 @@ public sealed class Plugin : IDalamudPlugin
     /// keep a pointer into a train that no longer exists.
     /// </summary>
     private readonly Sync.SpawnAlertFilter _spawnAlertFilter = new();
+    private string _lastCommunityAlert = "No community spawn/release received this session.";
 
     private void OnRemoteSRankSpawn(Sync.SRankSpawnBroadcast spawn)
     {
-        if (!_config.SyncSpawnAlerts || _objectTable.LocalPlayer == null
-            || !Sync.SRankTimerData.ByNameId.TryGetValue(spawn.NameId, out var mark)) return;
+        _lastCommunityAlert = $"{DateTime.Now:HH:mm:ss}: {spawn.Event} received for mark {spawn.NameId}, world {spawn.WorldId}.";
+        _log.Information(_lastCommunityAlert);
+        if (!_config.SyncSpawnAlerts) { _lastCommunityAlert += " Alerts disabled."; return; }
+        if (_objectTable.LocalPlayer == null) { _lastCommunityAlert += " No local player."; return; }
+        if (!Sync.SRankTimerData.ByNameId.TryGetValue(spawn.NameId, out var mark)) { _lastCommunityAlert += " Unknown timed S rank."; return; }
         var destination = _worldData.LocateWorld(spawn.WorldId);
         var current = _worldData.LocateWorld(_detector.CurrentWorldId());
-        if (destination is null || current is null) return;
+        if (destination is null || current is null) { _lastCommunityAlert += " Could not resolve world/DC."; return; }
         var dc = _worldData.DataCenters[destination.Value.DcIndex];
         var allowed = _config.SyncSpawnCurrentDc
             ? destination.Value.DcIndex == current.Value.DcIndex
             : _config.SyncSpawnDataCenters.Contains(dc.Id);
-        if (!_spawnAlertFilter.Accept(spawn, allowed, DateTime.UtcNow)) return;
+        if (!allowed) { _lastCommunityAlert += " Excluded by DC filter."; return; }
+        if (!_spawnAlertFilter.Accept(spawn, true, DateTime.UtcNow)) { _lastCommunityAlert += " Duplicate or invalid event time."; return; }
+        _lastCommunityAlert += " Shown in chat.";
         _chatGui.Print($"[Hunt Helper Evolved] S rank {(spawn.Event == "release" ? "released" : "reported spawned")}: {mark.Name} — {_worldData.NameOf(spawn.WorldId)} ({dc.Name}), {mark.Zone}{ExpansionData.InstanceGlyph(spawn.Instance)} [Faloop]");
         if (_config.SyncSpawnSound)
         {
@@ -4425,6 +4431,8 @@ public sealed class Plugin : IDalamudPlugin
                 }
             ImGui.TextWrapped("Alerts arrive when Faloop publicly reports a spawn or releases it. Your server must follow the selected data centres. Historical snapshots do not trigger alerts.");
             ImGui.TextWrapped("Server coverage: " + string.Join(", ", _sync.Faloop.DataCenters));
+            ImGui.TextWrapped(_lastCommunityAlert);
+            ImGui.TextDisabled($"Last server feed message: {_sync.Faloop.LastLiveMessageAt?.ToLocalTime().ToString("HH:mm:ss") ?? "none"}; last broadcast alert: {_sync.Faloop.LastAlertAt?.ToLocalTime().ToString("HH:mm:ss") ?? "none"}");
         }
 
         if (ImGui.Button("Open the S-rank board"))
