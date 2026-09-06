@@ -330,3 +330,11 @@ Community alerts include public Faloop releases as well as spawn reports. Releas
 ## Sync testing build 0.4.0.3
 
 S candidate outlines default to 6/32 of the spot texture width (previously 3/32). Adjust **S candidate outline width** from 1–12 in Sync settings; it scales with spot size and map zoom. Live map nodes now update position, health and observer details in place, and only missing marks are removed. Sync heartbeats no longer recreate all map items. Server 0.3.0 remains compatible.
+
+## Testing build 0.4.0.5
+
+`/hha` opens A-rank windows with saved multi-world/expansion filters, search, and open-window filtering. Recorded local/shared-train deaths are retained locally for 14 days after train clearing, including while the board is closed. Unknown/sniped kills and kills before a known maintenance restart have no inferred countdown. A-rank kills are not imported from Faloop, and a new client cannot recover A kills from a train already cleared before it connected.
+
+Right-click S- or A-board column headers to show/hide columns; ImGui saves the layout. ARR A-rank bounds now follow the per-mark timing definitions in Faloop's public client, rather than one generic 3–4 hour value.
+
+Server 0.3.2 emits an alert on the first group S sighting per kill cycle, including when a polling snapshot already knew the spawn. Group and Faloop spawn notifications share client duplicate suppression; public release alerts remain independent. Faloop live sessions now load their configured DC after socket authentication, matching its web client, with a separate connection/session per DC. Server logs retain event decisions for field verification.
