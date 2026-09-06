@@ -209,10 +209,12 @@ public sealed class MarkDetector
 
         foreach (var mark in incoming)
         {
-            // An import code carries no world. It is a scout list for wherever
-            // you are, so it is stamped with that rather than left at zero,
-            // which would make every imported mark a stranger to the live one
-            // standing on the same spot.
+            // Our own codes carry the world they were scouted on, so this only
+            // catches a Hunt Helper code or one exported before that field
+            // existed. Such a list is a scout for wherever you are, so it is
+            // stamped with that rather than left at zero, which would make
+            // every imported mark a stranger to the live one standing on the
+            // same spot.
             if (mark.WorldId == 0)
             {
                 mark.WorldId = worldId;
