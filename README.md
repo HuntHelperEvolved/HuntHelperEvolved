@@ -6,7 +6,7 @@ order marks actually died, draws spawn points, your detection range and SS
 event locations on the **in-game map**, counts S-rank trigger mobs, and keeps a
 lifetime per-mark kill tally for every character you play.
 
-> **v0.3 — a testing build.** It is not finished, and it is published as a
+> **v0.4 — a testing build.** It is not finished, and it is published as a
 > testing-only release on purpose: you will not see it in the plugin installer
 > unless you have opted into testing builds. Expect rough edges and expect to
 > report them.
@@ -129,7 +129,28 @@ only thing that sends a report, deliberately, because a multi-expansion train
 looks "finished" the moment you leave the first leg.
 
 Marks are recorded per world, so the same mark on Mateus and on Goblin are two
-marks and can't overwrite each other.
+marks and can't overwrite each other — and the export code carries the world,
+so two scouts on two worlds sending lists to one conductor stay separate.
+
+**Group by expansion** sorts the list into blocks and keeps scout order inside
+each one. It sorts the train itself rather than only redrawing it, so Next Mark,
+the export code and the report all follow what's on screen. Blocks start in the
+order the expansions already stand in, so ticking the box folds an imported list
+into blocks without rearranging it. Drag a block heading to move a whole
+expansion, or click it to fold that expansion away.
+
+**Import** reads an export code straight off the clipboard, from the popout as
+well as the Train tab. Imports merge — nothing already in the train is
+overwritten.
+
+**Sniped marks** have their own button beside the dead tick, and their own
+section in the report. Ticking one dead recorded a kill time nobody witnessed,
+and so a respawn window that was simply wrong. The window now runs from when the
+mark was last seen alive to when the train found it gone — wide, but true. Marks
+never seen at all stay in Assumed Sniped, with no window to give.
+
+The S-rank watches from the Conductor tab repeat under the train list, so their
+Spawned / Didn't Spawn boxes can be ticked from the popout while running.
 
 A mark is ticked off when it dies, whoever killed it — not only when you were
 credited with the kill. Its health reaching zero is the signal, which carries as
@@ -153,6 +174,19 @@ The **Marks Slain** list filters by name and by B/A/S rank, and is ordered by
 kills — so picking a rank puts your most-killed mark of that rank at the top.
 
 `/hunttally` opens it. Its settings live on the **Tally** tab of the main window.
+
+## Talking to other plugins
+
+The train is published over Dalamud IPC, so other plugins can read it and add to
+it. When **Hunt Helper is not installed** its own gates are answered here —
+`HH.GetVersion`, `HH.GetTrainList` and `HH.ImportTrainList`, with the same
+signatures and the same record shape — so anything already written to integrate
+with Hunt Helper works unchanged. They are left alone if it is installed, since
+a call gate is claimed process-wide and taking one it holds would quietly
+redirect every plugin asking it for its train.
+
+`HuntHelperEvolved.ApiVersion`, `.GetTrainList` and `.ImportTrainList` are
+published either way. **Settings → About** says which state you're in.
 
 ## Where this came from
 
