@@ -2175,14 +2175,6 @@ public sealed class Plugin : IDalamudPlugin
                 "Sorts the train into expansion blocks, keeping scout order inside each one.\n"
                 + "Drag a block heading to move a whole expansion.");
 
-        if (_config.SyncEnabled && _config.SyncShareTrain && grouped)
-        {
-            ImGui.SameLine();
-            if (ImGui.SmallButton("Group shared route now"))
-                _detector.ApplyOrder(GroupByExpansion(_detector.Ordered()));
-            if (ImGui.IsItemHovered()) ImGui.SetTooltip("Reorders the shared route once. New scout rows append until you group again.");
-        }
-
         // Row 5 — same setting as the one on the Settings tab, so the two
         // always agree.
         var spicingHere = _config.ShowSpicing;
@@ -2228,10 +2220,9 @@ public sealed class Plugin : IDalamudPlugin
         // Never while a drag is in progress, or the re-sort would fight the
         // conductor for the row they are holding.
         var grouping = _config.GroupTrainByExpansion;
-        var sharedRoute = _config.SyncEnabled && _config.SyncShareTrain;
-        if (sharedRoute && !Sync.SharedRouteGrouping.HasContiguousBlocks(allMarks.Select(m => ExpansionData.ExpansionOf(m.NameId, m.ZoneName))))
-            grouping = false;
-        if (grouping && !sharedRoute && _dragFromIndex == -1 && _dragExpansionFrom == -1)
+        // Shared grouping follows the route's existing block order, so every scout
+        // reaches the same order without applying conflicting local preferences.
+        if (grouping && _dragFromIndex == -1 && _dragExpansionFrom == -1)
         {
             var grouped = GroupByExpansion(allMarks);
             if (!grouped.SequenceEqual(allMarks))
@@ -2810,6 +2801,8 @@ public sealed class Plugin : IDalamudPlugin
     /// </summary>
     private List<DetectedMark> GroupByExpansion(List<DetectedMark> marks)
     {
+        if (_config.SyncEnabled && _config.SyncShareTrain)
+            return Sync.SharedRouteGrouping.GroupInRouteOrder(marks, m => ExpansionData.ExpansionOf(m.NameId, m.ZoneName));
         var order = ExpansionDisplayOrder(marks);
         return marks
             .OrderBy(m => order.IndexOf(ExpansionData.ExpansionOf(m.NameId, m.ZoneName)))

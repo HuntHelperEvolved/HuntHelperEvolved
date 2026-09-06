@@ -314,10 +314,11 @@ watches are saved for explicit upload from Sync settings. Concurrent checklist
 edits use revisions: a conflicting local list is saved with a visible message,
 and the current server list wins until the user reviews/uploads their changes.
 
-Expansion grouping and block dragging edit the shared route once per user action.
-Local folding and display preferences stay local. Newly scouted rows append;
-use **Group shared route now** to regroup them. Opening the list never reasserts
-an old local expansion order over another scout's route.
+With Group by expansion enabled, newly scouted or synced marks automatically join
+their expansion block. Grouping preserves the shared route's existing block order
+and the relative mark order inside each block; local expansion preferences do not
+override another scout's route. Regrouping waits until any row/block drag finishes.
+Local folding and display preferences stay local.
 
 ## Sync testing build 0.4.0.2
 
@@ -350,3 +351,7 @@ Anonymous Faloop access remains under investigation: a fresh Guest browser on Cr
 `/hhsa` opens active S-rank reports across all worlds supplied by the server, with mark/world/DC/zone search and hideable columns. It distinguishes a currently visible scout sighting from a fresh Faloop active report. Community entries clear when absent from the next complete DC snapshot or killed, and expire after five minutes without confirmation. Server coverage is still configured separately from the plugin's notification filters.
 
 S-rank alerts received while loading are queued for up to two minutes. The Sync tab includes **Test S-rank chat alert**, which uses the actual chat/sound handler and current alert settings, labels the message TEST, and sends nothing to the server. Server delivery and plugin filtering have automated coverage; actual Dalamud chat/sound display must be checked in game.
+
+## Testing build 0.4.0.8
+
+Fixed new shared scouting rows remaining at the bottom while Group by expansion is enabled. They now join their existing expansion automatically, preserving shared block order and the relative order of marks inside each block. No server update is required.
