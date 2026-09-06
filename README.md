@@ -363,3 +363,13 @@ Fixed new shared scouting rows remaining at the bottom while Group by expansion 
 ## Testing build 0.4.0.10
 
 In `/hha`, uninstanced cells are blank. The Instance column automatically disappears when no rows passing the current filters have an instance, and returns when instanced rows are present. Kill-time tracking is unchanged.
+
+## Testing build 0.4.0.11
+
+S-rank chat alerts include a clickable map flag when the server supplies coordinates; otherwise they say location not reported. The local alert test uses explicitly labelled example coordinates to test the link without publishing a report. `/hhsa` replaces confirmation columns with **Active for** (elapsed since the earliest known spawn report) and an optional **Teleport** button.
+
+The button uses [Lifestream's IPC](https://github.com/NightmareXIV/Lifestream/blob/main/Lifestream/IPC/IPCProvider.cs): `IsBusy`, `ChangeWorldById`, `Teleport` and `Abort`. Travel starts only when clicked, waits for the destination world, then teleports to the nearest eligible aetheryte using the existing blacklist and corrected game IDs. Missing locations disable travel; absent Lifestream hides the column. Cross-DC eligibility is decided by Lifestream. Select the correct zone instance after arrival. The window provides cancellation while waiting for a world change. Actual travel and map-link rendering require in-game verification.
+
+The `/hhs` board includes a one-line spawn-condition tooltip on every mark name and a Conditions countdown column. Red counts down to the next overlap with the respawn window; green counts down to the end of an open time/weather/moon window when the kill timer is known. Unknown/sniped kill times use amber for an open condition. Actions such as kills, gathering, minions and FATE completion remain required and are not inferred from the clock. Marks without timed restrictions do not get a fabricated closing time. Forecast rules and 39 reference forecasts come from Faloop's public frontend (`main.a8fa335a5cf92d82.js`, 2026-09-06); combined requirements and real-time weather persistence offsets are supported.
+
+Relayed S-rank chat messages now use the configured detection-message template with `RELAY:` in place of `FOUND:`, retaining rank colours and map flags. Both relayed and detected messages append the world. Community HP is shown as unknown when it was not supplied. Release notifications retain a released label.

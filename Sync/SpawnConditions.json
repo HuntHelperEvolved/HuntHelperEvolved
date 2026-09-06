@@ -1,0 +1,336 @@
+{
+  "Laideronnette": [
+    [
+      {
+        "type": "weather",
+        "conditions": [
+          "rain"
+        ],
+        "probabilities": [
+          {
+            "chance": 5,
+            "condition": "thunder"
+          },
+          {
+            "chance": 15,
+            "condition": "rain"
+          },
+          {
+            "chance": 10,
+            "condition": "fog"
+          },
+          {
+            "chance": 10,
+            "condition": "clouds"
+          },
+          {
+            "chance": 15,
+            "condition": "fair_skies"
+          },
+          {
+            "chance": 30,
+            "condition": "clear_skies"
+          },
+          {
+            "chance": 15,
+            "condition": "fair_skies"
+          }
+        ],
+        "offset": 1800
+      }
+    ]
+  ],
+  "Mindflayer": [
+    [
+      {
+        "type": "moon",
+        "phase": "new",
+        "periods": [
+          {
+            "from": 43200,
+            "to": 54000
+          },
+          {
+            "from": 104400,
+            "to": 140400
+          },
+          {
+            "from": 190800,
+            "to": 226800
+          },
+          {
+            "from": 277200,
+            "to": 313200
+          }
+        ]
+      }
+    ]
+  ],
+  "Thousand-cast Theda": [
+    [
+      {
+        "type": "time",
+        "hours": [
+          17
+        ],
+        "duration": 14400
+      }
+    ]
+  ],
+  "Zona Seeker": [
+    [
+      {
+        "type": "weather",
+        "conditions": [
+          "clear_skies",
+          "fair_skies"
+        ],
+        "probabilities": [
+          {
+            "chance": 40,
+            "condition": "clear_skies"
+          },
+          {
+            "chance": 20,
+            "condition": "fair_skies"
+          },
+          {
+            "chance": 25,
+            "condition": "clouds"
+          },
+          {
+            "chance": 10,
+            "condition": "fog"
+          },
+          {
+            "chance": 5,
+            "condition": "rain"
+          }
+        ]
+      }
+    ]
+  ],
+  "Croque-mitaine": [
+    [
+      {
+        "type": "time",
+        "hours": [
+          19
+        ],
+        "duration": 10800
+      }
+    ]
+  ],
+  "Croakadile": [
+    [
+      {
+        "type": "moon",
+        "phase": "full",
+        "periods": [
+          {
+            "from": 18000,
+            "to": 54000
+          },
+          {
+            "from": 104400,
+            "to": 140400
+          },
+          {
+            "from": 190800,
+            "to": 226800
+          },
+          {
+            "from": 277200,
+            "to": 313200
+          }
+        ]
+      }
+    ]
+  ],
+  "The Garlok": [
+    [
+      {
+        "type": "weather",
+        "conditions": [
+          "fog",
+          "clear_skies",
+          "fair_skies",
+          "clouds"
+        ],
+        "probabilities": [
+          {
+            "chance": 5,
+            "condition": "fog"
+          },
+          {
+            "chance": 45,
+            "condition": "clear_skies"
+          },
+          {
+            "chance": 30,
+            "condition": "fair_skies"
+          },
+          {
+            "chance": 10,
+            "condition": "clouds"
+          },
+          {
+            "chance": 5,
+            "condition": "rain"
+          },
+          {
+            "chance": 5,
+            "condition": "showers"
+          }
+        ],
+        "offset": 12000
+      }
+    ]
+  ],
+  "Bonnacon": [
+    [
+      {
+        "type": "time",
+        "hours": [
+          8
+        ],
+        "duration": 10800
+      }
+    ]
+  ],
+  "Gandarewa": [
+    [
+      {
+        "type": "time",
+        "hours": [
+          2,
+          14
+        ],
+        "duration": 7200
+      }
+    ],
+    [
+      {
+        "type": "time",
+        "hours": [
+          4,
+          16
+        ],
+        "duration": 7200
+      }
+    ]
+  ],
+  "Okina": [
+    [
+      {
+        "type": "moon",
+        "phase": "full"
+      }
+    ]
+  ],
+  "Gamma": [
+    [
+      {
+        "type": "time",
+        "hours": [
+          17
+        ],
+        "duration": 54000
+      }
+    ]
+  ],
+  "Burfurlur the Canny": [
+    [
+      {
+        "type": "time",
+        "hours": [
+          9
+        ],
+        "duration": 28800
+      },
+      {
+        "type": "weather",
+        "conditions": [
+          "clear_skies",
+          "fair_skies"
+        ],
+        "probabilities": [
+          {
+            "chance": 15,
+            "condition": "clear_skies"
+          },
+          {
+            "chance": 45,
+            "condition": "fair_skies"
+          },
+          {
+            "chance": 25,
+            "condition": "clouds"
+          },
+          {
+            "chance": 15,
+            "condition": "rain"
+          }
+        ]
+      }
+    ]
+  ],
+  "Kirlirger the Abhorrent": [
+    [
+      {
+        "type": "moon",
+        "phase": "new",
+        "periods": [
+          {
+            "from": 43200,
+            "to": 64800
+          },
+          {
+            "from": 129600,
+            "to": 151200
+          },
+          {
+            "from": 216000,
+            "to": 237600
+          },
+          {
+            "from": 302400,
+            "to": 324000
+          }
+        ]
+      },
+      {
+        "type": "weather",
+        "conditions": [
+          "fog"
+        ],
+        "probabilities": [
+          {
+            "chance": 20,
+            "condition": "clear_skies"
+          },
+          {
+            "chance": 30,
+            "condition": "fair_skies"
+          },
+          {
+            "chance": 20,
+            "condition": "clouds"
+          },
+          {
+            "chance": 10,
+            "condition": "fog"
+          },
+          {
+            "chance": 10,
+            "condition": "wind"
+          },
+          {
+            "chance": 10,
+            "condition": "snow"
+          }
+        ]
+      }
+    ]
+  ]
+}

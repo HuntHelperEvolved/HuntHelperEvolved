@@ -7,11 +7,14 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
   <ItemGroup>
+    <EmbeddedResource Include="condition-reference.json" LogicalName="condition-reference.json" />
+    <EmbeddedResource Include="../../Sync/SpawnConditions.json" LogicalName="HuntHelperEvolved.Sync.SpawnConditions.json" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageReference Include="xunit" Version="2.9.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.1" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <Compile Include="../../Sync/SpawnConditionData.cs" Link="SpawnConditionData.cs" />
     <Compile Include="../../Sync/ARankInstances.cs" Link="ARankInstances.cs" />
     <Compile Include="../../Sync/SharedRouteGrouping.cs" Link="SharedRouteGrouping.cs" />
     <Compile Include="../../Sync/ActiveSRankFilter.cs" Link="ActiveSRankFilter.cs" />

@@ -121,6 +121,8 @@ public sealed class SyncSRankStatus
     /// <summary>Freshness of a positive Faloop active report; independent of live scout visibility.</summary>
     public DateTime? FaloopActiveAt { get; set; }
     public DateTime? FaloopActiveUntil { get; set; }
+    public float? SpawnX { get; set; }
+    public float? SpawnY { get; set; }
 
     /// <summary>
     /// The kill is a bound, not an observation: Faloop recorded the mark as
@@ -303,6 +305,8 @@ public sealed class SRankSpawnBroadcast
     public uint WorldId { get; set; }
     public uint Instance { get; set; }
     public DateTime SpawnedAt { get; set; }
+    public float? X { get; set; }
+    public float? Y { get; set; }
     public string DataCenter { get; set; } = "";
     public string Source { get; set; } = "Faloop";
 }
