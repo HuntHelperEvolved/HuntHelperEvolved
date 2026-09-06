@@ -373,3 +373,22 @@ The button uses [Lifestream's IPC](https://github.com/NightmareXIV/Lifestream/bl
 The `/hhs` board includes a one-line spawn-condition tooltip on every mark name and a Conditions countdown column. Red counts down to the next overlap with the respawn window; green counts down to the end of an open time/weather/moon window when the kill timer is known. Unknown/sniped kill times use amber for an open condition. Actions such as kills, gathering, minions and FATE completion remain required and are not inferred from the clock. Marks without timed restrictions do not get a fabricated closing time. Forecast rules and 39 reference forecasts come from Faloop's public frontend (`main.a8fa335a5cf92d82.js`, 2026-09-06); combined requirements and real-time weather persistence offsets are supported.
 
 Relayed S-rank chat messages now use the configured detection-message template with `RELAY:` in place of `FOUND:`, retaining rank colours and map flags. Both relayed and detected messages append the world. Community HP is shown as unknown when it was not supplied. Release notifications retain a released label.
+
+## Standalone testing build 0.4.0.13
+
+HHE uses its native train and retained report history whether HuntHelper is installed
+or absent. The old report-source preference is migrated to native reporting. Reports
+keep world/instance identity, exclude live marks from kills, and show first-seen corpses
+without an invented death time. Clipboard exports preserve explicit death and sniped
+timestamps; legacy inputs without these fields remain unknown.
+
+Posting a train report is limited to one request at a time. A shared train is kept
+after posting, as is a local train that changed during the request. An unchanged local
+train may be cleared after success, with reset undo including report history.
+
+IPC API version 2 adds `HuntHelperEvolved.GetTrainListV2` returning
+`List<NativeTrainRecord>` and `HuntHelperEvolved.ImportTrainListV2` accepting the same
+list through an action gate. These carry world, instance, coordinates and nullable
+observed-death/sniped timestamps. Existing HHE version-1 gate names and optional HH
+compatibility gates retain their old signatures. Native imports require a known world;
+legacy import timestamps are sightings, not exact death evidence.

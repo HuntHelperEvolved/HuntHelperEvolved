@@ -22,6 +22,8 @@ public class ExchangeMob
     public DateTime LastSeenUTC { get; set; }
     public Vector2 Position { get; set; }
     public bool Dead { get; set; }
+    public DateTime? DeathObservedAtUtc { get; set; }
+    public DateTime? SnipedAtUtc { get; set; }
     public uint TerritoryID { get; set; }
     public uint MapID { get; set; }
     public uint Instance { get; set; }
@@ -80,6 +82,8 @@ public static class TrainExchange
             LastSeenUTC = m.LastSeenUtc,
             Position = m.MapPosition,
             Dead = m.Dead,
+            DeathObservedAtUtc = m.DeathObservedAtUtc,
+            SnipedAtUtc = m.SnipedAtUtc,
             TerritoryID = m.TerritoryId,
             MapID = m.MapId,
             Instance = m.Instance,
@@ -131,7 +135,8 @@ public static class TrainExchange
                 Dead = m.Dead,
                 FirstSeenUtc = m.LastSeenUTC,
                 LastSeenUtc = m.LastSeenUTC,
-                DeathObservedAtUtc = m.Dead ? m.LastSeenUTC : null,
+                DeathObservedAtUtc = m.Dead ? m.DeathObservedAtUtc : null,
+                SnipedAtUtc = m.Dead ? m.SnipedAtUtc : null,
                 IsCustom = m.IsCustom,
                 ZoneName = m.ZoneName,
                 Spiced = m.Spiced,

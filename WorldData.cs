@@ -87,6 +87,8 @@ public sealed class WorldData
         return (dcIndex, worldIndex);
     }
 
+    public uint IdOf(string name) => _worlds.FirstOrDefault(w => string.Equals(w.Name, name, StringComparison.OrdinalIgnoreCase)).RowId;
+
     public string NameOf(uint worldId) =>
         _worlds.FirstOrDefault(w => w.RowId == worldId).Name ?? $"World {worldId}";
 }

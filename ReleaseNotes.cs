@@ -34,6 +34,14 @@ public static class ReleaseNotes
 
     public static readonly Release[] All =
     {
+        new("0.4.0.13", "2026-09-07", "Testing: native train reports and reliable kill evidence.",
+        [
+            new("Reports", "Reports use HHE's own train history, preserve worlds, and separate live marks and unknown-time deaths from confirmed kills. Removed dead rows remain in report history across reloads.", Kihtli),
+            new("Reports", "Overlapping report submissions are blocked. Posting keeps shared or changed trains intact; an unchanged local train can be cleared with undo available.", Kihtli),
+            new("Detection", "First-seen corpses no longer create an exact kill time. A witnessed death requires the same object to have been observed alive.", Kihtli),
+            new("Sharing", "Native clipboard codes and version 2 IPC preserve worlds and explicit death/sniped times. Legacy codes without a death timestamp remain unknown. Queued tally kills keep their original world.", Kihtli),
+        ]),
+
         new("0.4.0.12", "2026-09-07", "Testing: shared scouting, S-rank tracking and smoother expansion handovers.",
         [
             new("Train", "Expansion headings count hunt marks only; custom rally flags remain visible without inflating the total.", MusicManBowls, 31),

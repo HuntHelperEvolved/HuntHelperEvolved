@@ -137,7 +137,6 @@ public sealed class Plugin : IDalamudPlugin
     private uint _clientTerritory => _clientState.TerritoryType;
 
     private readonly Configuration _config;
-    private readonly HuntHelperIpc _ipc;
     private readonly TrainWatcher _watcher;
 
     // --- The tally, formerly the separate Hunt Tally plugin ---
@@ -281,14 +280,13 @@ public sealed class Plugin : IDalamudPlugin
 
         ShowReleaseNotesIfUpdated();
 
-        _ipc = new HuntHelperIpc(_pluginInterface);
         _gameGui = gameGui;
         _textureProvider = textureProvider;
         _clientState = clientState;
         _detector = new MarkDetector(objectTable, clientState, dataManager, _config);
         _teleport = new TeleportHelper(_pluginInterface, _log, dataManager);
         SyncBlacklist();
-        _watcher = new TrainWatcher(framework, _ipc, _detector, _config, chatGui, _log);
+        _watcher = new TrainWatcher(framework, _detector, _config, chatGui, _log);
 
         // The tally reaches Dalamud through its own injected service class
         // rather than this constructor's parameters, which is how it was built
@@ -569,7 +567,7 @@ public sealed class Plugin : IDalamudPlugin
             (int)kill.Mark.Rank,
             kill.TerritoryId,
             kill.InstanceId,
-            new DateTimeOffset(kill.Time).ToUnixTimeSeconds()));
+            new DateTimeOffset(kill.Time).ToUnixTimeSeconds(), _worldData.IdOf(kill.World)));
     }
 
     /// <summary>
@@ -789,87 +787,8 @@ public sealed class Plugin : IDalamudPlugin
 
     private void OnOpenConfigUi() => _configWindowVisible = true;
 
-    /// <summary>
-    /// Builds the current merged mark set — Hunt Helper's live list plus anything
-    /// the background tracker already recorded that's no longer in that live list
-    /// (e.g. cleared away mid-train with Remove Dead). Returns null if Hunt Helper
-    /// isn't detected at all.
-    /// </summary>
-    private List<TrackedMark>? BuildCurrentMarks()
-    {
-        if (_config.UseOwnTrainList)
-        {
-            return _detector.Ordered().Where(d => !d.IsCustom).Select(d => new TrackedMark
-            {
-                Name = d.Name,
-                ModelId = d.NameId,
-                Instance = d.Instance,
-                Dead = d.Dead,
-                LastSeenUtc = d.LastSeenUtc,
-                DeathObservedAtUtc = d.DeathObservedAtUtc,
-                SnipedAtUtc = d.SnipedAtUtc,
-            }).ToList();
-        }
-
-        var list = _ipc.TryGetTrainList();
-        if (list == null) return null;
-
-        var now = DateTime.UtcNow;
-        var tracked = _watcher.GetTrackedSnapshot();
-
-        // Sniped is recorded on our own rows, because that is the list with the
-        // button on it — but the report may well be built from Hunt Helper's,
-        // which is still the default. Carrying it across is what stops the fix
-        // depending on a setting the conductor never turned on.
-        //
-        // Keyed without the world, because Hunt Helper's list has no world in
-        // it to match against. First one wins: the same mark up on two worlds
-        // is two rows here and one there, and there is nothing in the Hunt
-        // Helper record that could tell them apart.
-        var snipedTimes = new Dictionary<(uint, uint), DateTime?>();
-        foreach (var d in _detector.Ordered())
-        {
-            if (d.SnipedAtUtc == null) continue;
-            snipedTimes.TryAdd((d.NameId, d.Instance), d.SnipedAtUtc);
-        }
-
-        var marks = list.Select(m => new TrackedMark
-        {
-            Name = m.Name,
-            ModelId = m.MobID,
-            Instance = m.Instance,
-            Dead = m.Dead,
-            LastSeenUtc = m.LastSeenUTC,
-            DeathObservedAtUtc = m.Dead
-                ? (tracked.TryGetValue((m.MobID, m.Instance), out var t) ? t.DeathObservedAtUtc : null) ?? now
-                : null,
-            SnipedAtUtc = snipedTimes.GetValueOrDefault((m.MobID, m.Instance)),
-        }).ToList();
-
-        var seenKeys = marks.Select(m => (m.ModelId, m.Instance)).ToHashSet();
-        foreach (var (key, trackedMark) in tracked)
-        {
-            if (seenKeys.Contains(key)) continue;
-
-            // A copy, not the watcher's own object. GetTrackedSnapshot copies
-            // the dictionary but not the marks in it, and this runs every frame
-            // the Marks Slain preview is open — writing a sniped time back into
-            // live tracking state would make merely looking at the report
-            // change it.
-            marks.Add(new TrackedMark
-            {
-                Name = trackedMark.Name,
-                ModelId = trackedMark.ModelId,
-                Instance = trackedMark.Instance,
-                Dead = trackedMark.Dead,
-                LastSeenUtc = trackedMark.LastSeenUtc,
-                DeathObservedAtUtc = trackedMark.DeathObservedAtUtc,
-                SnipedAtUtc = trackedMark.SnipedAtUtc ?? snipedTimes.GetValueOrDefault(key),
-            });
-        }
-
-        return marks;
-    }
+    /// <summary>Native report history, including removed dead rows and full world identity.</summary>
+    private List<TrackedMark> BuildCurrentMarks() => _watcher.GetTrackedSnapshot().Values.ToList();
 
     private async Task SendTestAsync()
     {
@@ -880,31 +799,16 @@ public sealed class Plugin : IDalamudPlugin
 
     private async Task SendScoutingReportAsync()
     {
-        List<HuntHelperMobRecord>? list;
-
-        if (_config.UseOwnTrainList)
-        {
-            list = _detector.Ordered().Where(d => !d.IsCustom).Select(d => new HuntHelperMobRecord(
-                d.Name, d.NameId, d.TerritoryId, d.MapId, d.Instance,
-                d.MapPosition, d.Dead, d.LastSeenUtc)).ToList();
-        }
-        else
-        {
-            list = _ipc.TryGetTrainList();
-        }
-
-        if (list == null)
-        {
-            _lastPostResult = "Hunt Helper not detected — can't build a scouting report.";
-            return;
-        }
+        var list = _detector.Ordered().Where(d => !d.IsCustom).Select(d => new HuntHelperMobRecord(
+            d.Name, d.NameId, d.TerritoryId, d.MapId, d.Instance,
+            d.MapPosition, d.Dead, d.LastSeenUtc)).ToList();
 
         var names = new List<string>();
         var selfName = _objectTable.LocalPlayer?.Name?.TextValue;
         if (!string.IsNullOrWhiteSpace(selfName)) names.Add(selfName);
         names.AddRange(_config.AdditionalScouts.Where(n => !string.IsNullOrWhiteSpace(n)));
 
-        var ownCode = _config.UseOwnTrainList ? TrainExchange.Export(_detector.Ordered()) : null;
+        var ownCode = TrainExchange.Export(_detector.Ordered());
 
         var (success, message) = await DiscordRelay.PostScoutingReportAsync(_config.Webhooks, list, names, ownCode);
         _lastPostResult = message;
@@ -918,38 +822,64 @@ public sealed class Plugin : IDalamudPlugin
     /// clear once the post is confirmed to have actually succeeded — if it
     /// fails, everything stays put so this can just be tried again.
     /// </summary>
+    private readonly TrainCompletionGuard _completion = new();
+
+    private string CompletionSnapshot() => Newtonsoft.Json.JsonConvert.SerializeObject(new
+    {
+        Generation = _detector.TrainGeneration,
+        Marks = _detector.Ordered(),
+        History = BuildCurrentMarks().OrderBy(m => m.WorldId).ThenBy(m => m.ModelId).ThenBy(m => m.Instance),
+        Flags = _config.Flags,
+        Shared = _config.SyncEnabled && _config.SyncShareTrain
+    });
+
     private async Task EndTrainNowAsync()
     {
+        if (_completion.IsBusy) { _lastPostResult = "A train report is already being sent."; return; }
         var marks = BuildCurrentMarks();
-        if (marks == null)
-        {
-            _lastPostResult = "Hunt Helper not detected — nothing to post.";
-            return;
-        }
-
-        if (marks.Count == 0)
-        {
-            _lastPostResult = "Nothing to post — Hunt Helper's train list is empty.";
-            return;
-        }
-
+        if (marks.Count == 0) { _lastPostResult = "Nothing to post — the train is empty."; return; }
+        var snapshot = CompletionSnapshot();
+        if (!_completion.TryBegin(snapshot)) return;
         var endedBy = _objectTable.LocalPlayer?.Name?.TextValue;
-
-        var (success, message) = await DiscordRelay.PostTrainCompleteAsync(_config.Webhooks, marks, endedBy, _config.Flags);
-        _lastPostResult = message;
-
-        if (success)
+        try
         {
-            _chatGui.Print($"[Hunt Helper Evolved] Posted train summary to Discord ({marks.Count} marks).");
-            _watcher.ResetNow();
-            _config.Flags.Clear();
-            _config.Save();
-            ClearSavedTrain();
+            var flags = Newtonsoft.Json.JsonConvert.DeserializeObject<List<FlagEntry>>(
+                Newtonsoft.Json.JsonConvert.SerializeObject(_config.Flags))!;
+            var webhooks = Newtonsoft.Json.JsonConvert.DeserializeObject<List<WebhookEntry>>(
+                Newtonsoft.Json.JsonConvert.SerializeObject(_config.Webhooks))!;
+            var (success, message) = await DiscordRelay.PostTrainCompleteAsync(webhooks, marks, endedBy, flags);
+            await HuntTally.Service.Framework.RunOnFrameworkThread(() =>
+            {
+                if (_disposal.IsCancellationRequested) return;
+                _lastPostResult = message;
+                if (!success) { _chatGui.PrintError($"[Hunt Helper Evolved] Failed to post to Discord: {message}"); return; }
+                if (_completion.CanClear(CompletionSnapshot(), _config.SyncEnabled && _config.SyncShareTrain))
+                {
+                    CaptureResetUndo("Report completed");
+                    _watcher.ResetNow();
+                    _config.Flags.Clear();
+                    ClearSavedTrain();
+                    _chatGui.Print("[Hunt Helper Evolved] Report posted; unchanged local train cleared. Undo is available.");
+                }
+                else
+                    _chatGui.Print("[Hunt Helper Evolved] Report posted. The train was kept because it is shared or changed while sending; use Reset when ready.");
+            });
         }
-        else
+        catch (Exception ex)
         {
-            _chatGui.PrintError($"[Hunt Helper Evolved] Failed to post to Discord: {message}");
-            _log.Error($"Hunt Helper Evolved manual end-train post failed: {message}");
+            _log.Error(ex, "Train report failed; the train has been preserved.");
+            if (!_disposal.IsCancellationRequested)
+                await HuntTally.Service.Framework.RunOnFrameworkThread(() =>
+                {
+                    if (_disposal.IsCancellationRequested) return;
+                    _lastPostResult = "Report failed; the train has been preserved. See the plugin log.";
+                    _chatGui.PrintError($"[Hunt Helper Evolved] {_lastPostResult}");
+                });
+        }
+        finally
+        {
+            if (!_disposal.IsCancellationRequested)
+                await HuntTally.Service.Framework.RunOnFrameworkThread(_completion.Finish);
         }
     }
 
@@ -1326,10 +1256,11 @@ public sealed class Plugin : IDalamudPlugin
     /// </summary>
     private void PersistTrain()
     {
+        _config.ReportHistory = _watcher.GetTrackedSnapshot().Values.ToList();
         var marks = _detector.ToPersisted();
 
         // Nothing to save and nothing saved: don't churn the config file.
-        if (marks.Count == 0 && _config.SavedTrain.Count == 0) return;
+        if (marks.Count == 0 && _config.SavedTrain.Count == 0 && _config.ReportHistory.Count == 0) return;
 
         _config.SavedTrain = marks;
         _config.SavedTrainAtUtc = marks.Count > 0 ? DateTime.UtcNow : null;
@@ -3009,13 +2940,7 @@ public sealed class Plugin : IDalamudPlugin
     {
         ImGui.Spacing();
 
-        var useOwn = _config.UseOwnTrainList;
-        if (ImGui.Checkbox("Use this list for reports (instead of Hunt Helper's)", ref useOwn))
-        {
-            _config.UseOwnTrainList = useOwn;
-            _config.Save();
-        }
-        ImGui.TextDisabled("Both lists always populate, so you can compare them before switching over.");
+        ImGui.TextDisabled("Reports use this train and its recorded history.");
 
         ImGui.Spacing();
         DrawTrainControls();
@@ -3476,7 +3401,7 @@ public sealed class Plugin : IDalamudPlugin
             _config.Save();
         }
         ImGui.TextDisabled(TallyFeedStatus());
-        ImGui.TextDisabled("Marks are recorded dead here automatically, with the tally's exact kill time. Your Hunt Helper list still needs clicking yourself for its own navigation.");
+        ImGui.TextDisabled("Observed deaths update this train automatically; unknown kill times remain unknown.");
 
         ImGui.Spacing();
         ImGui.Separator();
@@ -3615,7 +3540,7 @@ public sealed class Plugin : IDalamudPlugin
         {
             _ = SendScoutingReportAsync();
         }
-        ImGui.TextDisabled("Posts Hunt Helper's current train list as a paste-able import code, plus a per-expansion up count.");
+        ImGui.TextDisabled("Posts this train as an import code with worlds, flags and known kill times, plus a per-expansion up count.");
 
         ImGui.Spacing();
         ImGui.Separator();
@@ -3712,7 +3637,7 @@ public sealed class Plugin : IDalamudPlugin
     private void DrawMarksSlainTab()
     {
         ImGui.Spacing();
-        ImGui.TextWrapped("Preview of what End Train Now would post right now, in the order marks actually died.");
+        ImGui.TextWrapped("Preview of the report: confirmed kills, sniped marks, and unfinished or unknown-time entries. Posting keeps shared trains intact; use Reset when ready.");
         ImGui.Spacing();
         ImGui.Separator();
         ImGui.Spacing();
@@ -3720,7 +3645,7 @@ public sealed class Plugin : IDalamudPlugin
         var marks = BuildCurrentMarks();
         if (marks == null)
         {
-            ImGui.TextDisabled("Hunt Helper not detected.");
+            ImGui.TextDisabled("No train history recorded.");
             return;
         }
 
@@ -3748,6 +3673,8 @@ public sealed class Plugin : IDalamudPlugin
             DrawReportEntries(sniped);
         }
 
+        foreach (var mark in marks.Where(m => !m.Dead || (m.DeathObservedAtUtc is null && m.SnipedAtUtc is null)))
+            ImGui.TextWrapped($"{mark.Name}{ExpansionData.InstanceGlyph(mark.Instance)} — {mark.WorldName}: {(mark.Dead ? "found dead; kill time unknown" : "unfinished / still alive")}");
         var neverSeen = TrainReport.BuildSniped(marks);
         if (neverSeen.Count > 0)
         {
@@ -3785,14 +3712,14 @@ public sealed class Plugin : IDalamudPlugin
 
             if (!entry.HasWindow)
             {
-                ImGui.TextWrapped($"{localTime} — {entry.Name} — no fixed respawn timer");
+                ImGui.TextWrapped($"{localTime} — {entry.DisplayName} — no fixed respawn timer");
                 continue;
             }
 
             var openLocal = entry.WindowOpensUtc!.Value.ToLocalTime().ToString("t");
             var capLocal = entry.WindowCapsUtc!.Value.ToLocalTime().ToString("t");
             var instanceGlyph = ExpansionData.InstanceGlyph(entry.Instance);
-            ImGui.TextWrapped($"{localTime} — {entry.Location} — {entry.Name}{instanceGlyph} — window {openLocal} → {capLocal}");
+            ImGui.TextWrapped($"{localTime} — {entry.Location} — {entry.DisplayName}{instanceGlyph} — window {openLocal} → {capLocal}");
         }
     }
 
@@ -4388,7 +4315,9 @@ public sealed class Plugin : IDalamudPlugin
     private void CaptureResetUndo(string by)
     {
         var marks = _detector.ToPersisted();
-        if (marks.Count == 0 && _config.Flags.Count == 0) return;
+        var history = BuildCurrentMarks();
+        if (marks.Count == 0 && _config.Flags.Count == 0 && history.Count == 0) return;
+        _config.ResetUndoReportHistory = history;
         _config.ResetUndoMarks = marks;
         _config.ResetUndoFlags = CloneWatches(_config.Flags);
         _config.ResetUndoAt = DateTime.UtcNow;
@@ -4416,7 +4345,11 @@ public sealed class Plugin : IDalamudPlugin
             var index=watches.FindIndex(w=>w.Label==current.Label && w.TerritoryId==current.TerritoryId && w.X==current.X && w.Y==current.Y);
             if (index<0) watches.Add(current); else watches[index]=current;
         }
+        var history = TrainResetRecovery.Merge(_config.ResetUndoReportHistory, BuildCurrentMarks(),
+            m => m.Key, m => m.DeathObservedAtUtc ?? m.SnipedAtUtc ?? m.LastSeenUtc);
         _watcher.ResetNow();
+        _watcher.RestoreHistory(history);
+        _config.ResetUndoReportHistory.Clear();
         _detector.LoadPersisted(restored);
         _config.Flags = watches;
         _currentMark = _config.ResetUndoCurrentNameId is { } name && _config.ResetUndoCurrentInstance is { } instance
