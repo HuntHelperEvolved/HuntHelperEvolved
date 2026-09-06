@@ -65,10 +65,11 @@ public sealed class ARankWindow
         if (ImGui.Checkbox("Open windows only", ref available)) { _config.ARankWindowAvailableOnly = available; _config.Save(); }
         ImGui.SameLine(); var search = _config.ARankWindowSearch; ImGui.SetNextItemWidth(200);
         if (ImGui.InputTextWithHint("##asearch", "Search mark or zone", ref search,100)) { _config.ARankWindowSearch = search; _config.Save(); }
+        ImGui.TextWrapped("Each instance has its own kill time. Instance rows are learned from scouting in that zone; a missing kill stays unknown. — / unknown records are never assigned to I1 or I2.");
         ImGui.TextDisabled("Right-click a column header to show/hide columns. Percent is elapsed window, not spawn probability.");
-        if (!ImGui.BeginTable("aranks",8,ImGuiTableFlags.RowBg | ImGuiTableFlags.ScrollY | ImGuiTableFlags.Resizable | ImGuiTableFlags.Hideable | ImGuiTableFlags.BordersInnerH)) return;
+        if (!ImGui.BeginTable("aranks",9,ImGuiTableFlags.RowBg | ImGuiTableFlags.ScrollY | ImGuiTableFlags.Resizable | ImGuiTableFlags.Hideable | ImGuiTableFlags.BordersInnerH)) return;
         ImGui.TableSetupScrollFreeze(0,1);
-        foreach (var label in new[]{"Mark","World","Zone","Expansion","Status","Opens","Window end","Killed"}) ImGui.TableSetupColumn(label);
+        foreach (var label in new[]{"Mark","World","Instance","Zone","Expansion","Status","Opens","Window end","Killed"}) ImGui.TableSetupColumn(label);
         ImGui.TableHeadersRow();
         foreach (var world in worlds)
         foreach (var entry in ExpansionData.ModelIdToMark.OrderBy(e => e.Value.Order).ThenBy(e => e.Value.ZoneOrder))
@@ -76,8 +77,19 @@ public sealed class ARankWindow
             var info = entry.Value;
             if (!_config.ARankWindowExpansions.Contains(info.Expansion) || (!string.IsNullOrWhiteSpace(search) && !(info.Name+" "+info.Location).Contains(search,StringComparison.OrdinalIgnoreCase))) continue;
             var kills = _config.ARankKills.Where(k => k.NameId == entry.Key && k.WorldId == world).ToList();
-            var instances = kills.Select(k => k.Instance).Concat(_detector.OtherRanks.Values.Concat(_sync.RemoteSightings.Values).Where(s => s.NameId == entry.Key && s.WorldId == world).Select(s => s.Instance)).Distinct().OrderBy(i => i).ToList();
-            if (instances.Count == 0) instances.Add(0);
+            // Instances belong to the zone, not just a mark currently in sight.
+            // Include living train rows so scouting I1/I2 creates both timers before kills.
+            var zoneMarks = ExpansionData.ModelIdToMark.Where(e => e.Value.Location == info.Location)
+                .Select(e => e.Key).ToHashSet();
+            var zoneTerritories = SRankTimerData.All.Where(s => s.Zone == info.Location).Select(s => s.TerritoryId).ToHashSet();
+            var zoneInstances = _detector.Marks.Values.Where(m => m.WorldId == world && zoneMarks.Contains(m.NameId)).Select(m => m.Instance)
+                .Concat(_config.ARankKills.Where(k => k.WorldId == world && zoneMarks.Contains(k.NameId)).Select(k => k.Instance))
+                .Concat(_detector.OtherRanks.Values.Concat(_sync.RemoteSightings.Values)
+                    .Where(s => s.WorldId == world && (zoneMarks.Contains(s.NameId) || zoneTerritories.Contains(s.TerritoryId))).Select(s => s.Instance))
+                .Concat(_sync.SRankStatuses.Values.Where(s => s.WorldId == world && zoneTerritories.Contains(s.TerritoryId)).Select(s => s.Instance));
+            if (world == _detector.CurrentWorldId() && zoneTerritories.Contains(_detector.CurrentTerritoryId))
+                zoneInstances = zoneInstances.Append(MarkDetector.GetCurrentInstance());
+            var instances = ARankInstances.Resolve(zoneInstances, kills.Select(k => k.Instance));
             foreach (var instance in instances)
             {
                 var kill = kills.FirstOrDefault(k => k.Instance == instance);
@@ -89,7 +101,7 @@ public sealed class ARankWindow
                 if (available && (up || opens is null || now < opens)) continue;
                 var text = up ? "UP" : restart is not null && (kill is null || kill.At <= restart) ? "After maintenance / unknown" : kill?.Uncertain == true ? "Sniped / unknown" : opens is null ? "No kill recorded" : now < opens ? "Cooldown" : now >= end ? "Window elapsed" : $"{Math.Clamp((now-opens.Value).TotalHours/(info.MaxHours-info.MinHours)*100,0,100):0}% window";
                 ImGui.TableNextRow();
-                foreach (var value in new[]{info.Name+ExpansionData.InstanceGlyph(instance),_worldData.NameOf(world),info.Location,info.Expansion,text,Time(opens),Time(end),known ? Time(kill!.At) : "—"})
+                foreach (var value in new[]{info.Name+ExpansionData.InstanceGlyph(instance),_worldData.NameOf(world),instance == 0 ? "— / unknown" : $"I{instance}",info.Location,info.Expansion,text,Time(opens),Time(end),known ? Time(kill!.At) : "—"})
                 { ImGui.TableNextColumn(); ImGui.TextUnformatted(value); }
             }
         }
