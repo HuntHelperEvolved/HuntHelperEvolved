@@ -65,12 +65,9 @@ public sealed class ARankWindow
         if (ImGui.Checkbox("Open windows only", ref available)) { _config.ARankWindowAvailableOnly = available; _config.Save(); }
         ImGui.SameLine(); var search = _config.ARankWindowSearch; ImGui.SetNextItemWidth(200);
         if (ImGui.InputTextWithHint("##asearch", "Search mark or zone", ref search,100)) { _config.ARankWindowSearch = search; _config.Save(); }
-        ImGui.TextWrapped("Each instance has its own kill time. Instance rows are learned from scouting in that zone; a missing kill stays unknown. — / unknown records are never assigned to I1 or I2.");
+        ImGui.TextWrapped("Each instance has its own kill time. Instance rows are learned from scouting in that zone; a missing kill stays unknown.");
         ImGui.TextDisabled("Right-click a column header to show/hide columns. Percent is elapsed window, not spawn probability.");
-        if (!ImGui.BeginTable("aranks",9,ImGuiTableFlags.RowBg | ImGuiTableFlags.ScrollY | ImGuiTableFlags.Resizable | ImGuiTableFlags.Hideable | ImGuiTableFlags.BordersInnerH)) return;
-        ImGui.TableSetupScrollFreeze(0,1);
-        foreach (var label in new[]{"Mark","World","Instance","Zone","Expansion","Status","Opens","Window end","Killed"}) ImGui.TableSetupColumn(label);
-        ImGui.TableHeadersRow();
+        var rows = new List<(uint Instance, string[] Values)>();
         foreach (var world in worlds)
         foreach (var entry in ExpansionData.ModelIdToMark.OrderBy(e => e.Value.Order).ThenBy(e => e.Value.ZoneOrder))
         {
@@ -100,10 +97,20 @@ public sealed class ARankWindow
                 DateTime? end = known ? kill!.At.AddHours(info.MaxHours) : null;
                 if (available && (up || opens is null || now < opens)) continue;
                 var text = up ? "UP" : restart is not null && (kill is null || kill.At <= restart) ? "After maintenance / unknown" : kill?.Uncertain == true ? "Sniped / unknown" : opens is null ? "No kill recorded" : now < opens ? "Cooldown" : now >= end ? "Window elapsed" : $"{Math.Clamp((now-opens.Value).TotalHours/(info.MaxHours-info.MinHours)*100,0,100):0}% window";
-                ImGui.TableNextRow();
-                foreach (var value in new[]{info.Name+ExpansionData.InstanceGlyph(instance),_worldData.NameOf(world),instance == 0 ? "— / unknown" : $"I{instance}",info.Location,info.Expansion,text,Time(opens),Time(end),known ? Time(kill!.At) : "—"})
-                { ImGui.TableNextColumn(); ImGui.TextUnformatted(value); }
+                rows.Add((instance, new[]{info.Name+ExpansionData.InstanceGlyph(instance),_worldData.NameOf(world),instance == 0 ? "" : $"I{instance}",info.Location,info.Expansion,text,Time(opens),Time(end),known ? Time(kill!.At) : "—"}));
             }
+        }
+        var showInstances = rows.Any(row => row.Instance > 0);
+        if (!ImGui.BeginTable("aranks",9,ImGuiTableFlags.RowBg | ImGuiTableFlags.ScrollY | ImGuiTableFlags.Resizable | ImGuiTableFlags.Hideable | ImGuiTableFlags.BordersInnerH)) return;
+        ImGui.TableSetupScrollFreeze(0,1);
+        foreach (var label in new[]{"Mark","World","Instance","Zone","Expansion","Status","Opens","Window end","Killed"})
+            ImGui.TableSetupColumn(label, label == "Instance" && !showInstances ? ImGuiTableColumnFlags.Disabled : ImGuiTableColumnFlags.None);
+        ImGui.TableHeadersRow();
+        foreach (var row in rows)
+        {
+            ImGui.TableNextRow();
+            foreach (var value in row.Values)
+                if (ImGui.TableNextColumn()) ImGui.TextUnformatted(value);
         }
         ImGui.EndTable();
     }
