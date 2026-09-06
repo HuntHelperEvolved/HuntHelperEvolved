@@ -113,6 +113,7 @@ public sealed class SyncCoordinator : IDisposable
     /// echo the clear straight back to the server.
     /// </summary>
     public event Action<string>? RemoteTrainCleared;
+    public event Action<SRankSpawnBroadcast>? SRankSpawned;
 
     public SyncCoordinator(
         IFramework framework,
@@ -360,6 +361,10 @@ public sealed class SyncCoordinator : IDisposable
                 foreach (var k in SyncProtocol.Deserialize<SightingsExpiredBroadcast>(payload)!.Keys)
                     _remote.Remove(k.ToTuple());
                 Bump();
+                break;
+
+            case "srank.spawn":
+                SRankSpawned?.Invoke(SyncProtocol.Deserialize<SRankSpawnBroadcast>(payload)!);
                 break;
 
             case ServerMessageTypes.SRankUpdate:

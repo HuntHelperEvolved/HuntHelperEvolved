@@ -558,6 +558,10 @@ public class Configuration : IPluginConfiguration
     /// on, and turning it off drops the connection at once.
     /// </summary>
     public bool SyncEnabled { get; set; } = false;
+    public bool SyncSpawnAlerts { get; set; } = true;
+    public bool SyncSpawnSound { get; set; } = true;
+    public bool SyncSpawnCurrentDc { get; set; } = true;
+    public List<uint> SyncSpawnDataCenters { get; set; } = new();
 
     /// <summary>
     /// The server's WebSocket URL, e.g. wss://hunts.example.com/ws. A

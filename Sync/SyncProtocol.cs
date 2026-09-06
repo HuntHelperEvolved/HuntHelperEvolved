@@ -188,6 +188,7 @@ public sealed class SyncWorld
 
 public sealed class SyncFaloopStatus
 {
+    public bool LiveConnected { get; set; }
     public bool Enabled { get; set; }
     public bool Connected { get; set; }
     public string Status { get; set; } = "Off.";
@@ -286,3 +287,13 @@ public sealed class SRankUpdateBroadcast { public List<SyncSRankStatus> Entries 
 public sealed class SpawnUpdateBroadcast { public List<SyncSpawnZone> Zones { get; set; } = new(); }
 public sealed class PresenceBroadcast { public List<SyncPresence> Clients { get; set; } = new(); }
 public sealed class PongMessage { public DateTime ServerTime { get; set; } }
+
+public sealed class SRankSpawnBroadcast
+{
+    public uint NameId { get; set; }
+    public uint WorldId { get; set; }
+    public uint Instance { get; set; }
+    public DateTime SpawnedAt { get; set; }
+    public string DataCenter { get; set; } = "";
+    public string Source { get; set; } = "Faloop";
+}

@@ -343,6 +343,7 @@ public sealed class Plugin : IDalamudPlugin
             framework, clientState, objectTable, _log, _config, _detector, _worldData,
             typeof(Plugin).Assembly.GetName().Version?.ToString(3) ?? "0.0.0");
         _sync.RemoteTrainCleared += OnRemoteTrainCleared;
+        _sync.SRankSpawned += OnRemoteSRankSpawn;
         _srankWindow = new SRankWindow(_config, _sync, _worldData, _detector);
 
         // KamiToolKit needs one-time initialisation before any of its
@@ -3611,6 +3612,7 @@ public sealed class Plugin : IDalamudPlugin
         _mapOverlay.Dispose();
         _ssEvent.Dispose();
         _sync.RemoteTrainCleared -= OnRemoteTrainCleared;
+        _sync.SRankSpawned -= OnRemoteSRankSpawn;
         _sync.Dispose();
 
         try
@@ -3652,6 +3654,28 @@ public sealed class Plugin : IDalamudPlugin
     /// locally happens here too, minus the posting, so this client does not
     /// keep a pointer into a train that no longer exists.
     /// </summary>
+    private readonly Sync.SpawnAlertFilter _spawnAlertFilter = new();
+
+    private void OnRemoteSRankSpawn(Sync.SRankSpawnBroadcast spawn)
+    {
+        if (!_config.SyncSpawnAlerts || _objectTable.LocalPlayer == null
+            || !Sync.SRankTimerData.ByNameId.TryGetValue(spawn.NameId, out var mark)) return;
+        var destination = _worldData.LocateWorld(spawn.WorldId);
+        var current = _worldData.LocateWorld(_detector.CurrentWorldId());
+        if (destination is null || current is null) return;
+        var dc = _worldData.DataCenters[destination.Value.DcIndex];
+        var allowed = _config.SyncSpawnCurrentDc
+            ? destination.Value.DcIndex == current.Value.DcIndex
+            : _config.SyncSpawnDataCenters.Contains(dc.Id);
+        if (!_spawnAlertFilter.Accept(spawn, allowed, DateTime.UtcNow)) return;
+        _chatGui.Print($"[Hunt Helper Evolved] S rank reported spawned: {mark.Name} — {_worldData.NameOf(spawn.WorldId)} ({dc.Name}), {mark.Zone}{ExpansionData.InstanceGlyph(spawn.Instance)} [Faloop]");
+        if (_config.SyncSpawnSound)
+        {
+            try { FFXIVClientStructs.FFXIV.Client.UI.UIGlobals.PlayChatSoundEffect(6); }
+            catch (Exception ex) { _log.Debug(ex, "Could not play S-rank alert sound."); }
+        }
+    }
+
     private void OnRemoteTrainCleared(string by)
     {
         _watcher.ResetNow();
@@ -3768,10 +3792,32 @@ public sealed class Plugin : IDalamudPlugin
 
             var faloop = _sync.Faloop;
             if (faloop.Enabled)
-                ImGui.TextDisabled($"Faloop on the server: {faloop.Status}");
+                ImGui.TextDisabled($"Faloop on the server: {faloop.Status} Live feed: {(faloop.LiveConnected ? "connected" : "disconnected")}");
         }
 
         ImGui.Spacing();
+        if (ImGui.CollapsingHeader("Community S-rank spawn alerts", ImGuiTreeNodeFlags.DefaultOpen))
+        {
+            var alerts = _config.SyncSpawnAlerts;
+            if (ImGui.Checkbox("Chat alerts for reported S-rank spawns", ref alerts)) { _config.SyncSpawnAlerts = alerts; _config.Save(); }
+            var sound = _config.SyncSpawnSound;
+            if (ImGui.Checkbox("Play an alert sound", ref sound)) { _config.SyncSpawnSound = sound; _config.Save(); }
+            var currentDc = _config.SyncSpawnCurrentDc;
+            if (ImGui.Checkbox("Only my current data centre", ref currentDc)) { _config.SyncSpawnCurrentDc = currentDc; _config.Save(); }
+            if (!currentDc)
+                foreach (var dc in _worldData.DataCenters)
+                {
+                    var selected = _config.SyncSpawnDataCenters.Contains(dc.Id);
+                    if (ImGui.Checkbox(dc.Name + "##spawnDc", ref selected))
+                    {
+                        if (selected) _config.SyncSpawnDataCenters.Add(dc.Id); else _config.SyncSpawnDataCenters.Remove(dc.Id);
+                        _config.Save();
+                    }
+                }
+            ImGui.TextWrapped("Alerts arrive when Faloop reports a spawn. Your server must follow the selected data centres. Historical snapshots do not trigger alerts.");
+            ImGui.TextWrapped("Server coverage: " + string.Join(", ", _sync.Faloop.DataCenters));
+        }
+
         if (ImGui.Button("Open the S-rank board"))
             _srankWindow.Toggle();
         ImGui.SameLine();
