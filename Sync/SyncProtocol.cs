@@ -14,7 +14,7 @@ namespace HuntHelperEvolved.Sync;
 /// </summary>
 public static class SyncProtocol
 {
-    public const int Version = 2;
+    public const int Version = 3;
 
     public static readonly JsonSerializerSettings Json = new()
     {
@@ -58,6 +58,7 @@ public sealed class SyncMark
     public DateTime FirstSeen { get; set; }
     public DateTime LastSeen { get; set; }
     public DateTime? DeathAt { get; set; }
+    public DateTime? SnipedAt { get; set; }
     public bool IsCustom { get; set; }
     public string ZoneName { get; set; } = string.Empty;
     public bool Spiced { get; set; }
@@ -262,6 +263,7 @@ public static class ServerMessageTypes
 
 public sealed class WelcomeMessage
 {
+    public WatchesBroadcast WatchState { get; set; } = new();
     public int Protocol { get; set; }
     public string ServerVersion { get; set; } = string.Empty;
     public string ServerName { get; set; } = string.Empty;
@@ -296,4 +298,27 @@ public sealed class SRankSpawnBroadcast
     public DateTime SpawnedAt { get; set; }
     public string DataCenter { get; set; } = "";
     public string Source { get; set; } = "Faloop";
+}
+
+public sealed class SyncWatch
+{
+    public string Label { get; set; } = "";
+    public int SpawnStatus { get; set; }
+    public uint TerritoryId { get; set; }
+    public bool HasLocation { get; set; }
+    public float X { get; set; }
+    public float Y { get; set; }
+}
+
+public sealed class WatchesBroadcast
+{
+    public long Revision { get; set; }
+    public List<SyncWatch> Watches { get; set; } = new();
+    public bool Accepted { get; set; } = true;
+}
+public sealed class WatchesMessage
+{
+    public string Type => "train.watches";
+    public long BaseRevision { get; set; }
+    public List<SyncWatch> Watches { get; set; } = new();
 }

@@ -87,3 +87,8 @@ miss uncertain origins instead of declaring a wrong exclusion. A kill unseen
 by both the group and the optional external source remains unknown. An offline
 edit to an existing shared row is replaced by the next server snapshot; new
 local-only rows can be recovered using the explicit upload action.
+
+Main 0.4.0 merged for testing build 0.4.0.1. Added protocol-3 sniped timestamps,
+persistent shared S-rank watches and explicit shared-route grouping. Fixed the
+same-frame sniped-button tooltip dereferencing a timestamp just cleared by a click.
+Rendering, clipboard and Dalamud IPC still need in-game testing.

@@ -34,6 +34,18 @@ public static class ReleaseNotes
 
     public static readonly Release[] All =
     {
+        new("0.4.0", "2026-09-06", "The train organises itself, and a sniped mark stops inventing its own kill time.",
+        [
+            new("Train", "The train can group itself into expansion blocks, keeping scout order inside each one. It sorts the train rather than only redrawing it, so Next Mark, the export code and the report all follow what is on screen. Blocks start in the order the expansions already stand in — ticking the box folds a list into blocks without rearranging it.", Kihtli),
+            new("Train", "Drag a block heading to move a whole expansion, or click it to fold that expansion away. A folded block still says how many of its marks are up, and stays folded across a reload.", Kihtli),
+            new("Train", "A sniped mark gets its own button beside the dead tick, and its own section in the report. Ticking one dead recorded a kill time nobody witnessed, and so a respawn window that was simply wrong; the window now runs from when it was last seen alive to when the train found it gone, which is wide but true.", Kihtli, 1),
+            new("Train", "The Spawned / Didn't Spawn boxes for S-rank watches sit under the train list as well as on the Conductor tab, so they can be ticked from the popout without walking back to a settings tab. Neyoozoteel joins the tracked S ranks, in Yak T'el.", Kihtli, 9),
+            new("Train", "Import a train straight from the clipboard, from the popout as well as the Train tab — the window actually open when someone's code turns up. Imports merge; nothing already in the train is overwritten.", Kihtli, 12),
+            new("Train", "Export codes carry the world they were scouted on. Two scouts on two worlds sending lists to one conductor had their marks collide on a key that said nothing about where they came from.", Kihtli, 13),
+            new("Plugin", "Other plugins can read and add to the train over IPC. When Hunt Helper is not installed its own gates are answered here, with the same names and shapes, so anything already written to integrate with it works unchanged. Settings -> About says which state you are in.", Kihtli, 11),
+            new("Map", "A live SS minion is drawn as the S rank it is rather than in the event's own orange, which was the same colour as the spot it stands on — so the two were one dot whichever drew on top.", Kihtli),
+        ]),
+
         new("0.3.0", "2026-09-05", "Marks on the map tell the truth about where they are.",
         [
             new("Map", "Marks are drawn where they actually stand, never snapped to the nearest spawn point. A mark near a point was only near it — up to a couple of map coordinates away — so walking to the dot was walking to the wrong place.", Kihtli, 14),

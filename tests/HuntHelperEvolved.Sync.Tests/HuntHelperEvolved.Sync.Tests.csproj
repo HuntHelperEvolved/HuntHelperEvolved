@@ -12,6 +12,7 @@
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.1" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <Compile Include="../../Sync/SharedRouteGrouping.cs" Link="SharedRouteGrouping.cs" />
     <Compile Include="../../Sync/SpawnAlertFilter.cs" Link="SpawnAlertFilter.cs" />
     <Compile Include="../../Sync/SyncProtocol.cs" Link="SyncProtocol.cs" />
     <Compile Include="../../Sync/SyncClient.cs" Link="SyncClient.cs" />

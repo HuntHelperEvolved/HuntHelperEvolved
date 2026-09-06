@@ -65,7 +65,23 @@ public sealed class Plugin : IDalamudPlugin
     private const int MaxAdditionalScouts = 3;
 
     // The only S-ranks the group actually checks for during trains.
-    private static readonly string[] SimpleSRanks = { "Ophioneus", "Tyger" };
+    /// <summary>
+    /// The S ranks a train actually stops for, and the zone each is watched in.
+    ///
+    /// Deliberately not every S rank in the game: a conductor checks a handful
+    /// on the way past, and a list of fifty to scroll through would be a worse
+    /// answer to the same question. Narrow-rift is absent because it needs a
+    /// spawn point picking as well, and has its own control below.
+    ///
+    /// Territory ids are the same ones the rest of the plugin uses, cross-
+    /// checked against SsMinionSpawns rather than typed from memory.
+    /// </summary>
+    private static readonly (string Name, uint TerritoryId)[] SimpleSRanks =
+    {
+        ("Ophioneus", 961),      // Elpis
+        ("Tyger", 813),          // Lakeland
+        ("Neyoozoteel", 1189),   // Yak T'el
+    };
 
     // Narrow-rift's known spawn points (Territory 960 / Map 699, Ultima Thule —
     // confirmed via arealmremapped.com; coordinates from Narrow-rift's own
@@ -97,6 +113,7 @@ public sealed class Plugin : IDalamudPlugin
     private const uint AetheryteIconId = 60453;
     private readonly HuntCounter _counter;
     private readonly SpawnWatchCounters _spawnWatch;
+    private readonly TrainIpcProvider _trainIpc;
     private readonly WorldData _worldData;
     private readonly HuntMapOverlay _mapOverlay;
     private readonly SsEventWatcher _ssEvent;
@@ -181,6 +198,14 @@ public sealed class Plugin : IDalamudPlugin
     // Drag state for the train list. Both are -1 when no drag is in progress.
     private int _dragFromIndex = -1;
     private int _dragToIndex = -1;
+
+    // The same, for dragging whole expansion blocks around when the train is
+    // grouped. Kept separate from the mark drag rather than overloaded onto it:
+    // the two mean different things (one moves a row, one moves a block), and
+    // sharing the fields would let a half-finished block drag be committed as a
+    // mark move. Indices are into the expansions actually present in the list.
+    private int _dragExpansionFrom = -1;
+    private int _dragExpansionTo = -1;
 
     // The mark the conductor is currently on. Tracked by identity rather than
     // list position, so dragging rows or removing marks can't silently change
@@ -345,6 +370,8 @@ public sealed class Plugin : IDalamudPlugin
         _sync.RemoteTrainCleared += OnRemoteTrainCleared;
         _sync.SRankSpawned += OnRemoteSRankSpawn;
         _srankWindow = new SRankWindow(_config, _sync, _worldData, _detector);
+        // After the detector exists, since the gates read straight off it.
+        _trainIpc = new TrainIpcProvider(_pluginInterface, _detector, _log);
 
         // KamiToolKit needs one-time initialisation before any of its
         // controllers can be enabled — without it, AddonController.Enable()
@@ -768,6 +795,7 @@ public sealed class Plugin : IDalamudPlugin
                 Dead = d.Dead,
                 LastSeenUtc = d.LastSeenUtc,
                 DeathObservedAtUtc = d.DeathObservedAtUtc,
+                SnipedAtUtc = d.SnipedAtUtc,
             }).ToList();
         }
 
@@ -776,6 +804,22 @@ public sealed class Plugin : IDalamudPlugin
 
         var now = DateTime.UtcNow;
         var tracked = _watcher.GetTrackedSnapshot();
+
+        // Sniped is recorded on our own rows, because that is the list with the
+        // button on it — but the report may well be built from Hunt Helper's,
+        // which is still the default. Carrying it across is what stops the fix
+        // depending on a setting the conductor never turned on.
+        //
+        // Keyed without the world, because Hunt Helper's list has no world in
+        // it to match against. First one wins: the same mark up on two worlds
+        // is two rows here and one there, and there is nothing in the Hunt
+        // Helper record that could tell them apart.
+        var snipedTimes = new Dictionary<(uint, uint), DateTime?>();
+        foreach (var d in _detector.Ordered())
+        {
+            if (d.SnipedAtUtc == null) continue;
+            snipedTimes.TryAdd((d.NameId, d.Instance), d.SnipedAtUtc);
+        }
 
         var marks = list.Select(m => new TrackedMark
         {
@@ -787,13 +831,29 @@ public sealed class Plugin : IDalamudPlugin
             DeathObservedAtUtc = m.Dead
                 ? (tracked.TryGetValue((m.MobID, m.Instance), out var t) ? t.DeathObservedAtUtc : null) ?? now
                 : null,
+            SnipedAtUtc = snipedTimes.GetValueOrDefault((m.MobID, m.Instance)),
         }).ToList();
 
         var seenKeys = marks.Select(m => (m.ModelId, m.Instance)).ToHashSet();
         foreach (var (key, trackedMark) in tracked)
         {
-            if (!seenKeys.Contains(key))
-                marks.Add(trackedMark);
+            if (seenKeys.Contains(key)) continue;
+
+            // A copy, not the watcher's own object. GetTrackedSnapshot copies
+            // the dictionary but not the marks in it, and this runs every frame
+            // the Marks Slain preview is open — writing a sniped time back into
+            // live tracking state would make merely looking at the report
+            // change it.
+            marks.Add(new TrackedMark
+            {
+                Name = trackedMark.Name,
+                ModelId = trackedMark.ModelId,
+                Instance = trackedMark.Instance,
+                Dead = trackedMark.Dead,
+                LastSeenUtc = trackedMark.LastSeenUtc,
+                DeathObservedAtUtc = trackedMark.DeathObservedAtUtc,
+                SnipedAtUtc = trackedMark.SnipedAtUtc ?? snipedTimes.GetValueOrDefault(key),
+            });
         }
 
         return marks;
@@ -1298,6 +1358,58 @@ public sealed class Plugin : IDalamudPlugin
         _config.SavedCurrentInstance = null;
         _config.SavedCurrentWorldId = null;
         _config.Save();
+    }
+
+    /// <summary>
+    /// Folds an export code into the train, and says so out loud.
+    ///
+    /// The result goes to chat as well as to the status line, because the
+    /// status line only exists on the main window: importing is offered from
+    /// the popout too, and an import that silently did nothing visible from
+    /// there would be indistinguishable from a dead button.
+    /// </summary>
+    private void ImportTrainCode(string code, string source)
+    {
+        if (string.IsNullOrWhiteSpace(code))
+        {
+            ReportProblem($"Nothing to import — {source} is empty.");
+            return;
+        }
+
+        var imported = TrainExchange.Import(code);
+        if (imported == null)
+        {
+            ReportProblem($"That import code couldn't be read ({source}).");
+            return;
+        }
+
+        var added = _detector.Merge(imported);
+        _lastPostResult = $"Imported {imported.Count} marks ({added} new).";
+        _chatGui.Print($"[Hunt Helper Evolved] {_lastPostResult}");
+    }
+
+    /// <summary>
+    /// Import straight off the clipboard, the way Hunt Helper does it — codes
+    /// arrive pasted into Discord and go back out via Copy, so the trip through
+    /// a text box was only ever ceremony.
+    /// </summary>
+    private void ImportFromClipboard()
+    {
+        string clipboard;
+        try
+        {
+            clipboard = ImGui.GetClipboardText() ?? string.Empty;
+        }
+        catch (Exception ex)
+        {
+            // Reading the clipboard goes out to the OS and can genuinely fail
+            // — another process holding it is enough.
+            _log.Warning(ex, "Could not read the clipboard for a train import.");
+            ReportProblem("Couldn't read the clipboard.");
+            return;
+        }
+
+        ImportTrainCode(clipboard, "the clipboard");
     }
 
     private void ReportProblem(string message)
@@ -2007,6 +2119,20 @@ public sealed class Plugin : IDalamudPlugin
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip("Names the aetheryte nearest the next mark, and copies a line to your clipboard. No flag — see /htra");
 
+        // Its own row on purpose. This is the one control here that rewrites
+        // the whole list, and it should not sit a mis-click away from Remove
+        // Dead. It lives on the shared control bar rather than the Train tab so
+        // the popout — the window actually open during a train, and where
+        // codes actually arrive — can import without going back to the tab.
+        if (ImGui.Button("Import from Clipboard"))
+        {
+            ImportFromClipboard();
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip(
+                "Reads an export code straight off the clipboard and folds it into this train.\n"
+                + "Marks already here are kept — nothing is overwritten.");
+
         // Row 3
         var tracking = _config.TrackingEnabled;
         if (ImGui.Checkbox("Tracking this train (records exact kill times)", ref tracking))
@@ -2024,6 +2150,27 @@ public sealed class Plugin : IDalamudPlugin
         }
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip("Only hides them from this list — they stay in the train and in reports.");
+
+        ImGui.SameLine();
+        var grouped = _config.GroupTrainByExpansion;
+        if (ImGui.Checkbox("Group by expansion", ref grouped))
+        {
+            _config.GroupTrainByExpansion = grouped;
+            if (grouped) _detector.ApplyOrder(GroupByExpansion(_detector.Ordered()));
+            _config.Save();
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip(
+                "Sorts the train into expansion blocks, keeping scout order inside each one.\n"
+                + "Drag a block heading to move a whole expansion.");
+
+        if (_config.SyncEnabled && _config.SyncShareTrain && grouped)
+        {
+            ImGui.SameLine();
+            if (ImGui.SmallButton("Group shared route now"))
+                _detector.ApplyOrder(GroupByExpansion(_detector.Ordered()));
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip("Reorders the shared route once. New scout rows append until you group again.");
+        }
 
         // Row 5 — same setting as the one on the Settings tab, so the two
         // always agree.
@@ -2056,7 +2203,31 @@ public sealed class Plugin : IDalamudPlugin
         if (allMarks.Count == 0)
         {
             ImGui.TextDisabled("No marks detected yet — fly near one and it'll appear here.");
+            DrawSRankWatchRows();
             return;
+        }
+
+        // Grouping genuinely reorders the train rather than only redrawing it,
+        // so it happens here, before anything is measured or drawn: everything
+        // below — and Next Mark, the export code and the end-of-train report
+        // with it — then sees one ordinary list in one order. A grouping the
+        // reports did not follow would be a different train from the one on
+        // screen.
+        //
+        // Never while a drag is in progress, or the re-sort would fight the
+        // conductor for the row they are holding.
+        var grouping = _config.GroupTrainByExpansion;
+        var sharedRoute = _config.SyncEnabled && _config.SyncShareTrain;
+        if (sharedRoute && !Sync.SharedRouteGrouping.HasContiguousBlocks(allMarks.Select(m => ExpansionData.ExpansionOf(m.NameId, m.ZoneName))))
+            grouping = false;
+        if (grouping && !sharedRoute && _dragFromIndex == -1 && _dragExpansionFrom == -1)
+        {
+            var grouped = GroupByExpansion(allMarks);
+            if (!grouped.SequenceEqual(allMarks))
+            {
+                _detector.ApplyOrder(grouped);
+                allMarks = grouped;
+            }
         }
 
         // What's shown may be a subset, but ordering maths always works against
@@ -2068,7 +2239,36 @@ public sealed class Plugin : IDalamudPlugin
         if (marks.Count == 0)
         {
             ImGui.TextDisabled($"All {allMarks.Count} marks are dead — untick \"Hide dead marks\" to see them.");
+            DrawSRankWatchRows();
             return;
+        }
+
+        // Headings describe what is actually on screen, so they are counted
+        // from the filtered list: hide every dead mark in an expansion and its
+        // heading goes too, rather than leaving an empty block behind. The list
+        // is already sorted into blocks by now, so first-seen order here is
+        // display order.
+        var expansionCounts = new Dictionary<string, int>();
+        var expansionUpCounts = new Dictionary<string, int>();
+        var presentExpansions = new List<string>();
+        if (grouping)
+        {
+            foreach (var m in marks)
+            {
+                var e = ExpansionData.ExpansionOf(m.NameId, m.ZoneName);
+                if (expansionCounts.TryGetValue(e, out var seen))
+                {
+                    expansionCounts[e] = seen + 1;
+                }
+                else
+                {
+                    expansionCounts[e] = 1;
+                    presentExpansions.Add(e);
+                }
+
+                if (!m.Dead)
+                    expansionUpCounts[e] = expansionUpCounts.GetValueOrDefault(e) + 1;
+            }
         }
 
         (uint NameId, uint Instance, uint WorldId)? toRemove = null;
@@ -2111,9 +2311,37 @@ public sealed class Plugin : IDalamudPlugin
         var mouseXInWindow = ImGui.GetMousePos().X - ImGui.GetWindowPos().X;
         var dragging = _dragFromIndex != -1;
 
+        // The block the loop is currently inside. Null rather than empty so the
+        // very first mark always opens a block, even in the "Other" one.
+        string? lastExpansion = null;
+        var blockIsFolded = false;
+
         for (var i = 0; i < marks.Count; i++)
         {
             var mark = marks[i];
+
+            // A heading each time the expansion changes. The list is sorted
+            // into blocks by this point, so a change is always the start of a
+            // new one.
+            if (grouping)
+            {
+                var blockExpansion = ExpansionData.ExpansionOf(mark.NameId, mark.ZoneName);
+                if (blockExpansion != lastExpansion)
+                {
+                    lastExpansion = blockExpansion;
+                    blockIsFolded = DrawExpansionHeader(
+                        blockExpansion,
+                        presentExpansions.IndexOf(blockExpansion),
+                        expansionCounts[blockExpansion],
+                        expansionUpCounts.GetValueOrDefault(blockExpansion),
+                        rowHeight);
+                }
+
+                // Skipped before anything is pushed, so a folded block leaves
+                // no half-opened ImGui state behind it.
+                if (blockIsFolded) continue;
+            }
+
             // World included, because the identity is. Two rows for the same
             // mark on two worlds otherwise share an ImGui id, and ImGui cannot
             // tell their buttons apart — clicking the second row's x did
@@ -2265,9 +2493,59 @@ public sealed class Plugin : IDalamudPlugin
                 mark.Dead = dead;
                 mark.DeathObservedAtUtc = dead ? DateTime.UtcNow : null;
 
+                // Un-ticking dead undoes a sniped mark too. Otherwise the row
+                // would say the mark is alive while the report went on giving
+                // it a respawn window.
+                if (!dead) mark.SnipedAtUtc = null;
+
                 // Keep the map honest: a mark ticked dead shouldn't stay lit.
                 if (dead) _detector.RemoveSighting(mark.NameId, mark.Instance, mark.WorldId);
             }
+            ImGui.SetItemAllowOverlap();
+
+            // Sniped: already gone when the train arrived.
+            //
+            // Deliberately not the same button as the tick beside it. That one
+            // means "it died just now", and clicking it for a mark somebody
+            // else killed hours ago is what put a kill time — and therefore a
+            // respawn window — in the report that nobody had witnessed. This
+            // one records only when the mark was found missing, which is all
+            // that is actually known.
+            ImGui.SameLine();
+            ImGui.SetCursorPosX(buttonColumnX + (_config.ShowSpicing ? 132 : 100));
+
+            // Read before drawing, for the same reason the spicing button does:
+            // the click flips it mid-row, and a push that went unmatched by its
+            // pop is an ImGui style stack imbalance, which crashes natively.
+            var wasSniped = mark.SnipedAtUtc != null;
+            if (wasSniped) ImGui.PushStyleColor(ImGuiCol.Text, new Vector4(1f, 0.75f, 0.3f, 1f));
+
+            if (ImGuiComponents.IconButton(FontAwesomeIcon.Crosshairs))
+            {
+                if (mark.SnipedAtUtc != null)
+                {
+                    mark.SnipedAtUtc = null;
+                }
+                else
+                {
+                    // It is dead — but nobody here saw it die, so no observed
+                    // death time is recorded. Last seen alive and found-gone
+                    // are the two ends of the window, and the report works it
+                    // out from those.
+                    mark.SnipedAtUtc = DateTime.UtcNow;
+                    mark.DeathObservedAtUtc = null;
+                    mark.Dead = true;
+                    _detector.RemoveSighting(mark.NameId, mark.Instance, mark.WorldId);
+                }
+            }
+
+            if (wasSniped) ImGui.PopStyleColor();
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip(wasSniped
+                    ? $"Sniped — found gone at {mark.SnipedAtUtc.GetValueOrDefault().ToLocalTime():t}. Click to unset.\n"
+                      + "The report gives a window running from when it was last seen alive."
+                    : "Sniped — the mark was already gone when the train got here.\n"
+                      + "Records a spawn window from last seen alive, rather than a kill time nobody saw.");
             ImGui.SetItemAllowOverlap();
 
             ImGui.Separator();
@@ -2290,6 +2568,7 @@ public sealed class Plugin : IDalamudPlugin
 
             // --- drag: only ever RECORDS intent, never mutates the list ---
             if (_dragFromIndex == -1
+                && _dragExpansionFrom == -1
                 && ImGui.IsItemActive()
                 && ImGui.IsMouseDragging(ImGuiMouseButton.Left)
                 && mouseXInWindow < buttonColumnX)
@@ -2297,13 +2576,34 @@ public sealed class Plugin : IDalamudPlugin
                 _dragFromIndex = i;
             }
 
-            if (dragging && ImGui.IsItemHovered())
+            // Grouped, a mark can only be dropped inside its own block. Which
+            // expansion a mark belongs to is a fact about the mark rather than
+            // an arrangement, so a drop that changed it would only be undone by
+            // the next re-sort.
+            var droppableHere = !grouping
+                                || (_dragFromIndex >= 0 && _dragFromIndex < marks.Count
+                                    && ExpansionData.ExpansionOf(
+                                           marks[_dragFromIndex].NameId, marks[_dragFromIndex].ZoneName)
+                                       == ExpansionData.ExpansionOf(mark.NameId, mark.ZoneName));
+
+            if (dragging && ImGui.IsItemHovered() && droppableHere)
             {
                 _dragToIndex = i;
             }
 
+            // A block can also be dropped on any row belonging to another
+            // block. Making the conductor hit the heading itself turned a drag
+            // into a pixel-hunt, and every row of a block means the same place.
+            if (_dragExpansionFrom != -1 && ImGui.IsItemHovered())
+            {
+                var over = presentExpansions.IndexOf(
+                    ExpansionData.ExpansionOf(mark.NameId, mark.ZoneName));
+                if (over >= 0) _dragExpansionTo = over;
+            }
+
             // --- click: a release with no drag in progress ---
             if (!dragging
+                && _dragExpansionFrom == -1
                 && ImGui.IsItemFocused()
                 && mouseXInWindow < buttonColumnX
                 && ImGui.IsMouseReleased(ImGuiMouseButton.Left)
@@ -2338,6 +2638,14 @@ public sealed class Plugin : IDalamudPlugin
             ImGui.EndTooltip();
         }
 
+        if (_dragExpansionFrom >= 0 && _dragExpansionFrom < presentExpansions.Count)
+        {
+            var block = presentExpansions[_dragExpansionFrom];
+            ImGui.BeginTooltip();
+            ImGui.TextUnformatted($"{block} ({expansionCounts[block]})");
+            ImGui.EndTooltip();
+        }
+
         // --- commit the move exactly once, on release, after the loop ---
         if (_dragFromIndex != -1 && ImGui.IsMouseReleased(ImGuiMouseButton.Left))
         {
@@ -2367,10 +2675,277 @@ public sealed class Plugin : IDalamudPlugin
             _dragToIndex = -1;
         }
 
+        // --- and the same for a whole expansion block ---
+        if (_dragExpansionFrom != -1 && ImGui.IsMouseReleased(ImGuiMouseButton.Left))
+        {
+            if (_dragExpansionTo != -1
+                && _dragExpansionTo != _dragExpansionFrom
+                && _dragExpansionFrom < presentExpansions.Count
+                && _dragExpansionTo < presentExpansions.Count)
+            {
+                MoveExpansion(
+                    presentExpansions[_dragExpansionFrom],
+                    presentExpansions[_dragExpansionTo],
+                    marks);
+            }
+
+            _dragExpansionFrom = -1;
+            _dragExpansionTo = -1;
+        }
+
         if (toRemove.HasValue) _detector.Remove(toRemove.Value);
 
         ImGui.Spacing();
-        ImGui.TextDisabled("Click a mark to echo + flag it. Drag a row and release where you want it.");
+        ImGui.TextDisabled(grouping
+            ? "Click a mark to echo + flag it. Click a heading to fold it away, drag one to move the whole expansion."
+            : "Click a mark to echo + flag it. Drag a row and release where you want it.");
+
+        DrawSRankWatchRows();
+    }
+
+    /// <summary>
+    /// One expansion block heading, and the drag that reorders whole blocks.
+    ///
+    /// Like the mark drag it sits above, this only ever RECORDS where a drop
+    /// would land. Nothing moves until the mouse is released, after the list
+    /// has finished drawing — see DrawTrainList for why that matters.
+    /// </summary>
+    private bool DrawExpansionHeader(
+        string expansion, int index, int count, int upCount, float rowHeight)
+    {
+        var collapsed = _config.CollapsedExpansions.Contains(expansion);
+
+        ImGui.PushID($"expansion_{expansion}");
+        ImGui.Spacing();
+
+        // The up-count only earns its place while the block is shut, when the
+        // rows that would have said it are not on screen.
+        var label = collapsed
+            ? $"▶ {expansion} ({count} — {upCount} up)"
+            : $"▼ {expansion} ({count})";
+
+        ImGui.PushStyleColor(ImGuiCol.Text, new Vector4(0.62f, 0.78f, 1f, 1f));
+        ImGui.Selectable(label, _dragExpansionFrom == index,
+            ImGuiSelectableFlags.None, new Vector2(ImGui.GetWindowWidth(), rowHeight));
+        ImGui.PopStyleColor();
+
+        // Not decoration, and not optional. While an item is active — which a
+        // heading being dragged is — ImGui refuses to report any OTHER item as
+        // hovered unless the active one has allowed overlap. Without this the
+        // drop target is never found, the drag records nowhere to land, and
+        // releasing does nothing at all. The mark rows have always called it,
+        // which is why their drag worked and this one silently did not.
+        ImGui.SetItemAllowOverlap();
+
+        // Everything about the heading is read once, here, while it is
+        // unambiguously the last item drawn. SetTooltip below opens a window of
+        // its own, and reading the item's rectangle after that has no business
+        // being relied on.
+        var headerMin = ImGui.GetItemRectMin();
+        var headerMax = ImGui.GetItemRectMax();
+        var headerHovered = ImGui.IsItemHovered();
+        var headerActive = ImGui.IsItemActive();
+
+        // Click to fold the block away, drag to move it: the same split the
+        // mark rows use, where a click flags and a drag reorders.
+        if (_dragExpansionFrom == -1
+            && headerHovered
+            && ImGui.IsMouseReleased(ImGuiMouseButton.Left)
+            && Math.Abs(ImGui.GetMouseDragDelta().Y) < 0.1f)
+        {
+            if (collapsed) _config.CollapsedExpansions.Remove(expansion);
+            else _config.CollapsedExpansions.Add(expansion);
+
+            _config.Save();
+            collapsed = !collapsed;
+        }
+
+        if (_dragExpansionFrom != -1 && _dragExpansionTo == index && _dragExpansionFrom != index)
+        {
+            var edgeY = _dragExpansionTo < _dragExpansionFrom ? headerMin.Y : headerMax.Y;
+            ImGui.GetWindowDrawList().AddLine(
+                new Vector2(headerMin.X, edgeY),
+                new Vector2(headerMax.X, edgeY),
+                ImGui.GetColorU32(ImGuiCol.DragDropTarget),
+                2.5f);
+        }
+
+        if (_dragExpansionFrom == -1
+            && _dragFromIndex == -1
+            && headerActive
+            && ImGui.IsMouseDragging(ImGuiMouseButton.Left))
+        {
+            _dragExpansionFrom = index;
+        }
+
+        if (_dragExpansionFrom != -1 && headerHovered)
+            _dragExpansionTo = index;
+
+        if (_dragExpansionFrom == -1 && _dragFromIndex == -1 && headerHovered)
+            ImGui.SetTooltip(collapsed
+                ? "Click to open this expansion. Drag to move it up or down the train."
+                : "Click to fold this expansion away. Drag to move it up or down the train.");
+
+        ImGui.PopID();
+        return collapsed;
+    }
+
+    /// <summary>
+    /// The train sorted into expansion blocks.
+    ///
+    /// OrderBy is a stable sort, which is the whole trick: marks keep the order
+    /// they were scouted — or dragged — into within their own block, and only
+    /// the blocks themselves move.
+    /// </summary>
+    private List<DetectedMark> GroupByExpansion(List<DetectedMark> marks)
+    {
+        var order = ExpansionDisplayOrder(marks);
+        return marks
+            .OrderBy(m => order.IndexOf(ExpansionData.ExpansionOf(m.NameId, m.ZoneName)))
+            .ToList();
+    }
+
+    /// <summary>
+    /// Every expansion in the order its block should appear.
+    ///
+    /// The order the expansions ALREADY stand in comes before the usual
+    /// ARR -> Dawntrail one, and that is the important part. Ticking the box
+    /// should fold the train into blocks, not rearrange it: a list imported
+    /// Dawntrail -> Shadowbringers -> Endwalker was put in that order on
+    /// purpose, and re-sorting it into the order the expansions were released
+    /// is a change nobody asked for.
+    ///
+    /// Reading the order back out of the list is a fixed point — once grouped,
+    /// first appearance IS block order — so it settles on the first frame and
+    /// never drifts afterwards.
+    ///
+    /// A dragged arrangement outranks both, because it is the one the conductor
+    /// actually asked for.
+    /// </summary>
+    private List<string> ExpansionDisplayOrder(IEnumerable<DetectedMark> marks)
+    {
+        var order = new List<string>();
+
+        if (!_config.SyncEnabled || !_config.SyncShareTrain)
+            foreach (var name in _config.ExpansionOrder)
+                if (!order.Contains(name)) order.Add(name);
+
+        foreach (var mark in marks)
+        {
+            var name = ExpansionData.ExpansionOf(mark.NameId, mark.ZoneName);
+            if (!order.Contains(name)) order.Add(name);
+        }
+
+        // And last, expansions with nothing in the train at all, so a block has
+        // somewhere to appear the moment its first mark is scouted.
+        foreach (var name in ExpansionData.Expansions)
+            if (!order.Contains(name)) order.Add(name);
+
+        if (!order.Contains(ExpansionData.NoExpansion))
+            order.Add(ExpansionData.NoExpansion);
+
+        return order;
+    }
+
+    /// <summary>
+    /// Puts one expansion where another currently sits, and records the whole
+    /// resulting arrangement.
+    ///
+    /// The full order is saved rather than only the pair that moved, because an
+    /// expansion with nothing in the train is not on screen to be dragged —
+    /// recording only the visible ones would let the rest drift about as marks
+    /// were scouted.
+    /// </summary>
+    private void MoveExpansion(string moving, string target, IEnumerable<DetectedMark> marks)
+    {
+        var order = ExpansionDisplayOrder(marks);
+        var from = order.IndexOf(moving);
+        var to = order.IndexOf(target);
+        if (from < 0 || to < 0 || from == to) return;
+
+        order.RemoveAt(from);
+        order.Insert(to, moving);
+
+        _config.ExpansionOrder = order;
+        _detector.ApplyOrder(_detector.Ordered()
+            .OrderBy(m => order.IndexOf(ExpansionData.ExpansionOf(m.NameId, m.ZoneName))).ToList());
+        _config.Save();
+    }
+
+    /// <summary>
+    /// The Spawned / Didn't Spawn pair for one watch.
+    ///
+    /// Shared by the Conductor tab and the train list rather than written out
+    /// twice, because the two are the same fact about the same object and
+    /// writing them separately is how they would come to disagree.
+    /// </summary>
+    private void DrawSpawnStatusBoxes(FlagEntry flag)
+    {
+        var spawned = flag.SpawnStatus == SpawnStatus.Spawned;
+        var notSpawned = flag.SpawnStatus == SpawnStatus.NotSpawned;
+
+        if (ImGui.Checkbox("Spawned", ref spawned))
+        {
+            flag.SpawnStatus = spawned ? SpawnStatus.Spawned : SpawnStatus.Unknown;
+            _config.Save();
+        }
+
+        ImGui.SameLine();
+        if (ImGui.Checkbox("Didn't Spawn", ref notSpawned))
+        {
+            flag.SpawnStatus = notSpawned ? SpawnStatus.NotSpawned : SpawnStatus.Unknown;
+            _config.Save();
+        }
+    }
+
+    /// <summary>
+    /// The Conductor tab's S-rank watches, repeated under the train.
+    ///
+    /// The same FlagEntry objects, not copies: a box ticked here is ticked
+    /// there, and either way it is the same answer that reaches the end-of-
+    /// train report.
+    ///
+    /// Adding and removing watches stays on the Conductor tab. This is the
+    /// during-the-train view, and the only question it has to answer is whether
+    /// the thing was up — an S rank gets checked in passing, between marks, and
+    /// walking back to a settings tab to record it is exactly when it gets
+    /// forgotten instead.
+    /// </summary>
+    private void DrawSRankWatchRows()
+    {
+        if (!_config.ShowSRankWatchesInTrainList) return;
+        if (_config.Flags.Count == 0) return;
+
+        ImGui.Spacing();
+        ImGui.Separator();
+        ImGui.PushStyleColor(ImGuiCol.Text, new Vector4(0.62f, 0.78f, 1f, 1f));
+        ImGui.TextUnformatted("S-rank watches");
+        ImGui.PopStyleColor();
+
+        for (var i = 0; i < _config.Flags.Count; i++)
+        {
+            var flag = _config.Flags[i];
+            ImGui.PushID($"srankwatch{i}");
+
+            // Boxes before the label, unlike the Conductor tab. Watch labels
+            // run to very different lengths — "Tyger" against "Narrow-rift —
+            // Spawn 3 (23.4, 33.1)" — and a label first would move the boxes
+            // for every row, in the one window being clicked at while running.
+            DrawSpawnStatusBoxes(flag);
+
+            ImGui.SameLine();
+            var colour = flag.SpawnStatus switch
+            {
+                SpawnStatus.Spawned => new Vector4(0.45f, 0.95f, 0.5f, 1f),
+                SpawnStatus.NotSpawned => new Vector4(0.55f, 0.55f, 0.55f, 1f),
+                _ => Vector4.One,
+            };
+            ImGui.PushStyleColor(ImGuiCol.Text, colour);
+            ImGui.TextUnformatted(flag.Label);
+            ImGui.PopStyleColor();
+
+            ImGui.PopID();
+        }
     }
 
     private void DrawTrainTab()
@@ -2420,18 +2995,11 @@ public sealed class Plugin : IDalamudPlugin
         ImGui.SameLine();
         if (ImGui.Button("Import"))
         {
-            var imported = TrainExchange.Import(_importCode);
-            if (imported == null)
-            {
-                _lastPostResult = "That import code couldn't be read.";
-            }
-            else
-            {
-                var added = _detector.Merge(imported);
-                _importCode = string.Empty;
-                _lastPostResult = $"Imported {imported.Count} marks ({added} new).";
-            }
+            var before = _detector.Marks.Count;
+            ImportTrainCode(_importCode, "the box");
+            if (_detector.Marks.Count != before) _importCode = string.Empty;
         }
+        ImGui.TextDisabled("Imports merge — a mark already in the train is never overwritten by one arriving in a code.");
 
         ImGui.Spacing();
         ImGui.Separator();
@@ -2900,18 +3468,30 @@ public sealed class Plugin : IDalamudPlugin
                 _config.Save();
             }
         }
-        ImGui.TextDisabled("Lakeland (Tyger), Ultima Thule (Narrow-rift), Elpis (Ophioneus). Only you see it.");
+        ImGui.TextDisabled("Lakeland (Tyger), Ultima Thule (Narrow-rift), Elpis (Ophioneus), Yak T'el (Neyoozoteel). Only you see it.");
+
+        ImGui.Spacing();
+        var watchesInList = _config.ShowSRankWatchesInTrainList;
+        if (ImGui.Checkbox("Show these watches on the train list", ref watchesInList))
+        {
+            _config.ShowSRankWatchesInTrainList = watchesInList;
+            _config.Save();
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip(
+                "Puts the Spawned / Didn't Spawn boxes under the train itself, so they can be\n"
+                + "ticked from the popout without coming back to this tab.");
 
         ImGui.Spacing();
 
-        foreach (var name in SimpleSRanks)
+        foreach (var (name, territoryId) in SimpleSRanks)
         {
             if (ImGui.Button($"Watch {name}"))
             {
                 _config.Flags.Add(new FlagEntry
                 {
                     Label = name,
-                    TerritoryId = name == "Tyger" ? 813u : 961u, // Lakeland / Elpis
+                    TerritoryId = territoryId,
                 });
                 _config.Save();
             }
@@ -2946,20 +3526,7 @@ public sealed class Plugin : IDalamudPlugin
 
             ImGui.TextWrapped(flag.Label);
 
-            var spawned = flag.SpawnStatus == SpawnStatus.Spawned;
-            var notSpawned = flag.SpawnStatus == SpawnStatus.NotSpawned;
-
-            if (ImGui.Checkbox("Spawned", ref spawned))
-            {
-                flag.SpawnStatus = spawned ? SpawnStatus.Spawned : SpawnStatus.Unknown;
-                _config.Save();
-            }
-            ImGui.SameLine();
-            if (ImGui.Checkbox("Didn't Spawn", ref notSpawned))
-            {
-                flag.SpawnStatus = notSpawned ? SpawnStatus.NotSpawned : SpawnStatus.Unknown;
-                _config.Save();
-            }
+            DrawSpawnStatusBoxes(flag);
             ImGui.SameLine();
             if (ImGui.Button("Remove"))
             {
@@ -3100,6 +3667,45 @@ public sealed class Plugin : IDalamudPlugin
         }
 
         var entries = TrainReport.BuildEntries(marks);
+
+        DrawReportEntries(entries.Where(e => !e.Sniped).ToList());
+
+        // Its own section, exactly as the posted report has it — this is the
+        // preview of that report, and a preview laid out differently from the
+        // thing it previews is worse than none.
+        var sniped = entries.Where(e => e.Sniped).ToList();
+        if (sniped.Count > 0)
+        {
+            ImGui.Spacing();
+            ImGui.Separator();
+            ImGui.Spacing();
+            ImGui.TextWrapped("Sniped (found gone — time is when the train got there)");
+            ImGui.Spacing();
+            DrawReportEntries(sniped);
+        }
+
+        var neverSeen = TrainReport.BuildSniped(marks);
+        if (neverSeen.Count > 0)
+        {
+            ImGui.Spacing();
+            ImGui.Separator();
+            ImGui.Spacing();
+            ImGui.TextWrapped("Assumed Sniped (not seen this train)");
+            foreach (var (expansion, names) in neverSeen)
+            {
+                ImGui.TextWrapped($"{expansion}: {string.Join(", ", names)}");
+            }
+        }
+    }
+
+    /// <summary>
+    /// One run of report entries, split into expansion blocks. Shared by the
+    /// killed and sniped sections for the same reason the posted report shares
+    /// its own: the only difference between the two should be which marks are
+    /// in them.
+    /// </summary>
+    private void DrawReportEntries(List<TrainReportEntry> entries)
+    {
         string? lastExpansion = null;
 
         foreach (var entry in entries)
@@ -3113,29 +3719,16 @@ public sealed class Plugin : IDalamudPlugin
 
             var localTime = entry.KillTimeUtc.ToLocalTime().ToString("g");
 
-            if (entry.Location == null || entry.MinHours == null || entry.MaxHours == null)
+            if (!entry.HasWindow)
             {
                 ImGui.TextWrapped($"{localTime} — {entry.Name} — no fixed respawn timer");
                 continue;
             }
 
-            var openLocal = entry.KillTimeUtc.AddHours(entry.MinHours.Value).ToLocalTime().ToString("t");
-            var capLocal = entry.KillTimeUtc.AddHours(entry.MaxHours.Value).ToLocalTime().ToString("t");
+            var openLocal = entry.WindowOpensUtc!.Value.ToLocalTime().ToString("t");
+            var capLocal = entry.WindowCapsUtc!.Value.ToLocalTime().ToString("t");
             var instanceGlyph = ExpansionData.InstanceGlyph(entry.Instance);
             ImGui.TextWrapped($"{localTime} — {entry.Location} — {entry.Name}{instanceGlyph} — window {openLocal} → {capLocal}");
-        }
-
-        var sniped = TrainReport.BuildSniped(marks);
-        if (sniped.Count > 0)
-        {
-            ImGui.Spacing();
-            ImGui.Separator();
-            ImGui.Spacing();
-            ImGui.TextWrapped("Assumed Sniped (not seen this train)");
-            foreach (var (expansion, names) in sniped)
-            {
-                ImGui.TextWrapped($"{expansion}: {string.Join(", ", names)}");
-            }
         }
     }
 
@@ -3424,6 +4017,14 @@ public sealed class Plugin : IDalamudPlugin
             ImGui.SameLine();
             ImGui.TextDisabled("Changes in this and previous versions, and who to thank.");
             ImGui.Spacing();
+
+            // Worth stating rather than leaving to the log. Whether the HH.*
+            // gates are answered here decides whether somebody's other plugin
+            // can see this train at all, and it is not otherwise visible.
+            ImGui.TextDisabled(_trainIpc.ClaimedHuntHelperGates
+                ? "IPC: other plugins can read this train through Hunt Helper's own gates."
+                : "IPC: Hunt Helper is installed and keeps its gates. Other plugins see its train, not this one.");
+            ImGui.Spacing();
         }
 
         if (ImGui.CollapsingHeader("Teleport"))
@@ -3592,6 +4193,8 @@ public sealed class Plugin : IDalamudPlugin
         HuntTally.Service.ClientState.Logout -= OnTallyLogout;
         HuntTally.Service.Framework.Update -= OnTallyFrameworkUpdate;
         _seeder.Dispose();
+
+        _trainIpc.Dispose();
 
         _pluginInterface.UiBuilder.OpenMainUi -= ToggleTallyWindow;
         _tallyWindows.RemoveAllWindows();
@@ -3772,6 +4375,9 @@ public sealed class Plugin : IDalamudPlugin
             if (_sync.LocalBackupCount > 0 && _config.SyncShareTrain
                 && ImGui.Button($"Upload saved local marks ({_sync.LocalBackupCount})"))
                 _sync.UploadLocalBackup();
+            if (_sync.LocalWatchBackupCount > 0 && _config.SyncShareTrain
+                && ImGui.Button($"Upload saved local watches ({_sync.LocalWatchBackupCount})"))
+                _sync.UploadWatchBackup();
             ImGui.TextDisabled("Joining uses the server train. Upload saved local marks explicitly if needed.");
             ImGui.SameLine();
             if (ImGui.SmallButton("Reconnect"))
