@@ -143,6 +143,41 @@ public static class DiscordRelay
     {
         var entries = TrainReport.BuildEntries(marks);
         var sb = new StringBuilder();
+
+        AppendEntries(sb, entries.Where(e => !e.Sniped).ToList());
+
+        // Marks found already gone get their own section rather than a note on
+        // an ordinary line. Their leading time is when the train arrived to
+        // find them missing, not a kill, and their window is wider because of
+        // it — mixed into the chronological list they read as kills, which is
+        // the confusion this whole thing exists to remove.
+        var sniped = entries.Where(e => e.Sniped).ToList();
+        if (sniped.Count > 0)
+        {
+            sb.Append("\n**Sniped** (found gone — time is when the train got there, window spans last seen alive to then)\n");
+            AppendEntries(sb, sniped);
+        }
+
+        var neverSeen = TrainReport.BuildSniped(marks);
+        if (neverSeen.Count > 0)
+        {
+            sb.Append("\n**Assumed Sniped** (not seen this train)\n");
+            sb.Append(string.Join("\n", neverSeen.Select(s => $"**{s.Expansion}**: {string.Join(", ", s.Marks)}")));
+            sb.Append('\n');
+        }
+
+        return sb.ToString();
+    }
+
+    /// <summary>
+    /// One run of entries, split into expansion blocks.
+    ///
+    /// Shared by the killed and sniped sections so the two are formatted by the
+    /// same code and cannot drift apart — the only difference between them
+    /// should be which marks are in them.
+    /// </summary>
+    private static void AppendEntries(StringBuilder sb, List<TrainReportEntry> entries)
+    {
         string? lastExpansion = null;
 
         foreach (var entry in entries)
@@ -156,32 +191,17 @@ public static class DiscordRelay
 
             var killUnix = new DateTimeOffset(entry.KillTimeUtc).ToUnixTimeSeconds();
 
-            // A sniped mark's time is when it was found gone, not when it died,
-            // and saying so is the whole point of recording it separately —
-            // otherwise the line reads as a kill time nobody witnessed.
-            var note = entry.Sniped ? " *(sniped — found gone)*" : string.Empty;
-
             if (!entry.HasWindow)
             {
-                sb.Append($"<t:{killUnix}:t> — {entry.Name} — no fixed respawn timer{note}\n");
+                sb.Append($"<t:{killUnix}:t> — {entry.Name} — no fixed respawn timer\n");
                 continue;
             }
 
             var openUnix = new DateTimeOffset(entry.WindowOpensUtc!.Value).ToUnixTimeSeconds();
             var capUnix = new DateTimeOffset(entry.WindowCapsUtc!.Value).ToUnixTimeSeconds();
             var instanceGlyph = ExpansionData.InstanceGlyph(entry.Instance);
-            sb.Append($"<t:{killUnix}:t> — {entry.Location} — {entry.Name}{instanceGlyph} — window <t:{openUnix}:t> → <t:{capUnix}:t>{note}\n");
+            sb.Append($"<t:{killUnix}:t> — {entry.Location} — {entry.Name}{instanceGlyph} — window <t:{openUnix}:t> → <t:{capUnix}:t>\n");
         }
-
-        var sniped = TrainReport.BuildSniped(marks);
-        if (sniped.Count > 0)
-        {
-            sb.Append("\n**Assumed Sniped** (not seen this train)\n");
-            sb.Append(string.Join("\n", sniped.Select(s => $"**{s.Expansion}**: {string.Join(", ", s.Marks)}")));
-            sb.Append('\n');
-        }
-
-        return sb.ToString();
     }
 
     /// <summary>
