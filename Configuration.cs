@@ -1,3 +1,4 @@
+using System.Linq;
 using Dalamud.Configuration;
 using Dalamud.Plugin;
 using Newtonsoft.Json;
@@ -657,6 +658,13 @@ public class Configuration : IPluginConfiguration
 
     /// <summary>Which expansion the S-rank window is filtered to; -1 for all.</summary>
     public int SRankWindowExpansion { get; set; } = -1;
+    public bool ARankWindowOpen { get; set; }
+    public bool ARankWindowCurrentWorld { get; set; } = true;
+    public List<uint> ARankWindowWorlds { get; set; } = new();
+    public List<string> ARankWindowExpansions { get; set; } = ExpansionData.ModelIdToMark.Values.Select(m => m.Expansion).Distinct().ToList();
+    public bool ARankWindowAvailableOnly { get; set; }
+    public string ARankWindowSearch { get; set; } = "";
+    public List<Sync.ARankKill> ARankKills { get; set; } = new();
     public bool SRankWindowCurrentWorld { get; set; } = true;
     public List<uint> SRankWindowWorlds { get; set; } = new();
     public List<string>? SRankWindowExpansions { get; set; }

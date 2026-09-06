@@ -123,8 +123,9 @@ public sealed class SRankWindow
             .ThenBy(r => r.Row.Timer.Name).ThenBy(r => _worldData.NameOf(r.World)).ToList();
         ImGui.TextDisabled($"{rows.Count} marks across {worlds.Count} selected worlds. Server feed: {string.Join(", ", _sync.Faloop.DataCenters)}");
 
+        ImGui.TextDisabled("Right-click a column header to choose which columns to show.");
         const ImGuiTableFlags flags = ImGuiTableFlags.RowBg | ImGuiTableFlags.BordersInnerH | ImGuiTableFlags.ScrollY
-                                      | ImGuiTableFlags.Resizable | ImGuiTableFlags.SizingStretchProp;
+                                      | ImGuiTableFlags.Resizable | ImGuiTableFlags.Hideable | ImGuiTableFlags.SizingStretchProp;
         if (!ImGui.BeginTable("sranks", 9, flags)) return;
 
         ImGui.TableSetupScrollFreeze(0, 1);

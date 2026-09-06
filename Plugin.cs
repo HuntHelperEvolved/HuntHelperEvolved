@@ -121,6 +121,7 @@ public sealed class Plugin : IDalamudPlugin
     // Sharing with a group through their own server. See Sync/.
     private readonly SyncCoordinator _sync;
     private readonly SRankWindow _srankWindow;
+    private readonly ARankWindow _arankWindow;
     private int _counterDcIndex;
     private int _counterWorldIndex;
 
@@ -370,6 +371,7 @@ public sealed class Plugin : IDalamudPlugin
         _sync.RemoteTrainCleared += OnRemoteTrainCleared;
         _sync.SRankSpawned += OnRemoteSRankSpawn;
         _srankWindow = new SRankWindow(_config, _sync, _worldData, _detector);
+        _arankWindow = new ARankWindow(_config, _sync, _worldData, _detector);
         // After the detector exists, since the gates read straight off it.
         _trainIpc = new TrainIpcProvider(_pluginInterface, _detector, _log);
 
@@ -422,6 +424,7 @@ public sealed class Plugin : IDalamudPlugin
         });
         _commandManager.AddHandler("/hhs", new CommandInfo(OnSRankCommand)
         { HelpMessage = "Open the S-rank board with world, expansion and availability filters." });
+        _commandManager.AddHandler("/hha", new CommandInfo((_, _) => _arankWindow.Toggle()) { HelpMessage = "Open the A-rank respawn window board." });
         RegisterHuntHelperAliases();
 
         _commandManager.AddHandler(TallyCommand, new CommandInfo(OnTallyCommand)
@@ -958,6 +961,7 @@ public sealed class Plugin : IDalamudPlugin
         DrawTrainPopout();
         DrawCounterPopout();
         _srankWindow.Draw();
+        _arankWindow.Draw();
         DrawReleaseNotesWindow();
         DrawMapControlBar();
 
@@ -4243,6 +4247,7 @@ public sealed class Plugin : IDalamudPlugin
         _commandManager.RemoveHandler(MapCommand);
         _commandManager.RemoveHandler(SRankCommand);
         _commandManager.RemoveHandler("/hhs");
+        _commandManager.RemoveHandler("/hha");
         _commandManager.RemoveHandler(TallyCommand);
 
         foreach (var alias in _claimedAliases)
@@ -4280,7 +4285,7 @@ public sealed class Plugin : IDalamudPlugin
         if (!allowed) { _lastCommunityAlert += " Excluded by DC filter."; return; }
         if (!_spawnAlertFilter.Accept(spawn, true, DateTime.UtcNow)) { _lastCommunityAlert += " Duplicate or invalid event time."; return; }
         _lastCommunityAlert += " Shown in chat.";
-        _chatGui.Print($"[Hunt Helper Evolved] S rank {(spawn.Event == "release" ? "released" : "reported spawned")}: {mark.Name} — {_worldData.NameOf(spawn.WorldId)} ({dc.Name}), {mark.Zone}{ExpansionData.InstanceGlyph(spawn.Instance)} [Faloop]");
+        _chatGui.Print($"[Hunt Helper Evolved] S rank {(spawn.Event == "release" ? "released" : "reported spawned")}: {mark.Name} — {_worldData.NameOf(spawn.WorldId)} ({dc.Name}), {mark.Zone}{ExpansionData.InstanceGlyph(spawn.Instance)} [{spawn.Source}]");
         if (_config.SyncSpawnSound)
         {
             try { FFXIVClientStructs.FFXIV.Client.UI.UIGlobals.PlayChatSoundEffect(6); }
@@ -4414,7 +4419,7 @@ public sealed class Plugin : IDalamudPlugin
         if (ImGui.CollapsingHeader("Community S-rank spawn alerts", ImGuiTreeNodeFlags.DefaultOpen))
         {
             var alerts = _config.SyncSpawnAlerts;
-            if (ImGui.Checkbox("Chat alerts for S-rank spawns and releases", ref alerts)) { _config.SyncSpawnAlerts = alerts; _config.Save(); }
+            if (ImGui.Checkbox("Chat alerts for group S sightings and Faloop spawns/releases", ref alerts)) { _config.SyncSpawnAlerts = alerts; _config.Save(); }
             var sound = _config.SyncSpawnSound;
             if (ImGui.Checkbox("Play an alert sound", ref sound)) { _config.SyncSpawnSound = sound; _config.Save(); }
             var currentDc = _config.SyncSpawnCurrentDc;
@@ -4429,7 +4434,7 @@ public sealed class Plugin : IDalamudPlugin
                         _config.Save();
                     }
                 }
-            ImGui.TextWrapped("Alerts arrive when Faloop publicly reports a spawn or releases it. Your server must follow the selected data centres. Historical snapshots do not trigger alerts.");
+            ImGui.TextWrapped("Alerts arrive for the first group S-rank sighting and for public Faloop spawns/releases. Your server must follow the selected data centres. Historical snapshots do not trigger alerts.");
             ImGui.TextWrapped("Server coverage: " + string.Join(", ", _sync.Faloop.DataCenters));
             ImGui.TextWrapped(_lastCommunityAlert);
             ImGui.TextDisabled($"Last server feed message: {_sync.Faloop.LastLiveMessageAt?.ToLocalTime().ToString("HH:mm:ss") ?? "none"}; last broadcast alert: {_sync.Faloop.LastAlertAt?.ToLocalTime().ToString("HH:mm:ss") ?? "none"}");
