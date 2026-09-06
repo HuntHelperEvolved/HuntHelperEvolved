@@ -764,6 +764,7 @@ public sealed class Plugin : IDalamudPlugin
                 Dead = d.Dead,
                 LastSeenUtc = d.LastSeenUtc,
                 DeathObservedAtUtc = d.DeathObservedAtUtc,
+                SnipedAtUtc = d.SnipedAtUtc,
             }).ToList();
         }
 
@@ -772,6 +773,22 @@ public sealed class Plugin : IDalamudPlugin
 
         var now = DateTime.UtcNow;
         var tracked = _watcher.GetTrackedSnapshot();
+
+        // Sniped is recorded on our own rows, because that is the list with the
+        // button on it — but the report may well be built from Hunt Helper's,
+        // which is still the default. Carrying it across is what stops the fix
+        // depending on a setting the conductor never turned on.
+        //
+        // Keyed without the world, because Hunt Helper's list has no world in
+        // it to match against. First one wins: the same mark up on two worlds
+        // is two rows here and one there, and there is nothing in the Hunt
+        // Helper record that could tell them apart.
+        var snipedTimes = new Dictionary<(uint, uint), DateTime?>();
+        foreach (var d in _detector.Ordered())
+        {
+            if (d.SnipedAtUtc == null) continue;
+            snipedTimes.TryAdd((d.NameId, d.Instance), d.SnipedAtUtc);
+        }
 
         var marks = list.Select(m => new TrackedMark
         {
@@ -783,13 +800,29 @@ public sealed class Plugin : IDalamudPlugin
             DeathObservedAtUtc = m.Dead
                 ? (tracked.TryGetValue((m.MobID, m.Instance), out var t) ? t.DeathObservedAtUtc : null) ?? now
                 : null,
+            SnipedAtUtc = snipedTimes.GetValueOrDefault((m.MobID, m.Instance)),
         }).ToList();
 
         var seenKeys = marks.Select(m => (m.ModelId, m.Instance)).ToHashSet();
         foreach (var (key, trackedMark) in tracked)
         {
-            if (!seenKeys.Contains(key))
-                marks.Add(trackedMark);
+            if (seenKeys.Contains(key)) continue;
+
+            // A copy, not the watcher's own object. GetTrackedSnapshot copies
+            // the dictionary but not the marks in it, and this runs every frame
+            // the Marks Slain preview is open — writing a sniped time back into
+            // live tracking state would make merely looking at the report
+            // change it.
+            marks.Add(new TrackedMark
+            {
+                Name = trackedMark.Name,
+                ModelId = trackedMark.ModelId,
+                Instance = trackedMark.Instance,
+                Dead = trackedMark.Dead,
+                LastSeenUtc = trackedMark.LastSeenUtc,
+                DeathObservedAtUtc = trackedMark.DeathObservedAtUtc,
+                SnipedAtUtc = trackedMark.SnipedAtUtc ?? snipedTimes.GetValueOrDefault(key),
+            });
         }
 
         return marks;
@@ -2322,9 +2355,59 @@ public sealed class Plugin : IDalamudPlugin
                 mark.Dead = dead;
                 mark.DeathObservedAtUtc = dead ? DateTime.UtcNow : null;
 
+                // Un-ticking dead undoes a sniped mark too. Otherwise the row
+                // would say the mark is alive while the report went on giving
+                // it a respawn window.
+                if (!dead) mark.SnipedAtUtc = null;
+
                 // Keep the map honest: a mark ticked dead shouldn't stay lit.
                 if (dead) _detector.RemoveSighting(mark.NameId, mark.Instance, mark.WorldId);
             }
+            ImGui.SetItemAllowOverlap();
+
+            // Sniped: already gone when the train arrived.
+            //
+            // Deliberately not the same button as the tick beside it. That one
+            // means "it died just now", and clicking it for a mark somebody
+            // else killed hours ago is what put a kill time — and therefore a
+            // respawn window — in the report that nobody had witnessed. This
+            // one records only when the mark was found missing, which is all
+            // that is actually known.
+            ImGui.SameLine();
+            ImGui.SetCursorPosX(buttonColumnX + (_config.ShowSpicing ? 132 : 100));
+
+            // Read before drawing, for the same reason the spicing button does:
+            // the click flips it mid-row, and a push that went unmatched by its
+            // pop is an ImGui style stack imbalance, which crashes natively.
+            var wasSniped = mark.SnipedAtUtc != null;
+            if (wasSniped) ImGui.PushStyleColor(ImGuiCol.Text, new Vector4(1f, 0.75f, 0.3f, 1f));
+
+            if (ImGuiComponents.IconButton(FontAwesomeIcon.Crosshairs))
+            {
+                if (mark.SnipedAtUtc != null)
+                {
+                    mark.SnipedAtUtc = null;
+                }
+                else
+                {
+                    // It is dead — but nobody here saw it die, so no observed
+                    // death time is recorded. Last seen alive and found-gone
+                    // are the two ends of the window, and the report works it
+                    // out from those.
+                    mark.SnipedAtUtc = DateTime.UtcNow;
+                    mark.DeathObservedAtUtc = null;
+                    mark.Dead = true;
+                    _detector.RemoveSighting(mark.NameId, mark.Instance, mark.WorldId);
+                }
+            }
+
+            if (wasSniped) ImGui.PopStyleColor();
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip(wasSniped
+                    ? $"Sniped — found gone at {mark.SnipedAtUtc!.Value.ToLocalTime():t}. Click to unset.\n"
+                      + "The report gives a window running from when it was last seen alive."
+                    : "Sniped — the mark was already gone when the train got here.\n"
+                      + "Records a spawn window from last seen alive, rather than a kill time nobody saw.");
             ImGui.SetItemAllowOverlap();
 
             ImGui.Separator();
@@ -3225,6 +3308,45 @@ public sealed class Plugin : IDalamudPlugin
         }
 
         var entries = TrainReport.BuildEntries(marks);
+
+        DrawReportEntries(entries.Where(e => !e.Sniped).ToList());
+
+        // Its own section, exactly as the posted report has it — this is the
+        // preview of that report, and a preview laid out differently from the
+        // thing it previews is worse than none.
+        var sniped = entries.Where(e => e.Sniped).ToList();
+        if (sniped.Count > 0)
+        {
+            ImGui.Spacing();
+            ImGui.Separator();
+            ImGui.Spacing();
+            ImGui.TextWrapped("Sniped (found gone — time is when the train got there)");
+            ImGui.Spacing();
+            DrawReportEntries(sniped);
+        }
+
+        var neverSeen = TrainReport.BuildSniped(marks);
+        if (neverSeen.Count > 0)
+        {
+            ImGui.Spacing();
+            ImGui.Separator();
+            ImGui.Spacing();
+            ImGui.TextWrapped("Assumed Sniped (not seen this train)");
+            foreach (var (expansion, names) in neverSeen)
+            {
+                ImGui.TextWrapped($"{expansion}: {string.Join(", ", names)}");
+            }
+        }
+    }
+
+    /// <summary>
+    /// One run of report entries, split into expansion blocks. Shared by the
+    /// killed and sniped sections for the same reason the posted report shares
+    /// its own: the only difference between the two should be which marks are
+    /// in them.
+    /// </summary>
+    private void DrawReportEntries(List<TrainReportEntry> entries)
+    {
         string? lastExpansion = null;
 
         foreach (var entry in entries)
@@ -3238,29 +3360,16 @@ public sealed class Plugin : IDalamudPlugin
 
             var localTime = entry.KillTimeUtc.ToLocalTime().ToString("g");
 
-            if (entry.Location == null || entry.MinHours == null || entry.MaxHours == null)
+            if (!entry.HasWindow)
             {
                 ImGui.TextWrapped($"{localTime} — {entry.Name} — no fixed respawn timer");
                 continue;
             }
 
-            var openLocal = entry.KillTimeUtc.AddHours(entry.MinHours.Value).ToLocalTime().ToString("t");
-            var capLocal = entry.KillTimeUtc.AddHours(entry.MaxHours.Value).ToLocalTime().ToString("t");
+            var openLocal = entry.WindowOpensUtc!.Value.ToLocalTime().ToString("t");
+            var capLocal = entry.WindowCapsUtc!.Value.ToLocalTime().ToString("t");
             var instanceGlyph = ExpansionData.InstanceGlyph(entry.Instance);
             ImGui.TextWrapped($"{localTime} — {entry.Location} — {entry.Name}{instanceGlyph} — window {openLocal} → {capLocal}");
-        }
-
-        var sniped = TrainReport.BuildSniped(marks);
-        if (sniped.Count > 0)
-        {
-            ImGui.Spacing();
-            ImGui.Separator();
-            ImGui.Spacing();
-            ImGui.TextWrapped("Assumed Sniped (not seen this train)");
-            foreach (var (expansion, names) in sniped)
-            {
-                ImGui.TextWrapped($"{expansion}: {string.Join(", ", names)}");
-            }
         }
     }
 
