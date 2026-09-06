@@ -281,16 +281,22 @@ public sealed unsafe class HuntMapOverlay : IDisposable
             };
             if (!wanted) continue;
 
-            // Minions come through as S ranks, so without this a live one would
-            // be an ordinary green dot and read as the S itself.
-            var dot = SsEventWatcher.IsMinion(sighting.NameId)
-                ? "ssminion"
-                : sighting.Rank switch
-                {
-                    HuntRank.S => "s",
-                    HuntRank.A => "a",
-                    _ => "b",
-                };
+            // A live minion is drawn as the S rank it is, in the ordinary live
+            // mark colour, rather than in the SS event's own orange.
+            //
+            // Giving it the orange was meant to say "this belongs to the event"
+            // and instead made it invisible: its spot marker is drawn at the
+            // same coordinates in that same orange, so the two merged into one
+            // orange dot and a minion that was up looked exactly like a spot
+            // still waiting. Size alone could not separate them. The colour
+            // can, and the spot underneath still says which event it belongs
+            // to.
+            var dot = sighting.Rank switch
+            {
+                HuntRank.S => "s",
+                HuntRank.A => "a",
+                _ => "b",
+            };
 
             var world = MapCoordinates.ToWorld(
                 _dataManager, mapId, sighting.MapPosition.X, sighting.MapPosition.Y);
@@ -1033,8 +1039,12 @@ public sealed unsafe class HuntMapOverlay : IDisposable
                 placed++;
             }
 
-            var pins = DrawSsEventPins(territory, mapId, dots);
+            // Marks go down before the event's spots, not after. Markers
+            // attached earlier are the ones drawn over the top, which is why a
+            // minion added last was ending up underneath the very spot it was
+            // supposed to be standing on.
             var marks = _config.ShowMarksOnMap ? DrawLiveMarks(mapId, dots, live) : 0;
+            var pins = DrawSsEventPins(territory, mapId, dots);
 
             Status = (_config.ShowSpawnPointsOnMap
                          ? $"{placed} spawn points shown."
