@@ -21,9 +21,10 @@ public sealed class SRankZoneReminder : IDisposable
 {
     private static readonly Dictionary<uint, string> ZoneToSRank = new()
     {
-        [813] = "Tyger",        // Lakeland
-        [960] = "Narrow-rift",  // Ultima Thule
-        [961] = "Ophioneus",    // Elpis
+        [813] = "Tyger",         // Lakeland
+        [960] = "Narrow-rift",   // Ultima Thule
+        [961] = "Ophioneus",     // Elpis
+        [1189] = "Neyoozoteel",  // Yak T'el
     };
 
     // Don't re-fire for the same zone within this window — instance switches and
