@@ -646,6 +646,7 @@ public class Configuration : IPluginConfiguration
     public bool ShowSRankCandidatesOnMap { get; set; } = true;
 
     /// <summary>A point the S may still spawn on. Gold, so it reads as the prize it is.</summary>
+    public int SpawnCandidateOutlineWidth { get; set; } = 6;
     public Vector4 SpawnDotColourSCandidate { get; set; } = new(1f, 0.84f, 0.1f, 1f);
 
     /// <summary>A point ruled out for the S. Dim, and translucent so the map shows through.</summary>

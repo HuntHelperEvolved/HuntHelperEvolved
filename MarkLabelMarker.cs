@@ -46,7 +46,7 @@ public sealed class MarkLabelMarker : MapMarkerNode
     ///
     /// Returning null or empty hides the label without removing it.
     /// </summary>
-    public Func<string?>? TextProvider { get; init; }
+    public Func<string?>? TextProvider { get; set; }
 
     public MarkLabelMarker(Vector4 colour, Vector4 outlineColour, float fontSize, float width, float verticalOffset)
     {
