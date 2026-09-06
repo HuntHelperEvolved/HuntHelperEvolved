@@ -14,7 +14,7 @@ namespace HuntHelperEvolved.Sync;
 /// </summary>
 public static class SyncProtocol
 {
-    public const int Version = 1;
+    public const int Version = 2;
 
     public static readonly JsonSerializerSettings Json = new()
     {
@@ -263,6 +263,7 @@ public sealed class WelcomeMessage
 {
     public int Protocol { get; set; }
     public string ServerVersion { get; set; } = string.Empty;
+    public string ServerName { get; set; } = string.Empty;
     public string ClientId { get; set; } = string.Empty;
     public DateTime ServerTime { get; set; }
     public List<SyncMark> Marks { get; set; } = new();

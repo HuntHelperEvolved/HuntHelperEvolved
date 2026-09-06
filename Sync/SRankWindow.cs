@@ -117,7 +117,7 @@ public sealed class SRankWindow
         ImGui.TableSetupColumn("Zone", ImGuiTableColumnFlags.WidthStretch, 1.6f);
         ImGui.TableSetupColumn("Status", ImGuiTableColumnFlags.WidthStretch, 1.4f);
         ImGui.TableSetupColumn("Opens", ImGuiTableColumnFlags.WidthStretch, 0.9f);
-        ImGui.TableSetupColumn("Forced", ImGuiTableColumnFlags.WidthStretch, 0.9f);
+        ImGui.TableSetupColumn("Ready by", ImGuiTableColumnFlags.WidthStretch, 0.9f);
         ImGui.TableSetupColumn("Killed", ImGuiTableColumnFlags.WidthStretch, 1.5f);
         ImGui.TableSetupColumn("Points", ImGuiTableColumnFlags.WidthStretch, 0.7f);
         ImGui.TableSetupColumn("Record", ImGuiTableColumnFlags.WidthStretch, 1.6f);
@@ -228,6 +228,9 @@ public sealed class SRankWindow
                 .Select(k => k.Instance)
                 .OrderBy(i => i)
                 .ToList();
+            if (worldId == _detector.CurrentWorldId() && timer.TerritoryId == _detector.CurrentTerritoryId
+                && !instances.Contains(MarkDetector.GetCurrentInstance()))
+                instances.Add(MarkDetector.GetCurrentInstance());
             if (instances.Count == 0) instances.Add(0);
 
             foreach (var instance in instances)
@@ -310,9 +313,9 @@ public sealed class SRankWindow
             }
 
             case SRankPhase.Forced:
-                ImGui.TextColored(ForcedColour, "FORCED");
+                ImGui.TextColored(ForcedColour, "READY");
                 if (ImGui.IsItemHovered())
-                    ImGui.SetTooltip("Past the end of its window. It must be up, or the kill was never recorded.");
+                    ImGui.SetTooltip("The respawn timer is ready. The mark still needs its spawn conditions to be met.");
                 break;
 
             case SRankPhase.Window:
@@ -320,7 +323,7 @@ public sealed class SRankWindow
                 ImGui.ProgressBar((float)(w.Percent / 100.0), new Vector2(-1, ImGui.GetTextLineHeight()), $"{w.Percent:F0}%");
                 ImGui.PopStyleColor();
                 if (ImGui.IsItemHovered())
-                    ImGui.SetTooltip("How far through its window it is — the chance it has spawned by now, if spawns are even across the window.");
+                    ImGui.SetTooltip("Elapsed portion of the respawn window. Spawn conditions must still be met; this is not a confirmed spawn probability.");
                 break;
 
             case SRankPhase.Cooldown:

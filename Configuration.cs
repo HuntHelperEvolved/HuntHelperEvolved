@@ -127,6 +127,17 @@ public class Configuration : IPluginConfiguration
     public bool AutoMarkDeadEnabled { get; set; } = true;
 
     /// <summary>
+    /// Mark a train row dead when the battle log says the mark died, whoever
+    /// killed it.
+    ///
+    /// AutoMarkDeadEnabled above only covers kills YOU were credited with,
+    /// because that is all the tally can see. A mark the group brought down
+    /// while you were running in, or that another train took, stayed lit as
+    /// though it were still up — and the train report is built from this list.
+    /// </summary>
+    public bool MarkDeadOnObservedDefeat { get; set; } = true;
+
+    /// <summary>
     /// Print a local chat reminder on entering Lakeland (Tyger), Ultima Thule
     /// (Narrow-rift) or Elpis (Ophioneus).
     /// </summary>
@@ -144,6 +155,23 @@ public class Configuration : IPluginConfiguration
     /// Tally. For detours into zones whose A-ranks shouldn't join the train.
     /// </summary>
     public bool ScanningPaused { get; set; } = false;
+
+    /// <summary>
+    /// The last version whose notes were shown. Compared against the running
+    /// build to decide whether What's new is worth opening on its own.
+    ///
+    /// Empty on a fresh install, which counts as "not seen" and shows the notes
+    /// once — a reasonable introduction to a plugin you have just added.
+    /// </summary>
+    public string LastSeenReleaseVersion { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Open What's new by itself the first time a new version runs. On because
+    /// this is a testing build and knowing what changed is the difference
+    /// between testing it and stumbling into it; the tab is always there under
+    /// /htr whether or not this is set.
+    /// </summary>
+    public bool ShowReleaseNotesOnUpdate { get; set; } = true;
 
     /// <summary>Echo a mark to chat when its row is clicked in the train list.</summary>
     public bool EchoOnMarkClick { get; set; } = true;
@@ -266,6 +294,33 @@ public class Configuration : IPluginConfiguration
     public bool ShowBRankPoints { get; set; } = false;
     public bool ShowSRankPoints { get; set; } = true;
 
+    /// <summary>
+    /// Which ranks of live MARK to draw, which is a separate question from
+    /// which spawn points to draw.
+    ///
+    /// They used to share one set of switches, from when a mark was drawn by
+    /// lighting up the point it stood on — one dot, so one filter. Marks are
+    /// drawn in their own right now, and the two wants pull apart: a zone's
+    /// B-rank points are sixty grey dots nobody needs, while a B rank actually
+    /// being up is worth seeing. Turning the points off was taking the marks
+    /// with them.
+    ///
+    /// All three default on. A mark that is up is a handful of dots at most and
+    /// is the thing the map is for; the points are the clutter, which is why B
+    /// is off up there and on down here.
+    /// </summary>
+    public bool ShowARankMarks { get; set; } = true;
+    public bool ShowBRankMarks { get; set; } = true;
+    public bool ShowSRankMarks { get; set; } = true;
+
+    /// <summary>
+    /// Draw live marks at all. The companion to ShowSpawnPointsOnMap, and
+    /// separate from it for the same reason the rank switches are: the points
+    /// are a map of where things COULD be, the marks are what IS there, and
+    /// wanting one without the other is entirely reasonable.
+    /// </summary>
+    public bool ShowMarksOnMap { get; set; } = true;
+
     /// <summary>Dot size in pixels. KamiToolKit's default marker is 32x32.</summary>
     public float SpawnDotSize { get; set; } = 16f;
 
@@ -288,6 +343,16 @@ public class Configuration : IPluginConfiguration
 
     /// <summary>Colour when an S rank is sitting on the point.</summary>
     public Vector4 SpawnDotColourS { get; set; } = new(0f, 0.827f, 0f, 1f);
+
+    /// <summary>
+    /// Click a spawn point on the map to drop the flag on it.
+    ///
+    /// For pointing people at a spot before anything is on it — "go and look
+    /// here" — which is why it is the points that are clickable rather than the
+    /// marks. A mark that is up is already visible on the map and can be
+    /// flagged from the train list.
+    /// </summary>
+    public bool ClickSpawnPointToFlag { get; set; } = true;
 
     /// <summary>
     /// Write each live mark's name and remaining health on the map beside its
@@ -425,10 +490,8 @@ public class Configuration : IPluginConfiguration
 
     /// <summary>True when anything at all wants drawing on the map.</summary>
     public bool AnyMapOverlayEnabled =>
-        ShowSpawnPointsOnMap || ShowSsEventOnMap || AnyPlayerGuideEnabled;
+        ShowSpawnPointsOnMap || ShowMarksOnMap || ShowSsEventOnMap || AnyPlayerGuideEnabled;
 
-    /// <summary>How close (in map units) a mark must be to count as "at" a spawn point.</summary>
-    public float SpawnPointMatchRadius { get; set; } = 2.5f;
 
     /// <summary>
     /// Count only kills you personally landed ("You defeat the X") rather than
@@ -510,11 +573,14 @@ public class Configuration : IPluginConfiguration
     /// </summary>
     public string SyncPassword { get; set; } = string.Empty;
 
-    /// <summary>What the others see you as. Empty means your character's name.</summary>
+    /// <summary>What the others see you as. Empty means Anonymous.</summary>
     public string SyncDisplayName { get; set; } = string.Empty;
 
     /// <summary>Share the train: what has been scouted, in what order, and what is dead.</summary>
     public bool SyncShareTrain { get; set; } = true;
+
+    /// <summary>Local-only recovery copy; uploaded only by an explicit user action.</summary>
+    public List<Sync.SyncMark> SyncLocalTrainBackup { get; set; } = new();
 
     /// <summary>Share what you can see: each mark's position and health while it is in range.</summary>
     public bool SyncShareSightings { get; set; } = true;

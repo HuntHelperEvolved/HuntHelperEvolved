@@ -99,6 +99,7 @@ public class OtherRankSighting
     /// before walking to it.
     /// </summary>
     public float HealthPercent = 100f;
+    public int? SpawnPointIndex;
 
     /// <summary>Zone name, resolved once at first sighting.</summary>
     public string ZoneName = string.Empty;
@@ -136,6 +137,13 @@ public sealed class MarkDetector
     private readonly Dictionary<(uint NameId, uint Instance, uint WorldId), OtherRankSighting> _otherRanks = new();
 
     /// <summary>
+    /// Where the last scan ran. A change means a different set of marks is
+    /// live, even when the territory alone has not moved — stepping between
+    /// instances, or visiting another world.
+    /// </summary>
+    private (uint TerritoryId, uint Instance, uint WorldId) _lastScannedScope;
+
+    /// <summary>
     /// Every mark seen, of every rank. Independent of the train, and populated
     /// whether or not recording is active.
     /// </summary>
@@ -152,8 +160,16 @@ public sealed class MarkDetector
 
     /// <summary>Raised at the end of every scan pass, once the sightings are current.</summary>
     public event System.Action? Scanned;
+    public event Action<OtherRankSighting, DateTime>? SightingObservedDead;
+    /// <summary>
+    /// Raised when a mark in the train is seen at zero health, whoever killed
+    /// it. The row is already flagged dead by the time this fires; it exists so
+    /// the Hunt Helper-derived list can be kept in step.
+    /// </summary>
+    public event Action<DetectedMark>? MarkObservedDead;
 
     public IReadOnlyDictionary<(uint NameId, uint Instance, uint WorldId), DetectedMark> Marks => _marks;
+    public uint CurrentTerritoryId => _clientState.TerritoryType;
 
     public MarkDetector(IObjectTable objectTable, IClientState clientState, IDataManager dataManager, Configuration config)
     {
@@ -257,7 +273,20 @@ public sealed class MarkDetector
         // A mark we have stopped seeing is no longer there to show. One scan
         // interval plus a little slack: any shorter and a mark simply missed by
         // one pass would be wrongly dropped.
-        var stale = Math.Max(2, _config.PollIntervalSeconds) + 1;
+        //
+        // Arriving somewhere new is the exception, and it gets no slack at all.
+        // Sightings are only ever expired for the scope being stood in, so
+        // another instance's — or another world's — sit there untouched however
+        // long you are away. Walking back in and keeping them for a few seconds
+        // would put marks on the map that may well be dead by now, on the
+        // strength of having seen them last time. Everything remembered here is
+        // dropped instead, and the sweep below immediately re-adds whatever is
+        // actually present.
+        var scope = (territoryId, instance, worldId);
+        var arrived = scope != _lastScannedScope;
+        _lastScannedScope = scope;
+
+        var stale = arrived ? 0 : Math.Max(2, _config.PollIntervalSeconds) + 1;
         ExpireStaleSightings(territoryId, instance, worldId, stale);
 
         foreach (var obj in _objectTable)
@@ -282,6 +311,18 @@ public sealed class MarkDetector
             {
                 existing.LastSeenUtc = now;
                 existing.MapPosition = MapCoordinates.FromWorld(_dataManager, mapId, mob.Position.X, mob.Position.Z);
+
+                // Zero health is the death itself, seen rather than inferred,
+                // and it carries as far as the object table does. The battle
+                // log only reaches as far as the fight, so a mark killed across
+                // the zone never produced a line and stayed lit.
+                if (IsDead(mob) && !existing.Dead && _config.MarkDeadOnObservedDefeat)
+                {
+                    existing.Dead = true;
+                    existing.DeathObservedAtUtc = now;
+                    MarkObservedDead?.Invoke(existing);
+                }
+
                 continue;
             }
 
@@ -364,6 +405,18 @@ public sealed class MarkDetector
         }
 
         var key = (mob.NameId, instance, worldId);
+
+        // A corpse is not a mark that is up. Drop it rather than leaving a dot
+        // on the map over something already dead, and do not re-add it as the
+        // body lingers.
+        if (IsDead(mob))
+        {
+            if (_otherRanks.TryGetValue(key, out var dying))
+                SightingObservedDead?.Invoke(dying, now);
+            _otherRanks.Remove(key);
+            return;
+        }
+
         if (_otherRanks.TryGetValue(key, out var existing))
         {
             existing.LastSeenUtc = now;
@@ -385,6 +438,9 @@ public sealed class MarkDetector
             MapPosition = MapCoordinates.FromWorld(_dataManager, mapId, mob.Position.X, mob.Position.Z),
             LastSeenUtc = now,
             HealthPercent = HealthPercentOf(mob),
+            SpawnPointIndex = !mob.StatusFlags.HasFlag(Dalamud.Game.ClientState.Objects.Enums.StatusFlags.InCombat)
+                && mob.MaxHp > 0 && mob.CurrentHp == mob.MaxHp
+                ? MatchSpawnPoint(territoryId, MapCoordinates.FromWorld(_dataManager, mapId, mob.Position.X, mob.Position.Z), rank) : null,
             ZoneName = GetZoneName(territoryId),
         };
 
@@ -399,11 +455,38 @@ public sealed class MarkDetector
     /// which would divide to infinity; an unknown mark is reported as untouched
     /// rather than as a mark on the point of dying.
     /// </summary>
+    private static int? MatchSpawnPoint(uint territory, Vector2 position, HuntRank rank)
+    {
+        var points = SpawnPointData.For(territory);
+        var wanted = rank == HuntRank.S ? SpawnRanks.S : rank == HuntRank.A ? SpawnRanks.A : SpawnRanks.B;
+        int? best = null;
+        var distance = 0.5f;
+        for (var i = 0; i < points.Length; i++)
+        {
+            if (!points[i].Ranks.HasFlag(wanted)) continue;
+            var d = Vector2.Distance(position, new Vector2(points[i].X, points[i].Y));
+            if (d >= distance) continue;
+            best = i;
+            distance = d;
+        }
+        return best;
+    }
+
     private static float HealthPercentOf(Dalamud.Game.ClientState.Objects.Types.IBattleNpc mob)
     {
         if (mob.MaxHp == 0) return 100f;
         return Math.Clamp(mob.CurrentHp / (float)mob.MaxHp * 100f, 0f, 100f);
     }
+
+    /// <summary>
+    /// Whether the game is reporting this mob as dead.
+    ///
+    /// MaxHp is checked as well as CurrentHp on purpose. An object the game has
+    /// not finished filling in reads zero for both, and calling that dead would
+    /// tick a mark off the train the moment it came into range.
+    /// </summary>
+    private static bool IsDead(Dalamud.Game.ClientState.Objects.Types.IBattleNpc mob) =>
+        mob.MaxHp > 0 && mob.CurrentHp == 0;
 
     /// <summary>Clears all sightings.</summary>
     public void ClearOtherRanks() => _otherRanks.Clear();

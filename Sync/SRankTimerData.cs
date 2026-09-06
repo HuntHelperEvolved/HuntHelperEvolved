@@ -157,7 +157,6 @@ public static class SRankTimerData
         var since = nowUtc - killed;
 
         var up = seenUpNow
-                 || (status.SpawnedAt is { } spawned && spawned > killed)
                  || (status.LastSeenUpAt is { } seen && seen > killed && nowUtc - seen < TimeSpan.FromMinutes(3));
 
         double percent;

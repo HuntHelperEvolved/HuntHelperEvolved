@@ -17,16 +17,25 @@ namespace HuntHelperEvolved;
 /// </summary>
 public static class MapFlagHelper
 {
-    public static bool FlagMark(IGameGui gameGui, DetectedMark mark)
+    public static bool FlagMark(IGameGui gameGui, DetectedMark mark) =>
+        FlagPosition(gameGui, mark.TerritoryId, mark.MapId, mark.Instance,
+                     mark.MapPosition.X, mark.MapPosition.Y);
+
+    /// <summary>
+    /// Drops the flag on a bare position, for callers holding coordinates
+    /// rather than a train row — a sighting on the map, say.
+    /// </summary>
+    public static bool FlagPosition(
+        IGameGui gameGui, uint territoryId, uint mapId, uint instance, float mapX, float mapY)
     {
-        if (mark.MapId == 0 || mark.TerritoryId == 0) return false;
+        if (mapId == 0 || territoryId == 0) return false;
 
         var seString = SeString.CreateMapLinkWithInstance(
-            mark.TerritoryId,
-            mark.MapId,
-            mark.Instance == 0 ? null : (int)mark.Instance,
-            mark.MapPosition.X,
-            mark.MapPosition.Y);
+            territoryId,
+            mapId,
+            instance == 0 ? null : (int)instance,
+            mapX,
+            mapY);
 
         var mapLink = seString.Payloads.OfType<MapLinkPayload>().FirstOrDefault();
         if (mapLink == null) return false;
