@@ -156,16 +156,21 @@ public static class DiscordRelay
 
             var killUnix = new DateTimeOffset(entry.KillTimeUtc).ToUnixTimeSeconds();
 
-            if (entry.Location == null || entry.MinHours == null || entry.MaxHours == null)
+            // A sniped mark's time is when it was found gone, not when it died,
+            // and saying so is the whole point of recording it separately —
+            // otherwise the line reads as a kill time nobody witnessed.
+            var note = entry.Sniped ? " *(sniped — found gone)*" : string.Empty;
+
+            if (!entry.HasWindow)
             {
-                sb.Append($"<t:{killUnix}:t> — {entry.Name} — no fixed respawn timer\n");
+                sb.Append($"<t:{killUnix}:t> — {entry.Name} — no fixed respawn timer{note}\n");
                 continue;
             }
 
-            var openUnix = new DateTimeOffset(entry.KillTimeUtc.AddHours(entry.MinHours.Value)).ToUnixTimeSeconds();
-            var capUnix = new DateTimeOffset(entry.KillTimeUtc.AddHours(entry.MaxHours.Value)).ToUnixTimeSeconds();
+            var openUnix = new DateTimeOffset(entry.WindowOpensUtc!.Value).ToUnixTimeSeconds();
+            var capUnix = new DateTimeOffset(entry.WindowCapsUtc!.Value).ToUnixTimeSeconds();
             var instanceGlyph = ExpansionData.InstanceGlyph(entry.Instance);
-            sb.Append($"<t:{killUnix}:t> — {entry.Location} — {entry.Name}{instanceGlyph} — window <t:{openUnix}:t> → <t:{capUnix}:t>\n");
+            sb.Append($"<t:{killUnix}:t> — {entry.Location} — {entry.Name}{instanceGlyph} — window <t:{openUnix}:t> → <t:{capUnix}:t>{note}\n");
         }
 
         var sniped = TrainReport.BuildSniped(marks);
