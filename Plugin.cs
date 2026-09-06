@@ -63,7 +63,23 @@ public sealed class Plugin : IDalamudPlugin
     private const int MaxAdditionalScouts = 3;
 
     // The only S-ranks the group actually checks for during trains.
-    private static readonly string[] SimpleSRanks = { "Ophioneus", "Tyger" };
+    /// <summary>
+    /// The S ranks a train actually stops for, and the zone each is watched in.
+    ///
+    /// Deliberately not every S rank in the game: a conductor checks a handful
+    /// on the way past, and a list of fifty to scroll through would be a worse
+    /// answer to the same question. Narrow-rift is absent because it needs a
+    /// spawn point picking as well, and has its own control below.
+    ///
+    /// Territory ids are the same ones the rest of the plugin uses, cross-
+    /// checked against SsMinionSpawns rather than typed from memory.
+    /// </summary>
+    private static readonly (string Name, uint TerritoryId)[] SimpleSRanks =
+    {
+        ("Ophioneus", 961),      // Elpis
+        ("Tyger", 813),          // Lakeland
+        ("Neyoozoteel", 1189),   // Yak T'el
+    };
 
     // Narrow-rift's known spawn points (Territory 960 / Map 699, Ultima Thule —
     // confirmed via arealmremapped.com; coordinates from Narrow-rift's own
@@ -2025,6 +2041,7 @@ public sealed class Plugin : IDalamudPlugin
         if (allMarks.Count == 0)
         {
             ImGui.TextDisabled("No marks detected yet — fly near one and it'll appear here.");
+            DrawSRankWatchRows();
             return;
         }
 
@@ -2037,6 +2054,7 @@ public sealed class Plugin : IDalamudPlugin
         if (marks.Count == 0)
         {
             ImGui.TextDisabled($"All {allMarks.Count} marks are dead — untick \"Hide dead marks\" to see them.");
+            DrawSRankWatchRows();
             return;
         }
 
@@ -2340,6 +2358,84 @@ public sealed class Plugin : IDalamudPlugin
 
         ImGui.Spacing();
         ImGui.TextDisabled("Click a mark to echo + flag it. Drag a row and release where you want it.");
+
+        DrawSRankWatchRows();
+    }
+
+    /// <summary>
+    /// The Spawned / Didn't Spawn pair for one watch.
+    ///
+    /// Shared by the Conductor tab and the train list rather than written out
+    /// twice, because the two are the same fact about the same object and
+    /// writing them separately is how they would come to disagree.
+    /// </summary>
+    private void DrawSpawnStatusBoxes(FlagEntry flag)
+    {
+        var spawned = flag.SpawnStatus == SpawnStatus.Spawned;
+        var notSpawned = flag.SpawnStatus == SpawnStatus.NotSpawned;
+
+        if (ImGui.Checkbox("Spawned", ref spawned))
+        {
+            flag.SpawnStatus = spawned ? SpawnStatus.Spawned : SpawnStatus.Unknown;
+            _config.Save();
+        }
+
+        ImGui.SameLine();
+        if (ImGui.Checkbox("Didn't Spawn", ref notSpawned))
+        {
+            flag.SpawnStatus = notSpawned ? SpawnStatus.NotSpawned : SpawnStatus.Unknown;
+            _config.Save();
+        }
+    }
+
+    /// <summary>
+    /// The Conductor tab's S-rank watches, repeated under the train.
+    ///
+    /// The same FlagEntry objects, not copies: a box ticked here is ticked
+    /// there, and either way it is the same answer that reaches the end-of-
+    /// train report.
+    ///
+    /// Adding and removing watches stays on the Conductor tab. This is the
+    /// during-the-train view, and the only question it has to answer is whether
+    /// the thing was up — an S rank gets checked in passing, between marks, and
+    /// walking back to a settings tab to record it is exactly when it gets
+    /// forgotten instead.
+    /// </summary>
+    private void DrawSRankWatchRows()
+    {
+        if (!_config.ShowSRankWatchesInTrainList) return;
+        if (_config.Flags.Count == 0) return;
+
+        ImGui.Spacing();
+        ImGui.Separator();
+        ImGui.PushStyleColor(ImGuiCol.Text, new Vector4(0.62f, 0.78f, 1f, 1f));
+        ImGui.TextUnformatted("S-rank watches");
+        ImGui.PopStyleColor();
+
+        for (var i = 0; i < _config.Flags.Count; i++)
+        {
+            var flag = _config.Flags[i];
+            ImGui.PushID($"srankwatch{i}");
+
+            // Boxes before the label, unlike the Conductor tab. Watch labels
+            // run to very different lengths — "Tyger" against "Narrow-rift —
+            // Spawn 3 (23.4, 33.1)" — and a label first would move the boxes
+            // for every row, in the one window being clicked at while running.
+            DrawSpawnStatusBoxes(flag);
+
+            ImGui.SameLine();
+            var colour = flag.SpawnStatus switch
+            {
+                SpawnStatus.Spawned => new Vector4(0.45f, 0.95f, 0.5f, 1f),
+                SpawnStatus.NotSpawned => new Vector4(0.55f, 0.55f, 0.55f, 1f),
+                _ => Vector4.One,
+            };
+            ImGui.PushStyleColor(ImGuiCol.Text, colour);
+            ImGui.TextUnformatted(flag.Label);
+            ImGui.PopStyleColor();
+
+            ImGui.PopID();
+        }
     }
 
     private void DrawTrainTab()
@@ -2867,18 +2963,30 @@ public sealed class Plugin : IDalamudPlugin
                 _config.Save();
             }
         }
-        ImGui.TextDisabled("Lakeland (Tyger), Ultima Thule (Narrow-rift), Elpis (Ophioneus). Only you see it.");
+        ImGui.TextDisabled("Lakeland (Tyger), Ultima Thule (Narrow-rift), Elpis (Ophioneus), Yak T'el (Neyoozoteel). Only you see it.");
+
+        ImGui.Spacing();
+        var watchesInList = _config.ShowSRankWatchesInTrainList;
+        if (ImGui.Checkbox("Show these watches on the train list", ref watchesInList))
+        {
+            _config.ShowSRankWatchesInTrainList = watchesInList;
+            _config.Save();
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip(
+                "Puts the Spawned / Didn't Spawn boxes under the train itself, so they can be\n"
+                + "ticked from the popout without coming back to this tab.");
 
         ImGui.Spacing();
 
-        foreach (var name in SimpleSRanks)
+        foreach (var (name, territoryId) in SimpleSRanks)
         {
             if (ImGui.Button($"Watch {name}"))
             {
                 _config.Flags.Add(new FlagEntry
                 {
                     Label = name,
-                    TerritoryId = name == "Tyger" ? 813u : 961u, // Lakeland / Elpis
+                    TerritoryId = territoryId,
                 });
                 _config.Save();
             }
@@ -2913,20 +3021,7 @@ public sealed class Plugin : IDalamudPlugin
 
             ImGui.TextWrapped(flag.Label);
 
-            var spawned = flag.SpawnStatus == SpawnStatus.Spawned;
-            var notSpawned = flag.SpawnStatus == SpawnStatus.NotSpawned;
-
-            if (ImGui.Checkbox("Spawned", ref spawned))
-            {
-                flag.SpawnStatus = spawned ? SpawnStatus.Spawned : SpawnStatus.Unknown;
-                _config.Save();
-            }
-            ImGui.SameLine();
-            if (ImGui.Checkbox("Didn't Spawn", ref notSpawned))
-            {
-                flag.SpawnStatus = notSpawned ? SpawnStatus.NotSpawned : SpawnStatus.Unknown;
-                _config.Save();
-            }
+            DrawSpawnStatusBoxes(flag);
             ImGui.SameLine();
             if (ImGui.Button("Remove"))
             {

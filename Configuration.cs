@@ -542,6 +542,16 @@ public class Configuration : IPluginConfiguration
     public bool SRankZoneReminderSound { get; set; } = true;
 
     /// <summary>
+    /// Repeat the Conductor tab's S-rank watches under the train list, with
+    /// their Spawned / Didn't Spawn boxes.
+    ///
+    /// The train popout is the window open while a train is running, and an
+    /// S rank is checked in passing, between marks — walking back to a settings
+    /// tab to record the answer is exactly when it gets forgotten instead.
+    /// </summary>
+    public bool ShowSRankWatchesInTrainList { get; set; } = true;
+
+    /// <summary>
     /// Extra names credited alongside the submitting character on a scouting
     /// report — e.g. a friend who scouted one expansion and sent you their
     /// Hunt Helper export code privately to fold into the combined report.
