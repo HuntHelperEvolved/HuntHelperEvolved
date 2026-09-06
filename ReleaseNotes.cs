@@ -34,6 +34,17 @@ public static class ReleaseNotes
 
     public static readonly Release[] All =
     {
+        new("0.4.0.12", "2026-09-07", "Testing: shared scouting, S-rank tracking and smoother expansion handovers.",
+        [
+            new("Train", "Expansion headings count hunt marks only; custom rally flags remain visible without inflating the total.", MusicManBowls, 31),
+            new("Train", "Open next automatically unfolds the next unfinished expansion when a leg finishes. It respects route order and Hide dead, and leaves completed legs open. Outstanding custom rally stops still need completing.", MusicManBowls, 30),
+            new("Sync", "Share scouting, mark order, observed health and location through a password-protected group server. Shared scouting keeps expansion blocks together, and train resets have a local undo option.", Kihtli),
+            new("Map", "Observed A/B ranks eliminate S-rank candidates for the current kill cycle. Possible spots have adjustable gold outlines; a confirmed final candidate is filled gold. Live mark overlays expire when nobody can see the mark.", Kihtli),
+            new("S ranks", "Use /hhs for respawn windows, world and expansion filters, configurable columns, spawn-condition tooltips and weather/time countdowns. Use /hhsa for active reports, elapsed active time and optional Lifestream travel.", Kihtli),
+            new("Alerts", "Shared S-rank alerts use RELAY with coordinates and map links when known. FOUND and RELAY messages include the world, and alerts wait through loading screens.", Kihtli),
+            new("A ranks", "Use /hha for A-rank windows, including separate instance rows. Uninstanced cells are blank and the instance column hides when unnecessary.", Kihtli),
+        ]),
+
         new("0.4.0", "2026-09-06", "The train organises itself, and a sniped mark stops inventing its own kill time.",
         [
             new("Train", "The train can group itself into expansion blocks, keeping scout order inside each one. It sorts the train rather than only redrawing it, so Next Mark, the export code and the report all follow what is on screen. Blocks start in the order the expansions already stand in — ticking the box folds a list into blocks without rearranging it.", Kihtli),
@@ -81,8 +92,7 @@ public static class ReleaseNotes
     };
 
     /// <summary>
-    /// The running version, as three parts — the fourth is always zero here and
-    /// only ever gets in the way of matching what the notes are keyed on.
+    /// The running version, including a nonzero testing-build revision.
     /// </summary>
     public static string CurrentVersion
     {
@@ -91,7 +101,7 @@ public static class ReleaseNotes
             var version = Assembly.GetExecutingAssembly().GetName().Version;
             return version is null
                 ? "unknown"
-                : $"{version.Major}.{version.Minor}.{version.Build}";
+                : version.Revision > 0 ? version.ToString(4) : version.ToString(3);
         }
     }
 

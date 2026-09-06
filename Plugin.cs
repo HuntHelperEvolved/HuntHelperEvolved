@@ -210,6 +210,8 @@ public sealed class Plugin : IDalamudPlugin
     private int _dragExpansionFrom = -1;
     private int _dragExpansionTo = -1;
 
+    private readonly TrainExpansionProgress _expansionProgress = new();
+
     // The mark the conductor is currently on. Tracked by identity rather than
     // list position, so dragging rows or removing marks can't silently change
     // what "current" points at.
@@ -2177,6 +2179,26 @@ public sealed class Plugin : IDalamudPlugin
                 "Sorts the train into expansion blocks, keeping scout order inside each one.\n"
                 + "Drag a block heading to move a whole expansion.");
 
+        // Only offered while the train is in blocks, since there is no next
+        // block to open without them. Hidden rather than greyed out, for the
+        // same reason the rest of this window greys nothing: BeginDisabled is
+        // an API this project has stayed off.
+        if (grouped)
+        {
+            ImGui.SameLine();
+            var autoExpand = _config.AutoExpandNextExpansion;
+            if (ImGui.Checkbox("Open next automatically", ref autoExpand))
+            {
+                _config.AutoExpandNextExpansion = autoExpand;
+                _config.Save();
+            }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip(
+                    "When the last mark in an expansion goes down, unfolds the next block\n"
+                    + "that still has something up. Never folds one away — a finished leg\n"
+                    + "stays open if you left it open.");
+        }
+
         // Row 5 — same setting as the one on the Settings tab, so the two
         // always agree.
         var spicingHere = _config.ShowSpicing;
@@ -2207,6 +2229,7 @@ public sealed class Plugin : IDalamudPlugin
 
         if (allMarks.Count == 0)
         {
+            _expansionProgress.Reset();
             ImGui.TextDisabled("No marks detected yet — fly near one and it'll appear here.");
             DrawSRankWatchRows();
             return;
@@ -2234,6 +2257,14 @@ public sealed class Plugin : IDalamudPlugin
             }
         }
 
+        // After the re-sort, because "the next block" is a question about the
+        // order the blocks are in, and before the dead marks are filtered out,
+        // because a leg ending is precisely a block whose marks are all dead.
+        if (grouping && _config.AutoExpandNextExpansion)
+            AutoExpandNextExpansion(allMarks);
+        else
+            _expansionProgress.Reset();
+
         // What's shown may be a subset, but ordering maths always works against
         // the full list so hidden dead marks keep their place in the train.
         var marks = _config.HideDeadMarks
@@ -2260,15 +2291,18 @@ public sealed class Plugin : IDalamudPlugin
             foreach (var m in marks)
             {
                 var e = ExpansionData.ExpansionOf(m.NameId, m.ZoneName);
-                if (expansionCounts.TryGetValue(e, out var seen))
-                {
-                    expansionCounts[e] = seen + 1;
-                }
-                else
-                {
-                    expansionCounts[e] = 1;
-                    presentExpansions.Add(e);
-                }
+                if (!presentExpansions.Contains(e)) presentExpansions.Add(e);
+
+                // Custom flags are rally points and route notes, not quarry.
+                // "(6)" on a heading is a promise about how many A-ranks that
+                // leg holds, and a conductor reading it off should never have
+                // to subtract the flags they dropped themselves. The flag rows
+                // are still drawn in the block — they are simply not the count,
+                // which is also why a block is still listed as present when
+                // flags are all it holds.
+                if (m.IsCustom) continue;
+
+                expansionCounts[e] = expansionCounts.GetValueOrDefault(e) + 1;
 
                 if (!m.Dead)
                     expansionUpCounts[e] = expansionUpCounts.GetValueOrDefault(e) + 1;
@@ -2336,7 +2370,7 @@ public sealed class Plugin : IDalamudPlugin
                     blockIsFolded = DrawExpansionHeader(
                         blockExpansion,
                         presentExpansions.IndexOf(blockExpansion),
-                        expansionCounts[blockExpansion],
+                        expansionCounts.GetValueOrDefault(blockExpansion),
                         expansionUpCounts.GetValueOrDefault(blockExpansion),
                         rowHeight);
                 }
@@ -2646,7 +2680,7 @@ public sealed class Plugin : IDalamudPlugin
         {
             var block = presentExpansions[_dragExpansionFrom];
             ImGui.BeginTooltip();
-            ImGui.TextUnformatted($"{block} ({expansionCounts[block]})");
+            ImGui.TextUnformatted($"{block} ({expansionCounts.GetValueOrDefault(block)})");
             ImGui.EndTooltip();
         }
 
@@ -2724,9 +2758,17 @@ public sealed class Plugin : IDalamudPlugin
 
         // The up-count only earns its place while the block is shut, when the
         // rows that would have said it are not on screen.
-        var label = collapsed
-            ? $"▶ {expansion} ({count} — {upCount} up)"
-            : $"▼ {expansion} ({count})";
+        //
+        // A block holding nothing but custom flags counts zero, since flags are
+        // not marks, and then says no number at all rather than an "(0)" that
+        // would read as a bug over rows that are plainly there.
+        var arrow = collapsed ? "▶" : "▼";
+        var tally = count == 0
+            ? string.Empty
+            : collapsed
+                ? $" ({count} — {upCount} up)"
+                : $" ({count})";
+        var label = $"{arrow} {expansion}{tally}";
 
         ImGui.PushStyleColor(ImGuiCol.Text, new Vector4(0.62f, 0.78f, 1f, 1f));
         ImGui.Selectable(label, _dragExpansionFrom == index,
@@ -2792,6 +2834,15 @@ public sealed class Plugin : IDalamudPlugin
 
         ImGui.PopID();
         return collapsed;
+    }
+
+    private void AutoExpandNextExpansion(List<DetectedMark> allMarks)
+    {
+        var opened = false;
+        foreach (var expansion in _expansionProgress.Update(allMarks.Select(mark =>
+            (ExpansionData.ExpansionOf(mark.NameId, mark.ZoneName), mark.Dead))))
+            opened |= _config.CollapsedExpansions.Remove(expansion);
+        if (opened) _config.Save();
     }
 
     /// <summary>

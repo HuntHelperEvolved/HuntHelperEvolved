@@ -24,6 +24,7 @@
     <Compile Include="../../Sync/SRankTimerData.cs" Link="SRankTimerData.cs" />
     <Compile Include="../../Sync/SpawnMapping.cs" Link="SpawnMapping.cs" />
     <Compile Include="../../Sync/SRankBoardFilter.cs" Link="SRankBoardFilter.cs" />
+    <Compile Include="../../TrainExpansionProgress.cs" Link="TrainExpansionProgress.cs" />
     <Compile Include="../../SpawnPointData.cs" Link="SpawnPointData.cs" />
     <Compile Include="../../Sync/TrainResetRecovery.cs" Link="TrainResetRecovery.cs" />
   </ItemGroup>
