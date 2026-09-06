@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace HuntHelperEvolved;
 
@@ -118,6 +120,55 @@ public static class ExpansionData
 
     public static MarkInfo? Lookup(uint modelId) =>
         ModelIdToMark.TryGetValue(modelId, out var mark) ? mark : null;
+
+    /// <summary>
+    /// The bucket for anything with no expansion of its own — a conductor's
+    /// custom flag in a zone that holds no A-rank, or a mark this table has
+    /// never heard of. Named rather than left blank so it can be sorted,
+    /// dragged and labelled like any other block.
+    /// </summary>
+    public const string NoExpansion = "Other";
+
+    /// <summary>
+    /// Every expansion, oldest first. Built from the table itself rather than
+    /// written out again, so adding an expansion's marks is the only edit a new
+    /// expansion needs.
+    /// </summary>
+    public static readonly IReadOnlyList<string> Expansions =
+        ModelIdToMark.Values
+            .GroupBy(m => m.Expansion)
+            .OrderBy(g => g.Min(m => m.Order))
+            .Select(g => g.Key)
+            .ToList();
+
+    /// <summary>
+    /// Zone name to the expansion it belongs to. The one way to place a custom
+    /// flag, which has a zone but no mark id to look up.
+    /// </summary>
+    private static readonly Dictionary<string, string> LocationToExpansion =
+        ModelIdToMark.Values
+            .GroupBy(m => m.Location)
+            .ToDictionary(g => g.Key, g => g.First().Expansion, StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Which expansion a train row belongs to: by mark id where there is one,
+    /// falling back to the zone name for custom flags, and
+    /// <see cref="NoExpansion"/> when neither answers.
+    ///
+    /// The zone fallback is why a rally point dropped in Yak T'el groups with
+    /// Dawntrail rather than collecting at the bottom of the list — a flag is
+    /// placed in context, and grouping that moved it away from the marks it was
+    /// placed among would lose the reason it was there.
+    /// </summary>
+    public static string ExpansionOf(uint modelId, string zoneName)
+    {
+        if (Lookup(modelId) is { } info) return info.Expansion;
+
+        return !string.IsNullOrWhiteSpace(zoneName)
+               && LocationToExpansion.TryGetValue(zoneName, out var byZone)
+            ? byZone
+            : NoExpansion;
+    }
 
     /// <summary>
     /// Discord-safe circled-digit instance marker (matches the style Hunt Helper's
