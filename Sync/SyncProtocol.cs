@@ -189,6 +189,8 @@ public sealed class SyncWorld
 
 public sealed class SyncFaloopStatus
 {
+    public DateTime? LastLiveMessageAt { get; set; }
+    public DateTime? LastAlertAt { get; set; }
     public bool LiveConnected { get; set; }
     public bool Enabled { get; set; }
     public bool Connected { get; set; }
