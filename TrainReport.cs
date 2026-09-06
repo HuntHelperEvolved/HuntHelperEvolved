@@ -13,8 +13,12 @@ public record TrainReportEntry(
     double? MinHours,
     double? MaxHours,
     bool Sniped,
-    DateTime LastAliveUtc)
+    DateTime LastAliveUtc,
+    uint WorldId = 0,
+    string WorldName = "")
 {
+    public string DisplayName => string.IsNullOrEmpty(WorldName) ? $"{Name} — world {WorldId}" : $"{Name} — {WorldName}";
+
     /// <summary>Whether a respawn window can be worked out for this mark at all.</summary>
     public bool HasWindow => Location != null && MinHours != null && MaxHours != null;
 
@@ -51,6 +55,7 @@ public static class TrainReport
     public static List<TrainReportEntry> BuildEntries(List<TrackedMark> marks)
     {
         return marks
+            .Where(m => m.Dead && (m.SnipedAtUtc.HasValue || m.DeathObservedAtUtc.HasValue))
             .Select(m =>
             {
                 var info = ExpansionData.Lookup(m.ModelId);
@@ -58,7 +63,7 @@ public static class TrainReport
                 // Sniped wins over an observed death: the two should never both
                 // be set, and if a conductor has managed it, the one they
                 // clicked deliberately is the one they meant.
-                var killTime = EnsureUtc(m.SnipedAtUtc ?? m.DeathObservedAtUtc ?? m.LastSeenUtc);
+                var killTime = EnsureUtc(m.SnipedAtUtc ?? m.DeathObservedAtUtc!.Value);
                 return new TrainReportEntry(
                     killTime,
                     info?.Expansion ?? "No fixed timer",
@@ -68,7 +73,7 @@ public static class TrainReport
                     info?.MinHours,
                     info?.MaxHours,
                     m.SnipedAtUtc != null,
-                    EnsureUtc(m.LastSeenUtc));
+                    EnsureUtc(m.LastSeenUtc), m.WorldId, m.WorldName);
             })
             .OrderBy(e => e.KillTimeUtc)
             .ToList();

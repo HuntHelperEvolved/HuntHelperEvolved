@@ -118,7 +118,7 @@ public class Configuration : IPluginConfiguration
     public bool TrackingEnabled { get; set; } = false;
 
     /// <summary>
-    /// How often (in seconds) to check Hunt Helper's train list for changes.
+    /// How often (in seconds) to record new train marks and process queued kill evidence.
     /// </summary>
     public int PollIntervalSeconds { get; set; } = 3;
 
@@ -146,12 +146,11 @@ public class Configuration : IPluginConfiguration
     /// (Narrow-rift) or Elpis (Ophioneus).
     /// </summary>
     /// <summary>
-    /// Use our own mark detection for reports instead of Hunt Helper's list.
-    /// Defaults to false so updating changes nothing until deliberately switched
-    /// — both lists are always populated, so they can be compared side by side
-    /// on the Train tab first.
+    /// Legacy preference accepted during migration; reports always use native state.
     /// </summary>
-    public bool UseOwnTrainList { get; set; } = false;
+    public bool UseOwnTrainList { get; set; } = true;
+    public List<TrackedMark> ReportHistory { get; set; } = new();
+    public List<TrackedMark> ResetUndoReportHistory { get; set; } = new();
 
     /// <summary>
     /// Pauses picking up NEW marks, without stopping anything else — marks
@@ -780,6 +779,7 @@ public class Configuration : IPluginConfiguration
     public void Initialize(IDalamudPluginInterface pluginInterface)
     {
         _pluginInterface = pluginInterface;
+        UseOwnTrainList = true; // Legacy preference retained only for config migration.
 
 #pragma warning disable CS0618 // reading the obsolete field deliberately, once, to migrate it
         if ((Webhooks == null || Webhooks.Count == 0) && WebhookUrls is { Count: > 0 })

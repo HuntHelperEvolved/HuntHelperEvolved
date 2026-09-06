@@ -95,7 +95,7 @@ public static class DiscordRelay
             {
                 title = i == 0 ? "🚂 Train Complete" : "🚂 Train Complete (continued)",
                 description = i == 0
-                    ? $"Finished <t:{nowUnix}:F> — {marks.Count} marks{endedByLine}\n\n{chunks[i]}"
+                    ? $"Finished <t:{nowUnix}:F> — {marks.Count(m => m.Dead && m.DeathObservedAtUtc != null && m.SnipedAtUtc == null)} observed kills{endedByLine}\n\n{chunks[i]}"
                     : chunks[i],
                 color = EmbedColor,
             });
@@ -158,6 +158,11 @@ public static class DiscordRelay
             AppendEntries(sb, sniped);
         }
 
+        var unfinished = marks.Where(m => !m.Dead).ToList();
+        var unknown = marks.Where(m => m.Dead && m.DeathObservedAtUtc is null && m.SnipedAtUtc is null).ToList();
+        foreach (var (title, rows) in new[] { ("Unfinished / still alive", unfinished), ("Found dead — kill time unknown", unknown) })
+            if (rows.Count > 0)
+                sb.Append($"\n**{title}**\n" + string.Join("\n", rows.Select(m => $"{m.Name}{ExpansionData.InstanceGlyph(m.Instance)} — {m.WorldName} (world {m.WorldId})")) + "\n");
         var neverSeen = TrainReport.BuildSniped(marks);
         if (neverSeen.Count > 0)
         {
@@ -193,14 +198,14 @@ public static class DiscordRelay
 
             if (!entry.HasWindow)
             {
-                sb.Append($"<t:{killUnix}:t> — {entry.Name} — no fixed respawn timer\n");
+                sb.Append($"<t:{killUnix}:t> — {entry.DisplayName} — no fixed respawn timer\n");
                 continue;
             }
 
             var openUnix = new DateTimeOffset(entry.WindowOpensUtc!.Value).ToUnixTimeSeconds();
             var capUnix = new DateTimeOffset(entry.WindowCapsUtc!.Value).ToUnixTimeSeconds();
             var instanceGlyph = ExpansionData.InstanceGlyph(entry.Instance);
-            sb.Append($"<t:{killUnix}:t> — {entry.Location} — {entry.Name}{instanceGlyph} — window <t:{openUnix}:t> → <t:{capUnix}:t>\n");
+            sb.Append($"<t:{killUnix}:t> — {entry.Location} — {entry.DisplayName}{instanceGlyph} — window <t:{openUnix}:t> → <t:{capUnix}:t>\n");
         }
     }
 

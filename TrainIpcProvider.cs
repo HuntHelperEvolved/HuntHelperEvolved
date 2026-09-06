@@ -48,7 +48,7 @@ public sealed class TrainIpcProvider : IDisposable
     /// Bumped when one of this plugin's own gates changes signature. Separate
     /// from the number above, which is not ours to move.
     /// </summary>
-    public const int ApiVersion = 1;
+    public const int ApiVersion = 2;
 
     private const string OwnApiVersionGate = "HuntHelperEvolved.ApiVersion";
     private const string OwnGetTrainListGate = "HuntHelperEvolved.GetTrainList";
@@ -60,9 +60,12 @@ public sealed class TrainIpcProvider : IDisposable
     private const string HhGetTrainListGate = "HH.GetTrainList";
     private const string HhImportTrainListGate = "HH.ImportTrainList";
 
+    private bool _disposed;
     private readonly MarkDetector _detector;
     private readonly IPluginLog _log;
 
+    private ICallGateProvider<List<NativeTrainRecord>>? _nativeGet;
+    private ICallGateProvider<List<NativeTrainRecord>, bool>? _nativeImport;
     private ICallGateProvider<int>? _ownApiVersion;
     private ICallGateProvider<List<HuntHelperMobRecord>>? _ownGetTrainList;
     private ICallGateProvider<List<HuntHelperMobRecord>, bool>? _ownImportTrainList;
@@ -84,6 +87,12 @@ public sealed class TrainIpcProvider : IDisposable
         {
             _ownApiVersion = pluginInterface.GetIpcProvider<int>(OwnApiVersionGate);
             _ownApiVersion.RegisterFunc(() => ApiVersion);
+            _nativeGet = pluginInterface.GetIpcProvider<List<NativeTrainRecord>>("HuntHelperEvolved.GetTrainListV2");
+            _nativeGet.RegisterFunc(() => _detector.Ordered().Where(m => !m.IsCustom).Select(m => new NativeTrainRecord(
+                m.Name, m.NameId, m.TerritoryId, m.MapId, m.Instance, m.WorldId, m.WorldName,
+                m.MapPosition, m.Dead, m.LastSeenUtc, m.DeathObservedAtUtc, m.SnipedAtUtc)).ToList());
+            _nativeImport = pluginInterface.GetIpcProvider<List<NativeTrainRecord>, bool>("HuntHelperEvolved.ImportTrainListV2");
+            _nativeImport.RegisterAction(ImportNative);
 
             _ownGetTrainList = pluginInterface.GetIpcProvider<List<HuntHelperMobRecord>>(OwnGetTrainListGate);
             _ownGetTrainList.RegisterFunc(GetTrainList);
@@ -177,7 +186,7 @@ public sealed class TrainIpcProvider : IDisposable
                 Dead = m.Dead,
                 FirstSeenUtc = m.LastSeenUTC,
                 LastSeenUtc = m.LastSeenUTC,
-                DeathObservedAtUtc = m.Dead ? m.LastSeenUTC : null,
+                DeathObservedAtUtc = null, // Legacy IPC carries no death timestamp.
             }).ToList();
 
             var added = _detector.Merge(marks);
@@ -189,10 +198,26 @@ public sealed class TrainIpcProvider : IDisposable
         }
     }
 
+    private void ImportNative(List<NativeTrainRecord> incoming)
+    {
+        if (incoming is null) return;
+        var snapshot = incoming.Take(1000).Where(m => m is not null && m.WorldId != 0
+            && m.Instance <= 9 && float.IsFinite(m.Position.X) && float.IsFinite(m.Position.Y))
+            .Select(m => new DetectedMark { Name=m.Name, NameId=m.NameId,
+                TerritoryId=m.TerritoryId, MapId=m.MapId, Instance=m.Instance,
+                WorldId=m.WorldId, WorldName=m.WorldName, MapPosition=m.Position,
+                Dead=m.Dead, LastSeenUtc=m.LastSeenUtc, FirstSeenUtc=m.LastSeenUtc,
+                DeathObservedAtUtc=m.DeathObservedAtUtc, SnipedAtUtc=m.SnipedAtUtc }).ToList();
+        _ = HuntTally.Service.Framework.RunOnFrameworkThread(() => { if (!_disposed) _detector.Merge(snapshot); });
+    }
+
     public void Dispose()
     {
+        _disposed = true;
         // Unregister rather than leave dangling: a gate still pointing at a
         // disposed plugin is a crash in whoever calls it next.
+        try { _nativeGet?.UnregisterFunc(); } catch { }
+        try { _nativeImport?.UnregisterAction(); } catch { }
         try { _ownApiVersion?.UnregisterFunc(); } catch { /* already gone */ }
         try { _ownGetTrainList?.UnregisterFunc(); } catch { /* already gone */ }
         try { _ownImportTrainList?.UnregisterAction(); } catch { /* already gone */ }
