@@ -39,6 +39,13 @@ public class TrackedMark
     /// </summary>
     public DateTime? DeathObservedAtUtc;
     public DateTime LastSeenUtc;
+
+    /// <summary>
+    /// When the train found this mark already gone, if it did. See
+    /// DetectedMark.SnipedAtUtc — it is the latest the mark can have died, not
+    /// the moment it died.
+    /// </summary>
+    public DateTime? SnipedAtUtc;
 }
 
 /// <summary>
