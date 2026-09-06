@@ -4274,7 +4274,7 @@ public sealed class Plugin : IDalamudPlugin
             ? destination.Value.DcIndex == current.Value.DcIndex
             : _config.SyncSpawnDataCenters.Contains(dc.Id);
         if (!_spawnAlertFilter.Accept(spawn, allowed, DateTime.UtcNow)) return;
-        _chatGui.Print($"[Hunt Helper Evolved] S rank reported spawned: {mark.Name} — {_worldData.NameOf(spawn.WorldId)} ({dc.Name}), {mark.Zone}{ExpansionData.InstanceGlyph(spawn.Instance)} [Faloop]");
+        _chatGui.Print($"[Hunt Helper Evolved] S rank {(spawn.Event == "release" ? "released" : "reported spawned")}: {mark.Name} — {_worldData.NameOf(spawn.WorldId)} ({dc.Name}), {mark.Zone}{ExpansionData.InstanceGlyph(spawn.Instance)} [Faloop]");
         if (_config.SyncSpawnSound)
         {
             try { FFXIVClientStructs.FFXIV.Client.UI.UIGlobals.PlayChatSoundEffect(6); }
@@ -4408,7 +4408,7 @@ public sealed class Plugin : IDalamudPlugin
         if (ImGui.CollapsingHeader("Community S-rank spawn alerts", ImGuiTreeNodeFlags.DefaultOpen))
         {
             var alerts = _config.SyncSpawnAlerts;
-            if (ImGui.Checkbox("Chat alerts for reported S-rank spawns", ref alerts)) { _config.SyncSpawnAlerts = alerts; _config.Save(); }
+            if (ImGui.Checkbox("Chat alerts for S-rank spawns and releases", ref alerts)) { _config.SyncSpawnAlerts = alerts; _config.Save(); }
             var sound = _config.SyncSpawnSound;
             if (ImGui.Checkbox("Play an alert sound", ref sound)) { _config.SyncSpawnSound = sound; _config.Save(); }
             var currentDc = _config.SyncSpawnCurrentDc;
@@ -4423,7 +4423,7 @@ public sealed class Plugin : IDalamudPlugin
                         _config.Save();
                     }
                 }
-            ImGui.TextWrapped("Alerts arrive when Faloop reports a spawn. Your server must follow the selected data centres. Historical snapshots do not trigger alerts.");
+            ImGui.TextWrapped("Alerts arrive when Faloop publicly reports a spawn or releases it. Your server must follow the selected data centres. Historical snapshots do not trigger alerts.");
             ImGui.TextWrapped("Server coverage: " + string.Join(", ", _sync.Faloop.DataCenters));
         }
 

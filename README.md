@@ -324,3 +324,5 @@ an old local expansion order over another scout's route.
 Requires server 0.3.0 (protocol 4). `/hhs` opens the S-rank board; `/htrs` still works. Filters persist: current world or any selection of worlds across data centers, multiple expansions, available-to-spawn only, and mark/zone search. Available means a known open window, excluding live, unknown and uncertain timers; spawn conditions still apply.
 
 Live map observations refresh every half second independently of train recording. The last observer leaving render range removes the live mark; missing heartbeats expire within three seconds. Idle, full-health A/B sightings match nearby unambiguous spawn points and automatically eliminate them, retrying an initially unmatched position. The exclusions persist until the next S kill. Gold outlines indicate possible S spots; solid gold indicates an observed S origin or the sole remaining spot in a confirmed kill cycle. In-game rendering and patrol matching still need field testing.
+
+Community alerts include public Faloop releases as well as spawn reports. Release alerts are independent of earlier spawn notifications and use the same DC and sound preferences.
