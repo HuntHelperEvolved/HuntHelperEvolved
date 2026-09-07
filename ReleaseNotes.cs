@@ -34,6 +34,11 @@ public static class ReleaseNotes
 
     public static readonly Release[] All =
     {
+        new("0.5.0.2", "2026-09-07", "A-rank cooldowns for returning scouts.",
+        [
+            new("A ranks", "Retrieve recorded kill times by world and instance when connecting, even with train sharing disabled. Server 0.3.12 retains this history through train resets and restarts; unknown/sniped times remain uncertain.", Kihtli),
+        ]),
+
         new("0.5.0.1", "2026-09-07", "Beta: standalone hunts and private-group sync.",
         [
             new("Sync", "Share train scouting/order, live mark observations, S-rank mapping and personal trigger-kill totals through a private password-protected group server.", Kihtli),
