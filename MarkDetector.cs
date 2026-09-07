@@ -46,6 +46,7 @@ public class OtherRankSighting
     /// before walking to it.
     /// </summary>
     public float HealthPercent = 100f;
+    public bool? InCombat;
     public int? SpawnPointIndex;
 
     /// <summary>Zone name, resolved once at first sighting.</summary>
@@ -81,6 +82,9 @@ public sealed class MarkDetector
     // two clients sharing a train through the sync server do not both mint
     // 4294967295 for their first flag and have the server treat them as one.
     private uint _nextCustomId = uint.MaxValue - (uint)Random.Shared.Next(0, 8_000_000) * 16;
+
+    private readonly Dictionary<(uint NameId, uint Instance, uint WorldId), OtherRankSighting> _visibleCorpses = new();
+    public IEnumerable<OtherRankSighting> VisibleMarks => _otherRanks.Values.Concat(_visibleCorpses.Values);
 
     private readonly Dictionary<(uint NameId, uint Instance, uint WorldId), OtherRankSighting> _otherRanks = new();
 
@@ -134,7 +138,7 @@ public sealed class MarkDetector
         TrainGeneration++;
         _marks.Clear();
         _deathEvidence.Clear();
-        _otherRanks.Clear();
+        _otherRanks.Clear(); _visibleCorpses.Clear();
         _nextOrder = 0;
         Cleared?.Invoke();
     }
@@ -217,7 +221,7 @@ public sealed class MarkDetector
     public void Scan(bool recordNew = true)
     {
         var territoryId = _clientState.TerritoryType;
-        if (territoryId == 0) { _deathEvidence.Clear(); _otherRanks.Clear(); Scanned?.Invoke(); return; }
+        if (territoryId == 0) { _deathEvidence.Clear(); _otherRanks.Clear(); _visibleCorpses.Clear(); Scanned?.Invoke(); return; }
 
         var mapId = GetMapId(territoryId);
         var instance = GetCurrentInstance();
@@ -227,7 +231,7 @@ public sealed class MarkDetector
 
         // Live sightings belong only to the current world, instance and scan.
         var scope = (territoryId, instance, worldId);
-        if (scope != _lastScannedScope) { _otherRanks.Clear(); _deathEvidence.Clear(); }
+        if (scope != _lastScannedScope) { _otherRanks.Clear(); _visibleCorpses.Clear(); _deathEvidence.Clear(); }
         _lastScannedScope = scope;
 
         var visibleObjects = new HashSet<ulong>();
@@ -296,6 +300,8 @@ public sealed class MarkDetector
         // A live icon needs an object in this exact pass. Train history is kept separately.
         foreach (var key in _otherRanks.Where(p => p.Value.LastSeenUtc != now).Select(p => p.Key).ToList())
             _otherRanks.Remove(key);
+        foreach (var key in _visibleCorpses.Where(p => p.Value.LastSeenUtc != now).Select(p => p.Key).ToList())
+            _visibleCorpses.Remove(key);
         Scanned?.Invoke();
     }
 
@@ -363,14 +369,23 @@ public sealed class MarkDetector
             if (_otherRanks.TryGetValue(key, out var dying))
                 SightingObservedDead?.Invoke(dying, now);
             _otherRanks.Remove(key);
+            _visibleCorpses[key] = new OtherRankSighting
+            {
+                WorldId=worldId, WorldName=worldName, Name=mob.Name.TextValue, NameId=mob.NameId,
+                Rank=rank, TerritoryId=territoryId, MapId=mapId, Instance=instance,
+                MapPosition=MapCoordinates.FromWorld(_dataManager,mapId,mob.Position.X,mob.Position.Z),
+                LastSeenUtc=now, HealthPercent=0, InCombat=false, ZoneName=GetZoneName(territoryId)
+            };
             return;
         }
 
+        _visibleCorpses.Remove(key);
         if (_otherRanks.TryGetValue(key, out var existing))
         {
             existing.LastSeenUtc = now;
             existing.MapPosition = MapCoordinates.FromWorld(_dataManager, mapId, mob.Position.X, mob.Position.Z);
             existing.HealthPercent = HealthPercentOf(mob);
+            existing.InCombat = mob.StatusFlags.HasFlag(Dalamud.Game.ClientState.Objects.Enums.StatusFlags.InCombat);
             if (existing.SpawnPointIndex is null && CanMatchSpawnPoint(mob))
                 existing.SpawnPointIndex = MatchSpawnPoint(territoryId, existing.MapPosition, rank);
             return;
@@ -389,6 +404,7 @@ public sealed class MarkDetector
             MapPosition = MapCoordinates.FromWorld(_dataManager, mapId, mob.Position.X, mob.Position.Z),
             LastSeenUtc = now,
             HealthPercent = HealthPercentOf(mob),
+            InCombat = mob.StatusFlags.HasFlag(Dalamud.Game.ClientState.Objects.Enums.StatusFlags.InCombat),
             SpawnPointIndex = CanMatchSpawnPoint(mob)
                 ? MatchSpawnPoint(territoryId, MapCoordinates.FromWorld(_dataManager, mapId, mob.Position.X, mob.Position.Z), rank) : null,
             ZoneName = GetZoneName(territoryId),
@@ -430,7 +446,7 @@ public sealed class MarkDetector
         mob.MaxHp > 0 && mob.CurrentHp == 0;
 
     /// <summary>Clears all sightings.</summary>
-    public void ClearOtherRanks() => _otherRanks.Clear();
+    public void ClearOtherRanks() { _otherRanks.Clear(); _visibleCorpses.Clear(); }
 
     /// <summary>
     /// Forgets one sighting, e.g. when a mark is known to be dead.

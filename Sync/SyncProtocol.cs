@@ -81,6 +81,7 @@ public sealed class SyncSighting
     public uint MapId { get; set; }
     public float X { get; set; }
     public float Y { get; set; }
+    public bool? InCombat { get; set; }
     public float HpPercent { get; set; } = 100f;
     public DateTime SeenAt { get; set; }
     public string Reporter { get; set; } = string.Empty;
@@ -271,6 +272,8 @@ public static class ServerMessageTypes
 
 public sealed class WelcomeMessage
 {
+    public bool SupportsVisibleMarks { get; set; }
+    public List<VisibleMark> VisibleMarks { get; set; } = new();
     public string CounterServerId { get; set; } = string.Empty;
     public List<SharedCounter> Counters { get; set; } = new();
     public WatchesBroadcast WatchState { get; set; } = new();
@@ -334,4 +337,16 @@ public sealed class WatchesMessage
     public string Type => "train.watches";
     public long BaseRevision { get; set; }
     public List<SyncWatch> Watches { get; set; } = new();
+}
+
+public sealed class VisibleMark
+{
+    public SyncSighting Mark { get; set; } = new();
+    public List<string> ObserverIds { get; set; } = new();
+    public List<string> Observers { get; set; } = new();
+}
+public sealed class VisibleMarksBroadcast
+{
+    public List<VisibleMark> Marks { get; set; } = new();
+    public List<SyncKey> Removed { get; set; } = new();
 }

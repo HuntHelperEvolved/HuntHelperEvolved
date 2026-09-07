@@ -121,7 +121,8 @@ public sealed class Plugin : IDalamudPlugin
     // Sharing with a group through their own server. See Sync/.
     private readonly SyncCoordinator _sync;
     private readonly SRankWindow _srankWindow;
-    private readonly ActiveSRankWindow _activeSRankWindow;
+    private bool _selectSyncTab;
+    private readonly ActiveMarksWindow _activeMarksWindow;
     private readonly LifestreamTravel _srankTravel;
     private readonly ARankWindow _arankWindow;
     private int _counterDcIndex;
@@ -374,7 +375,7 @@ public sealed class Plugin : IDalamudPlugin
         _sync.RemoteTrainCleared += OnRemoteTrainCleared;
         _sync.SRankSpawned += OnRemoteSRankSpawn;
         _srankTravel = new LifestreamTravel(_pluginInterface, framework, _detector, _chatGui, _log);
-        _activeSRankWindow = new ActiveSRankWindow(_config, _sync, _worldData, _srankTravel);
+        _activeMarksWindow = new ActiveMarksWindow(_config, _sync, _worldData, _detector, _gameGui, _srankTravel, () => { _configWindowVisible=true; _selectSyncTab=true; });
         _srankWindow = new SRankWindow(_config, _sync, _worldData, _detector, _srankTravel);
         _arankWindow = new ARankWindow(_config, _sync, _worldData, _detector);
         // After the detector exists, since the gates read straight off it.
@@ -427,7 +428,8 @@ public sealed class Plugin : IDalamudPlugin
         {
             HelpMessage = "Open the S-rank board: windows, kill times and spawn points, shared through sync.",
         });
-        _commandManager.AddHandler("/hhsa", new CommandInfo((_, _) => _activeSRankWindow.Toggle()) { HelpMessage = "Open active S-rank reports across all covered worlds." });
+        _commandManager.AddHandler("/hhv", new CommandInfo((_, _) => _activeMarksWindow.Toggle()) { HelpMessage = "Open marks currently visible to group members, with health and combat status." });
+        _commandManager.AddHandler("/hhsa", new CommandInfo((_, _) => _activeMarksWindow.Toggle()) { HelpMessage = "Open Active Marks across covered worlds, with All/S/A/B tabs." });
         _commandManager.AddHandler("/hhs", new CommandInfo(OnSRankCommand)
         { HelpMessage = "Open the S-rank board with world, expansion and availability filters." });
         _commandManager.AddHandler("/hha", new CommandInfo((_, _) => _arankWindow.Toggle()) { HelpMessage = "Open the A-rank respawn window board." });
@@ -904,7 +906,7 @@ public sealed class Plugin : IDalamudPlugin
         DrawTrainPopout();
         DrawCounterPopout();
         DrainPendingSpawnAlerts();
-        _activeSRankWindow.Draw();
+        _activeMarksWindow.Draw();
         _srankWindow.Draw();
         _arankWindow.Draw();
         DrawReleaseNotesWindow();
@@ -952,8 +954,9 @@ public sealed class Plugin : IDalamudPlugin
                     ImGui.EndTabItem();
                 }
 
-                if (ImGui.BeginTabItem("Sync"))
+                if (ImGui.BeginTabItem("Sync", _selectSyncTab ? ImGuiTabItemFlags.SetSelected : ImGuiTabItemFlags.None))
                 {
+                    _selectSyncTab = false;
                     DrawSyncTab();
                     ImGui.EndTabItem();
                 }
@@ -4241,6 +4244,7 @@ public sealed class Plugin : IDalamudPlugin
         _commandManager.RemoveHandler(SRankCommand);
         _commandManager.RemoveHandler("/hhs");
         _commandManager.RemoveHandler("/hhsa");
+        _commandManager.RemoveHandler("/hhv");
         _commandManager.RemoveHandler("/hha");
         _commandManager.RemoveHandler(TallyCommand);
 
@@ -4546,7 +4550,9 @@ public sealed class Plugin : IDalamudPlugin
             ImGui.TextDisabled($"Last server feed message: {_sync.Faloop.LastLiveMessageAt?.ToLocalTime().ToString("HH:mm:ss") ?? "none"}; last broadcast alert: {_sync.Faloop.LastAlertAt?.ToLocalTime().ToString("HH:mm:ss") ?? "none"}");
         }
 
-        if (ImGui.Button("Active S ranks (/hhsa)")) _activeSRankWindow.Toggle();
+        _activeMarksWindow.DrawSettings();
+        ImGui.Separator();
+        if (ImGui.Button("Active Marks (/hhsa)")) _activeMarksWindow.Toggle();
         if (ImGui.Button("Open the S-rank board"))
             _srankWindow.Toggle();
         ImGui.SameLine();

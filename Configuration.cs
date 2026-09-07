@@ -624,6 +624,7 @@ public class Configuration : IPluginConfiguration
     public string CounterContributorId { get; set; } = Guid.NewGuid().ToString("N");
     public string CounterSyncScope { get; set; } = string.Empty;
     public List<Sync.CounterContribution> CounterContributions { get; set; } = new();
+    public Sync.VisibleMarkOptions VisibleMarkFilters { get; set; } = new();
     public bool SyncEnabled { get; set; } = false;
     public List<Sync.SyncWatch> SyncLocalWatchBackup { get; set; } = new();
     public bool SyncSpawnAlerts { get; set; } = true;
