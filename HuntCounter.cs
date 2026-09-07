@@ -105,6 +105,8 @@ public sealed class HuntCounter : IDisposable
     // "You defeat the X" — only your own kills.
     private const string PersonalRegexBase = "(?i)^you defeat the ";
 
+    public event Action<uint, uint, uint, string>? PersonalKill;
+
     private readonly IChatGui _chatGui;
     private readonly IClientState _clientState;
     private readonly IObjectTable _objectTable;
@@ -268,6 +270,11 @@ public sealed class HuntCounter : IDisposable
             // discarded items - are common enough elsewhere to tick the wrong
             // counter constantly without this gate.
             if (territory != patternTerritory) continue;
+
+            // Only the killer contributes to the group, never nearby observers.
+            // Custom gathering/discard/ability patterns are separate local counters.
+            if (!ReferenceEquals(personal, nearby) && personal.IsMatch(text))
+                PersonalKill?.Invoke(worldId, territory, instance, mobName);
 
             var pattern = _config.CountOnlyMyKills ? personal : nearby;
             if (!pattern.IsMatch(text)) continue;
