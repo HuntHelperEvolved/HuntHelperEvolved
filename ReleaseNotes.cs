@@ -34,6 +34,15 @@ public static class ReleaseNotes
 
     public static readonly Release[] All =
     {
+        new("0.5.0.3", "2026-09-07", "Staged: train completion and clearer hunt windows.",
+        [
+            new("A ranks", "Sniped marks show the same bounded respawn window as Discord when last-seen-alive evidence is available. Bounds survive server resets/reconnects.", Kihtli),
+            new("Train", "End Train resets only after Discord succeeds and the server acknowledges storing the report's kill history. A changed shared train is kept. Requires server 0.3.13; Undo remains available.", Kihtli),
+            new("Scouts", "Shared scout credits combine plugin scouting contributors and manually added names. Credits and the train controls can be collapsed at the top of the popout.", Kihtli),
+            new("Active Marks", "Compact lines include zone, a scout's current visible player count within 50 yalms, and elapsed Faloop activity time when reported. Unknown counts stay unknown.", Kihtli),
+            new("S ranks", "Names are green when timer and predictable conditions are open, grey before the window or when unknown, and red within the window when timed conditions are unmet. Player actions still apply.", Kihtli),
+        ]),
+
         new("0.5.0.2", "2026-09-07", "A-rank cooldowns for returning scouts.",
         [
             new("A ranks", "Retrieve recorded kill times by world and instance when connecting, even with train sharing disabled. Server 0.3.12 retains this history through train resets and restarts; unknown/sniped times remain uncertain.", Kihtli),

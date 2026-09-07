@@ -81,6 +81,7 @@ public sealed class SyncSighting
     public uint MapId { get; set; }
     public float X { get; set; }
     public float Y { get; set; }
+    public int? NearbyPlayers { get; set; }
     public bool? InCombat { get; set; }
     public float HpPercent { get; set; } = 100f;
     public DateTime SeenAt { get; set; }
@@ -272,6 +273,8 @@ public static class ServerMessageTypes
 
 public sealed class WelcomeMessage
 {
+    public bool SupportsTrainFinish { get; set; }
+    public List<string> TrainScouts { get; set; } = new();
     public List<ARankKill> ARankKills { get; set; } = new();
     public bool SupportsVisibleMarks { get; set; }
     public List<VisibleMark> VisibleMarks { get; set; } = new();
@@ -350,4 +353,31 @@ public sealed class VisibleMarksBroadcast
 {
     public List<VisibleMark> Marks { get; set; } = new();
     public List<SyncKey> Removed { get; set; } = new();
+}
+
+public sealed class TrainFinishMessage
+{
+    public string Type => "train.finish";
+    public string RequestId { get; set; } = string.Empty;
+    public bool ClearShared { get; set; }
+    public long WatchRevision { get; set; }
+    public List<SyncMark> ExpectedMarks { get; set; } = new();
+    public List<SyncMark> History { get; set; } = new();
+}
+public sealed class TrainFinishResult
+{
+
+    public string RequestId { get; set; } = string.Empty;
+    public bool Accepted { get; set; }
+    public string Message { get; set; } = string.Empty;
+}
+public sealed class TrainScoutsMessage
+{
+    public string Type => "train.scouts";
+    public List<string> Names { get; set; } = new();
+}
+public sealed class TrainScoutsBroadcast
+{
+
+    public List<string> Names { get; set; } = new();
 }

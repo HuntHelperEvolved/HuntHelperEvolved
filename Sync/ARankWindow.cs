@@ -32,7 +32,7 @@ public sealed class ARankWindow
                 var at = mark.SnipedAtUtc ?? mark.DeathObservedAtUtc;
                 if (at is null || mark.WorldId == 0 || now - at.Value > TimeSpan.FromDays(14)) continue;
                 changed |= ARankHistory.Merge(_config.ARankKills, new[] { new ARankKill { NameId = mark.NameId,
-                    WorldId = mark.WorldId, Instance = mark.Instance, At = at.Value, Uncertain = mark.SnipedAtUtc is not null } }, now);
+                    WorldId = mark.WorldId, Instance = mark.Instance, At = at.Value, LastAliveAt = mark.SnipedAtUtc is not null ? mark.LastSeenUtc : null, Uncertain = mark.SnipedAtUtc is not null } }, now);
             }
             if (_config.ARankKills.RemoveAll(k => now - k.At > TimeSpan.FromDays(14)) > 0) changed = true;
             if (changed) _config.Save();
@@ -46,7 +46,7 @@ public sealed class ARankWindow
     }
     private void DrawContents(DateTime now)
     {
-        ImGui.TextWrapped("Windows from local kills and server kill history, retrieved automatically on connection. No community A-rank kill feed. Unknown or sniped kill times have no countdown; elapsed windows do not confirm a mark is alive.");
+        ImGui.TextWrapped("Windows from local kills and server kill history, retrieved automatically on connection. No community A-rank kill feed. Sniped windows use last-seen-alive to found-missing bounds when known; elapsed windows do not confirm a mark is alive.");
         var worlds = DrawWorldPicker();
         ImGui.SameLine(); DrawExpansionFilter();
         var available = _config.ARankWindowAvailableOnly;
@@ -80,12 +80,12 @@ public sealed class ARankWindow
                 var kill = kills.FirstOrDefault(k => k.Instance == instance);
                 var up = _sync.IsSeenUp(entry.Key,world,instance);
                 var restart = _sync.SRankStatuses.Values.Where(s => s.WorldId == world && s.Maintenance).Select(s => s.KilledAt).Max();
-                var known = kill is { Uncertain:false } && (restart is null || kill.At > restart);
-                DateTime? opens = known ? kill!.At.AddHours(info.MinHours) : null;
-                DateTime? end = known ? kill!.At.AddHours(info.MaxHours) : null;
+                var (opens, end) = ARankHistory.Window(kill, info.MinHours, info.MaxHours, restart);
+                var known = opens is not null;
                 if (available && (up || opens is null || now < opens)) continue;
-                var text = up ? "UP" : restart is not null && (kill is null || kill.At <= restart) ? "After maintenance / unknown" : kill?.Uncertain == true ? "Sniped / unknown" : opens is null ? "No kill recorded" : now < opens ? "Cooldown" : now >= end ? "Window elapsed" : $"{Math.Clamp((now-opens.Value).TotalHours/(info.MaxHours-info.MinHours)*100,0,100):0}% window";
-                rows.Add((instance, new[]{info.Name+ExpansionData.InstanceGlyph(instance),_worldData.NameOf(world),instance == 0 ? "" : $"I{instance}",info.Location,info.Expansion,text,Time(opens),Time(end),known ? Time(kill!.At) : "—"}));
+                var text = up ? "UP" : restart is not null && (kill is null || kill.At <= restart) ? "After maintenance / unknown" : kill?.Uncertain == true && !known ? "Sniped / unknown" : opens is null ? "No kill recorded" : now < opens ? "Cooldown" : now >= end ? "Window elapsed" : $"{Math.Clamp((now-opens.Value).TotalHours/(end!.Value-opens.Value).TotalHours*100,0,100):0}% window";
+                if (known && kill!.Uncertain && !up) text += " (sniped range)";
+                rows.Add((instance, new[]{info.Name+ExpansionData.InstanceGlyph(instance),_worldData.NameOf(world),instance == 0 ? "" : $"I{instance}",info.Location,info.Expansion,text,Time(opens),Time(end),known ? (kill!.Uncertain ? Time(kill.LastAliveAt) + " → " + Time(kill.At) : Time(kill.At)) : "—"}));
             }
         }
         var showInstances = rows.Any(row => row.Instance > 0);

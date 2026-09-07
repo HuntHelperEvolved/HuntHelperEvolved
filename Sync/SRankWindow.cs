@@ -308,7 +308,10 @@ public sealed class SRankWindow
             ImGui.TableSetBgColor(ImGuiTableBgTarget.RowBg0, ImGui.ColorConvertFloat4ToU32(new Vector4(0.65f,0.08f,0.08f,0.65f)));
 
         ImGui.TableNextColumn();
-        ImGui.Text($"{timer.Name}{ExpansionData.InstanceGlyph(row.Instance)}");
+        var nameState=SRankBoardFilter.NameState(window.Phase, SpawnConditionData.HasTimedCondition(timer.Name), ConditionFor(row,now),now);
+        var nameColour=nameState switch { SRankNameState.Ready => new Vector4(0.35f,0.95f,0.4f,1),
+            SRankNameState.ConditionsUnmet => new Vector4(1f,0.3f,0.3f,1), _ => new Vector4(0.65f,0.65f,0.65f,1) };
+        ImGui.TextColored(nameColour,$"{timer.Name}{ExpansionData.InstanceGlyph(row.Instance)}");
         if (ImGui.IsItemHovered())
         {
             var exact = TravelPosition(row, worldId);
@@ -317,7 +320,7 @@ public sealed class SRankWindow
                 _sync.ZoneFor(timer.TerritoryId, worldId, row.Instance),
                 row.Status?.KilledAt is not null && !row.Status.Uncertain);
             var destination = TeleportHelper.NearestTo(timer.TerritoryId, position);
-            ImGui.SetTooltip(SpawnConditionData.Description(timer.Name) + "\n" +
+            ImGui.SetTooltip(SpawnConditionData.Description(timer.Name) + "\nName: green = timer/timed conditions open; red = timed conditions unmet; grey = not ready or unknown. Required player actions still apply.\n" +
                 (!_travel.Available ? "Lifestream is not available."
                     : destination is not { } target ? "No allowed aetheryte is available for this zone."
                     : $"Ctrl-click to travel to {target.Name} on {_worldData.NameOf(worldId)}. " +
@@ -357,6 +360,18 @@ public sealed class SRankWindow
         ImGui.PopID();
     }
 
+    private ConditionWindow? ConditionFor(Row row, DateTime now)
+    {
+        if (!SpawnConditionData.HasTimedCondition(row.Timer.Name)) return null;
+        var gate=row.Window.OpensAtUtc;
+        var key=(row.Timer.NameId,gate);
+        if(!_conditionWindows.TryGetValue(key,out var window) || window is null || window.Value.End<=now)
+        {
+            window=SpawnConditionData.Next(row.Timer.Name,gate is { } opens && opens>now ? opens : now);
+            _conditionWindows[key]=window;
+        }
+        return window;
+    }
     private void DrawConditionCell(Row row, DateTime now)
     {
         var gate=row.Window.OpensAtUtc;
@@ -368,12 +383,7 @@ public sealed class SRankWindow
             else ImGui.TextDisabled("No timed restriction");
             return;
         }
-        var key=(row.Timer.NameId,gate);
-        if(!_conditionWindows.TryGetValue(key,out var window) || window is null || window.Value.End<=now)
-        {
-            window=SpawnConditionData.Next(row.Timer.Name,gate is { } opens && opens>now ? opens : now);
-            _conditionWindows[key]=window;
-        }
+        var window=ConditionFor(row,now);
         if(window is not { } w) { ImGui.TextDisabled("Forecast unavailable"); return; }
         var start=gate is { } g && g>w.Start ? g : w.Start;
         if(now<start) ImGui.TextColored(ForcedColour,"In "+Countdown(start-now));

@@ -319,6 +319,7 @@ public sealed partial class SyncCoordinator : IDisposable
                 _sinceDiff = 0;
                 SendCounterContributions();
                 DiffTrain();
+                SendManualScouts();
                 ExpireRemote();
             }
 
@@ -372,6 +373,16 @@ public sealed partial class SyncCoordinator : IDisposable
                 break;
             case "counter.state":
                 ApplyCounters(SyncProtocol.Deserialize<CounterBroadcast>(payload)!.Counters);
+                break;
+            case "train.finished":
+            {
+                var result=SyncProtocol.Deserialize<TrainFinishResult>(payload)!;
+                if (_finishRequests.Remove(result.RequestId, out var pending)) pending.TrySetResult(result);
+                break;
+            }
+            case "train.scouts":
+                _trainScouts=SyncProtocol.Deserialize<TrainScoutsBroadcast>(payload)!.Names;
+                if (_trainScouts.Count==0) _manualScoutsSent=null;
                 break;
             case ServerMessageTypes.Welcome:
                 ApplyWelcome(SyncProtocol.Deserialize<WelcomeMessage>(payload)!);
@@ -454,6 +465,8 @@ public sealed partial class SyncCoordinator : IDisposable
 
     private void ApplyWelcome(WelcomeMessage welcome)
     {
+        ResetCompletionConnection();
+        SupportsTrainFinish=welcome.SupportsTrainFinish; _trainScouts=welcome.TrainScouts;
         _watchSent = null;
         if (ARankHistory.Merge(_config.ARankKills, welcome.ARankKills.Concat(ARankHistory.FromMarks(welcome.Marks)), DateTime.UtcNow)) _config.Save();
         ClientId = welcome.ClientId;
@@ -704,6 +717,7 @@ public sealed partial class SyncCoordinator : IDisposable
 
     private void ForgetRemoteState()
     {
+        ResetCompletionConnection();
         _visibleMarks.Clear(); ClientId = string.Empty; SupportsVisibleMarks = false;
         _counterServerId = string.Empty; _counterReady = false; _sharedCounters.Clear();
         _known.Clear();
@@ -812,7 +826,7 @@ public sealed partial class SyncCoordinator : IDisposable
         {
             NameId = s.NameId, Instance = s.Instance, WorldId = s.WorldId, Name = s.Name,
             Rank = SsEventMobs.Contains(s.NameId) ? "SS" : s.Rank.ToString(), TerritoryId = s.TerritoryId,
-            MapId = s.MapId, X = s.MapPosition.X, Y = s.MapPosition.Y, HpPercent = s.HealthPercent, InCombat = s.InCombat,
+            MapId = s.MapId, X = s.MapPosition.X, Y = s.MapPosition.Y, HpPercent = s.HealthPercent, NearbyPlayers = s.NearbyPlayers, InCombat = s.InCombat,
             SeenAt = s.LastSeenUtc, SpawnPointIndex = s.SpawnPointIndex
         }).ToList();
         _client.Send(new SightingsMessage { Sightings = batch });

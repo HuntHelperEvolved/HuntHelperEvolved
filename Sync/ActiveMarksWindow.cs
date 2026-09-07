@@ -51,7 +51,7 @@ public sealed class ActiveMarksWindow(Configuration config, SyncCoordinator sync
                 {
                     Mark=new SyncSighting { NameId=local.NameId,WorldId=local.WorldId,Instance=local.Instance,
                         TerritoryId=local.TerritoryId,MapId=local.MapId,Name=local.Name,Rank=previous?.Mark.Rank??local.Rank.ToString(),
-                        X=local.MapPosition.X,Y=local.MapPosition.Y,HpPercent=local.HealthPercent,InCombat=local.InCombat,SeenAt=local.LastSeenUtc },
+                        X=local.MapPosition.X,Y=local.MapPosition.Y,HpPercent=local.HealthPercent,NearbyPlayers=local.NearbyPlayers,InCombat=local.InCombat,SeenAt=local.LastSeenUtc },
                     ObserverIds=(previous?.ObserverIds??new List<string>()).Append(sync.ClientId).Distinct().ToList(),
                     Observers=(previous?.Observers??new List<string>()).Append("You").Distinct().ToList()
                 };
@@ -77,7 +77,10 @@ public sealed class ActiveMarksWindow(Configuration config, SyncCoordinator sync
                 if(dead) colour=new Vector4(1,0.3f,0.3f,1);
                 var hp=row.HealthKnown ? $"{m.HpPercent:0.#}%" : "?%";
                 var instance=m.Instance>0 ? $" i{m.Instance}" : string.Empty;
-                var label=$"{(tab=="All" ? m.Rank+": " : string.Empty)}{m.Name} - {hp} [{r.World}{instance}]";
+                var nearby=row.HealthKnown && m.NearbyPlayers is { } count ? $"{count} nearby" : "? nearby";
+                var faloopAge=row.Status?.FaloopActiveAt is { } released && row.Status.FaloopActiveUntil > now
+                    ? $" · Faloop {Elapsed(now-released)}" : string.Empty;
+                var label=$"{(tab=="All" ? m.Rank+": " : string.Empty)}{m.Name} - {hp} [{r.World}{instance}] · {r.Zone} · {nearby}{faloopAge}";
                 ImGui.PushID($"{m.WorldId}:{m.Instance}:{m.NameId}");
                 ImGui.PushStyleColor(ImGuiCol.Text,colour);
                 var clicked=ImGui.Selectable(label+"###mark",false,ImGuiSelectableFlags.None,
@@ -116,6 +119,7 @@ public sealed class ActiveMarksWindow(Configuration config, SyncCoordinator sync
                         var age=now-spawned;
                         detail+=$"\nActive for {(int)Math.Max(0,age.TotalHours):00}:{Math.Max(0,age.Minutes):00}:{Math.Max(0,age.Seconds):00}";
                     }
+                    detail+="\nNearby players: currently visible within 50 yalms of the mark, including the scout. One observation; counts are not added across scouts.";
                     detail+="\n"+(row.Visible is { } observation ? "Seen by: "+string.Join(", ",observation.Observers) : "Faloop report");
                     detail+=row.HasPosition ? "\nClick: map" : "\nLocation not reported";
                     if(canTravel) detail+=" · Ctrl-click: teleport";
@@ -127,6 +131,7 @@ public sealed class ActiveMarksWindow(Configuration config, SyncCoordinator sync
         }
         ImGui.EndChild();
     }
+    private static string Elapsed(TimeSpan age) => $"{(int)Math.Max(0,age.TotalHours):00}:{Math.Max(0,age.Minutes):00}:{Math.Max(0,age.Seconds):00}";
     private void Flag(SyncSighting mark) => MapFlagHelper.FlagPosition(gameGui,mark.TerritoryId,
         mark.MapId==0 ? detector.GetMapId(mark.TerritoryId) : mark.MapId,mark.Instance,mark.X,mark.Y);
     private void Option(string label,bool value,Action<bool> save)

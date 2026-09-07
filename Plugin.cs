@@ -811,10 +811,7 @@ public sealed class Plugin : IDalamudPlugin
             d.Name, d.NameId, d.TerritoryId, d.MapId, d.Instance,
             d.MapPosition, d.Dead, d.LastSeenUtc)).ToList();
 
-        var names = new List<string>();
-        var selfName = _objectTable.LocalPlayer?.Name?.TextValue;
-        if (!string.IsNullOrWhiteSpace(selfName)) names.Add(selfName);
-        names.AddRange(_config.AdditionalScouts.Where(n => !string.IsNullOrWhiteSpace(n)));
+        var names = CombinedTrainScouts();
 
         var ownCode = TrainExchange.Export(_detector.Ordered());
 
@@ -849,6 +846,9 @@ public sealed class Plugin : IDalamudPlugin
         var snapshot = CompletionSnapshot();
         if (!_completion.TryBegin(snapshot)) return;
         var endedBy = _objectTable.LocalPlayer?.Name?.TextValue;
+        var requiresServer = _config.SyncEnabled;
+        var connectionId = _sync.ClientId;
+        var serverSubmission = requiresServer ? _sync.PrepareFinish(marks) : null;
         try
         {
             var flags = Newtonsoft.Json.JsonConvert.DeserializeObject<List<FlagEntry>>(
@@ -856,22 +856,42 @@ public sealed class Plugin : IDalamudPlugin
             var webhooks = Newtonsoft.Json.JsonConvert.DeserializeObject<List<WebhookEntry>>(
                 Newtonsoft.Json.JsonConvert.SerializeObject(_config.Webhooks))!;
             var (success, message) = await DiscordRelay.PostTrainCompleteAsync(webhooks, marks, endedBy, flags);
+            Task<TrainFinishResult>? serverTask = null;
             await HuntTally.Service.Framework.RunOnFrameworkThread(() =>
             {
                 if (_disposal.IsCancellationRequested) return;
                 _lastPostResult = message;
                 if (!success) { _chatGui.PrintError($"[Hunt Helper Evolved] Failed to post to Discord: {message}"); return; }
-                if (_completion.CanClear(CompletionSnapshot(), _config.SyncEnabled && _config.SyncShareTrain))
+                if (CompletionSnapshot() != snapshot)
+                { _chatGui.Print("[Hunt Helper Evolved] Report posted; train changed while sending and was kept."); return; }
+                if (requiresServer)
                 {
                     CaptureResetUndo("Report completed");
-                    _watcher.ResetNow();
-                    _config.Flags.Clear();
-                    ClearSavedTrain();
-                    _chatGui.Print("[Hunt Helper Evolved] Report posted; unchanged local train cleared. Undo is available.");
+                    _ownResetPendingAt = DateTime.UtcNow;
+                    serverTask = _sync.SubmitFinish(serverSubmission!, connectionId);
                 }
-                else
-                    _chatGui.Print("[Hunt Helper Evolved] Report posted. The train was kept because it is shared or changed while sending; use Reset when ready.");
+                else if (_completion.CanClear(CompletionSnapshot(), false))
+                {
+                    CaptureResetUndo("Report completed"); _watcher.ResetNow();
+                    _currentMark=null; _config.Flags.Clear(); ClearSavedTrain();
+                    _chatGui.Print("[Hunt Helper Evolved] Report posted; local train reset. Undo is available.");
+                }
             });
+            if (serverTask is not null)
+            {
+                TrainFinishResult result;
+                try { result = await serverTask; }
+                catch (TimeoutException) { result = new() { Message="No server acknowledgement. Check the shared train before retrying; Undo is available if it was reset." }; }
+                await HuntTally.Service.Framework.RunOnFrameworkThread(() =>
+                {
+                    _sync.ForgetFinish(serverSubmission!.RequestId);
+                    if (_disposal.IsCancellationRequested) return;
+                    if (result.Accepted && !serverSubmission.ClearShared && CompletionSnapshot()==snapshot)
+                    { _watcher.ResetNow(); _currentMark=null; _config.Flags.Clear(); ClearSavedTrain(); }
+                    _lastPostResult = "Discord posted. " + result.Message;
+                    _chatGui.Print("[Hunt Helper Evolved] " + _lastPostResult);
+                });
+            }
         }
         catch (Exception ex)
         {
@@ -2993,6 +3013,24 @@ public sealed class Plugin : IDalamudPlugin
         ImGui.EndChild();
     }
 
+    private List<string> CombinedTrainScouts() => (_sync.IsConnected && _config.SyncShareTrain ? _sync.TrainScouts : Array.Empty<string>())
+        .Concat(_config.AdditionalScouts)
+        .Append((!_sync.IsConnected || !_config.SyncShareTrain) && _detector.Marks.Count > 0 ? _objectTable.LocalPlayer?.Name?.TextValue ?? string.Empty : string.Empty)
+        .Where(n => !string.IsNullOrWhiteSpace(n)).Select(n => n.Trim())
+        .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+
+    private void DrawTrainScouts()
+    {
+        ImGui.TextWrapped("Scouts: " + string.Join(", ", CombinedTrainScouts()));
+        if (ImGui.TreeNode("Add scout credits"))
+        {
+            DrawStringList(_config.AdditionalScouts, MaxAdditionalScouts, "+ Add scout",
+                $"Maximum of {MaxAdditionalScouts} additional scouts reached.");
+            ImGui.TextWrapped("Shared credits are retained for this train until it is reset.");
+            ImGui.TreePop();
+        }
+    }
+
     private void DrawTrainPopout()
     {
         if (!_trainPopoutVisible) return;
@@ -3003,7 +3041,14 @@ public sealed class Plugin : IDalamudPlugin
         {
             // Controls sit outside the scrolling region so they stay put while
             // the list scrolls underneath.
-            DrawTrainControls();
+            ImGui.SetNextItemOpen(_config.TrainPopoutControlsExpanded, ImGuiCond.Always);
+            var expanded = ImGui.CollapsingHeader("Train controls & scouts");
+            if (expanded != _config.TrainPopoutControlsExpanded) { _config.TrainPopoutControlsExpanded = expanded; _config.Save(); }
+            if (expanded)
+            {
+                DrawTrainScouts();
+                DrawTrainControls();
+            }
             ImGui.Separator();
 
             // Reserve room at the bottom for the footer, so the list scrolls
