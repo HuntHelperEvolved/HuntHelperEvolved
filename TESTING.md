@@ -1,9 +1,9 @@
-# 0.5.0-testing.1
+# 0.5.0-beta.1
 
-This prerelease runs independently of Hunt Helper. Existing native trains and
-tallies are retained. Back up the plugin configuration before switching feeds.
-The opt-in installer URL is in [README.md](README.md#install); keep only one HHE
-repository feed enabled. The main branch/feed is unchanged.
+This beta runs independently of Hunt Helper. Existing native trains and
+tallies are retained. Back up the plugin configuration before updating.
+The installer URL is in [README.md](README.md#install). This beta uses the main
+repository feed and remains testing-exclusive. Existing users can update normally.
 
 ## What to test with your group
 

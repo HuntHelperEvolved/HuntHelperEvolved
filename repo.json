@@ -14,8 +14,8 @@
     "TestingDalamudApiLevel": 15,
     "IsHide": false,
     "IsTestingExclusive": true,
-    "DownloadLinkInstall": "https://github.com/HuntHelperEvolved/HuntHelperEvolved/releases/download/0.5.0-testing.1/HuntHelperEvolved.zip",
-    "DownloadLinkUpdate": "https://github.com/HuntHelperEvolved/HuntHelperEvolved/releases/download/0.5.0-testing.1/HuntHelperEvolved.zip",
-    "DownloadLinkTesting": "https://github.com/HuntHelperEvolved/HuntHelperEvolved/releases/download/0.5.0-testing.1/HuntHelperEvolved.zip"
+    "DownloadLinkInstall": "https://github.com/HuntHelperEvolved/HuntHelperEvolved/releases/download/0.5.0-beta.1/HuntHelperEvolved.zip",
+    "DownloadLinkUpdate": "https://github.com/HuntHelperEvolved/HuntHelperEvolved/releases/download/0.5.0-beta.1/HuntHelperEvolved.zip",
+    "DownloadLinkTesting": "https://github.com/HuntHelperEvolved/HuntHelperEvolved/releases/download/0.5.0-beta.1/HuntHelperEvolved.zip"
   }
 ]

@@ -6,7 +6,7 @@ order marks actually died, draws spawn points, your detection range and SS
 event locations on the **in-game map**, counts S-rank trigger mobs, and keeps a
 lifetime per-mark kill tally for every character you play.
 
-> **v0.5 — private-group sync testing.** It is not finished, and it is published as a
+> **v0.5 — beta.** It is not finished, and it is published as a
 > testing-only release on purpose: you will not see it in the plugin installer
 > unless you have opted into testing builds. Expect rough edges and expect to
 > report them.
@@ -21,15 +21,14 @@ lifetime per-mark kill tally for every character you play.
    at all — this release is testing-only.
 3. Find **Custom Plugin Repositories** near the bottom of the same tab, paste
    this into the empty box and click the **+**:
-   `https://raw.githubusercontent.com/HuntHelperEvolved/HuntHelperEvolved/feature/cloud-sync-review/repo.json`
+   `https://raw.githubusercontent.com/HuntHelperEvolved/HuntHelperEvolved/main/repo.json`
 4. Click **Save and Close**.
 5. Type `/xlplugins`, search for **Hunt Helper Evolved**, and click **Install**.
 
-This is an opt-in feed for the sync testing branch; the main feed remains unchanged.
-If you already have the main feed installed, disable/remove that repository entry
-before adding this testing feed, so only one feed supplies Hunt Helper Evolved.
-Updates show up as a normal **Update** button in `/xlplugins`. Keep a backup of
-your plugin configuration before switching feeds. Hunt Helper is not required.
+This beta uses the existing main repository feed and remains testing-exclusive.
+If you already use that feed, update normally in `/xlplugins`; no repository change
+is needed. Keep a backup of your plugin configuration before updating.
+Hunt Helper is not required.
 See [TESTING.md](TESTING.md) for the current features and feedback checklist.
 
 If you cannot find it after adding the repository, step 2 is almost certainly
