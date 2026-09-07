@@ -34,6 +34,12 @@ public static class ReleaseNotes
 
     public static readonly Release[] All =
     {
+        new("0.4.0.15", "2026-09-07", "Testing: one-click S-rank travel and clearer active reports.",
+        [
+            new("Travel", "World travel retains the aetheryte step through loading and temporary refusals, so one click completes both stages. Ctrl-click a name on /hhs to use the same travel when its location is known.", Kihtli),
+            new("S ranks", "Active local and fresh community reports move to the top of /hhs and have a red row background. Recently detected local S ranks no longer echo a duplicate relay alert.", Kihtli),
+        ]),
+
         new("0.4.0.14", "2026-09-07", "Testing: undo is visible wherever you manage the train.",
         [
             new("Train", "Undo reset is shown at the top of the Train tab and popout, even for an empty train. Reset and Clear All now save recovery data consistently. Undo restores locally and turns train sharing off.", Kihtli),

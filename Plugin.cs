@@ -374,7 +374,7 @@ public sealed class Plugin : IDalamudPlugin
         _sync.SRankSpawned += OnRemoteSRankSpawn;
         _srankTravel = new LifestreamTravel(_pluginInterface, framework, _detector, _chatGui, _log);
         _activeSRankWindow = new ActiveSRankWindow(_config, _sync, _worldData, _srankTravel);
-        _srankWindow = new SRankWindow(_config, _sync, _worldData, _detector);
+        _srankWindow = new SRankWindow(_config, _sync, _worldData, _detector, _srankTravel);
         _arankWindow = new ARankWindow(_config, _sync, _worldData, _detector);
         // After the detector exists, since the gates read straight off it.
         _trainIpc = new TrainIpcProvider(_pluginInterface, _detector, _log);
@@ -760,7 +760,12 @@ public sealed class Plugin : IDalamudPlugin
 
     private void OnTrainCommand(string command, string args) => _trainPopoutVisible = !_trainPopoutVisible;
 
-    private void OnSightingDetected(OtherRankSighting sighting) => _notifier.Announce(sighting);
+    private void OnSightingDetected(OtherRankSighting sighting)
+    {
+        if (sighting.Rank == HuntRank.S && !sighting.IsRemote)
+            _spawnAlertFilter.RecordLocal(sighting.NameId,sighting.WorldId,sighting.Instance,DateTime.UtcNow);
+        _notifier.Announce(sighting);
+    }
 
     /// <summary>Compact "how long ago was this last seen" label, e.g. 5m / 1h 12m.</summary>
     private static string FormatAge(DateTime lastSeenUtc)
@@ -4267,6 +4272,9 @@ public sealed class Plugin : IDalamudPlugin
             : _config.SyncSpawnDataCenters.Contains(dc.Id);
         if (!allowed) { _lastCommunityAlert += " Excluded by DC filter."; return; }
         if (!(test ? new Sync.SpawnAlertFilter() : _spawnAlertFilter).Accept(spawn, true, DateTime.UtcNow)) { _lastCommunityAlert += " Duplicate or invalid event time."; return; }
+        if (!test && _detector.OtherRanks.TryGetValue((spawn.NameId,spawn.Instance,spawn.WorldId),out var local)
+            && !local.IsRemote && DateTime.UtcNow-local.LastSeenUtc < TimeSpan.FromSeconds(2))
+        { _lastCommunityAlert += " Already detected locally; relay suppressed."; return; }
         var position = SpawnPosition(spawn.X, spawn.Y);
         _notifier.SendRelay(new OtherRankSighting
         {

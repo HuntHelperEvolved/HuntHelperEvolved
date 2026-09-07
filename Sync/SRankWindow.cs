@@ -21,6 +21,7 @@ public sealed class SRankWindow
     private static readonly Vector4 CooldownColour = new(0.7f, 0.7f, 0.7f, 1f);
     private static readonly Vector4 UnknownColour = new(0.5f, 0.5f, 0.5f, 1f);
 
+    private readonly LifestreamTravel _travel;
     private readonly Configuration _config;
     private readonly SyncCoordinator _sync;
     private readonly WorldData _worldData;
@@ -30,8 +31,9 @@ public sealed class SRankWindow
     private int _killedMinutesAgo;
     private int _maintenanceMinutesAgo;
 
-    public SRankWindow(Configuration config, SyncCoordinator sync, WorldData worldData, MarkDetector detector)
+    public SRankWindow(Configuration config, SyncCoordinator sync, WorldData worldData, MarkDetector detector, LifestreamTravel travel)
     {
+        _travel = travel;
         _config = config;
         _sync = sync;
         _worldData = worldData;
@@ -107,7 +109,7 @@ public sealed class SRankWindow
         DrawExpansionFilter();
         var available = _config.SRankWindowAvailableOnly;
         if (ImGui.Checkbox("Available to spawn only", ref available)) { _config.SRankWindowAvailableOnly = available; _config.Save(); }
-        if (ImGui.IsItemHovered()) ImGui.SetTooltip("Show marks whose known respawn window has opened, excluding live sightings, unknown and uncertain timers. Spawn conditions still need to be met.");
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip("Show marks whose known respawn window has opened, excluding unknown and uncertain timers. Active ranks remain visible at the top. Spawn conditions still need to be met.");
         ImGui.SameLine();
         var search = _config.SRankWindowSearch;
         ImGui.SetNextItemWidth(220);
@@ -120,11 +122,14 @@ public sealed class SRankWindow
         var now = DateTime.UtcNow;
         var rows = worlds.SelectMany(world => BuildRows(world, now).Select(row => (Row:row, World:world)))
             .OrderBy(r => r.Row.Window.Phase switch { SRankPhase.Up => 0, SRankPhase.Forced => 1, SRankPhase.Window => 2, SRankPhase.Uncertain => 3, SRankPhase.Cooldown => 4, _ => 5 })
+            .ThenByDescending(r => r.Row.SeenUp ? r.Row.Status?.SpawnedAt ?? now : DateTime.MinValue)
             .ThenByDescending(r => r.Row.Window.Percent).ThenBy(r => r.Row.Window.OpensAtUtc ?? DateTime.MaxValue)
             .ThenBy(r => r.Row.Timer.Name).ThenBy(r => _worldData.NameOf(r.World)).ToList();
         ImGui.TextDisabled($"{rows.Count} marks across {worlds.Count} selected worlds. Server feed: {string.Join(", ", _sync.Faloop.DataCenters)}");
 
-        ImGui.TextDisabled("Right-click a column header to choose which columns to show.");
+        ImGui.TextDisabled("Right-click headers for columns. Ctrl-click a mark name to travel when its location is known.");
+        if (!string.IsNullOrEmpty(_travel.Status)) ImGui.TextWrapped(_travel.Status);
+        if (_travel.Busy && ImGui.SmallButton("Cancel travel")) _travel.Cancel();
         const ImGuiTableFlags flags = ImGuiTableFlags.RowBg | ImGuiTableFlags.BordersInnerH | ImGuiTableFlags.ScrollY
                                       | ImGuiTableFlags.Resizable | ImGuiTableFlags.Hideable | ImGuiTableFlags.SizingStretchProp;
         if (!ImGui.BeginTable("sranksConditions", 10, flags)) return;
@@ -256,8 +261,9 @@ public sealed class SRankWindow
             {
                 var status = _sync.StatusFor(timer.NameId, worldId, instance);
                 var seenUp = _sync.IsSeenUp(timer.NameId, worldId, instance);
+                seenUp |= status is not null && ActiveSRankFilter.Status(status,seenUp,now) is not null;
                 var cycle = SRankTimerData.Compute(timer, status, now, seenUp);
-                if (_config.SRankWindowAvailableOnly && !SRankBoardFilter.Available(cycle.Phase)) continue;
+                if (_config.SRankWindowAvailableOnly && !seenUp && !SRankBoardFilter.Available(cycle.Phase)) continue;
                 rows.Add(new Row(timer, instance, status, cycle, seenUp));
             }
         }
@@ -282,16 +288,35 @@ public sealed class SRankWindow
             .ToList();
     }
 
+    private Vector2? TravelPosition(Row row, uint world)
+    {
+        var key=(row.Timer.NameId,row.Instance,world);
+        if (_detector.OtherRanks.TryGetValue(key,out var local) && DateTime.UtcNow-local.LastSeenUtc < TimeSpan.FromSeconds(2)) return local.MapPosition;
+        if (_sync.IsSeenUp(row.Timer.NameId,world,row.Instance) && _sync.RemoteSightings.TryGetValue(key,out var remote)) return remote.MapPosition;
+        if (row.SeenUp && row.Status?.SpawnX is { } x && row.Status.SpawnY is { } y
+            && float.IsFinite(x) && float.IsFinite(y) && x >= 1 && x <= 100 && y >= 1 && y <= 100) return new(x,y);
+        return null;
+    }
+
     private void DrawRow(Row row, uint worldId, DateTime now)
     {
         var timer = row.Timer;
         var window = row.Window;
         ImGui.PushID($"{worldId}_{timer.NameId}_{row.Instance}");
         ImGui.TableNextRow();
+        if (row.SeenUp)
+            ImGui.TableSetBgColor(ImGuiTableBgTarget.RowBg0, ImGui.ColorConvertFloat4ToU32(new Vector4(0.65f,0.08f,0.08f,0.65f)));
 
         ImGui.TableNextColumn();
         ImGui.Text($"{timer.Name}{ExpansionData.InstanceGlyph(row.Instance)}");
-        if (ImGui.IsItemHovered()) ImGui.SetTooltip(SpawnConditionData.Description(timer.Name));
+        if (ImGui.IsItemHovered())
+        {
+            var position=TravelPosition(row,worldId);
+            ImGui.SetTooltip(SpawnConditionData.Description(timer.Name) + "\n" +
+                (!_travel.Available ? "Lifestream is not available." : position is null ? "No current mark location is known." : "Ctrl-click to travel to this world and the nearest aetheryte. Select the instance on arrival."));
+            if (ImGui.GetIO().KeyCtrl && ImGui.IsMouseClicked(ImGuiMouseButton.Left) && position is { } pos && _travel.Available)
+                _travel.Start(worldId,timer.TerritoryId,pos);
+        }
 
         ImGui.TableNextColumn();
         ImGui.TextDisabled(_worldData.NameOf(worldId));

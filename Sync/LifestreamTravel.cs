@@ -1,4 +1,5 @@
 using System;
+using Dalamud.Game.ClientState.Conditions;
 using System.Numerics;
 using Dalamud.Plugin;
 using Dalamud.Plugin.Services;
@@ -13,7 +14,7 @@ public sealed class LifestreamTravel : IDisposable
     private readonly MarkDetector _detector;
     private readonly IChatGui _chat;
     private readonly IPluginLog _log;
-    private (uint World, AetheryteData Aetheryte, DateTime Deadline)? _pending;
+    private (uint World, AetheryteData Aetheryte, TravelHandoff Handoff)? _pending;
     public string Status { get; private set; } = "";
     public LifestreamTravel(IDalamudPluginInterface plugin, IFramework framework, MarkDetector detector, IChatGui chat, IPluginLog log)
     { _plugin=plugin; _framework=framework; _detector=detector; _chat=chat; _log=log; framework.Update += Update; }
@@ -31,10 +32,9 @@ public sealed class LifestreamTravel : IDisposable
             if (_detector.CurrentWorldId() == 0) { Status="Log in before starting travel."; return; }
             if (TeleportHelper.NearestTo(territory, position) is not { } nearest)
             { Status="No eligible aetheryte for this location. Check the aetheryte blacklist."; return; }
-            if (_detector.CurrentWorldId() == world) { Teleport(nearest); return; }
-            if (!_plugin.GetIpcSubscriber<uint,bool>("Lifestream.ChangeWorldById").InvokeFunc(world))
+            if (_detector.CurrentWorldId() != world && !_plugin.GetIpcSubscriber<uint,bool>("Lifestream.ChangeWorldById").InvokeFunc(world))
             { Status="Lifestream could not start travel to that world."; return; }
-            _pending = (world, nearest, DateTime.UtcNow.AddMinutes(15));
+            _pending = (world, nearest, new TravelHandoff(world, DateTime.UtcNow));
             Status=$"Changing world, then teleporting to {nearest.Name}.";
         }
         catch (Exception ex) { Fail(ex); }
@@ -44,26 +44,27 @@ public sealed class LifestreamTravel : IDisposable
         if (_pending is not { } pending) return;
         try
         {
-            if (DateTime.UtcNow > pending.Deadline)
-            { _pending=null; Status="Travel timed out; teleport was cancelled."; return; }
-            if (_plugin.GetIpcSubscriber<bool>("Lifestream.IsBusy").InvokeFunc() || _detector.CurrentWorldId() == 0) return;
-            if (_detector.CurrentWorldId() != pending.World)
-            {
-                if (DateTime.UtcNow > pending.Deadline.AddMinutes(-15).AddSeconds(5))
-                { _pending=null; Status="World travel stopped before arrival; teleport cancelled."; }
-                return;
-            }
-            _pending=null;
-            Teleport(pending.Aetheryte);
+            var now=DateTime.UtcNow;
+            if (pending.Handoff.Expired(now))
+            { _pending=null; Status="Travel timed out; teleport was not accepted. Check attunement or character state."; return; }
+            var player=HuntTally.Service.Objects.LocalPlayer;
+            var ready=player is not null && !player.IsCasting
+                && !HuntTally.Service.Condition[ConditionFlag.BetweenAreas]
+                && !HuntTally.Service.Condition[ConditionFlag.BetweenAreas51];
+            if (!pending.Handoff.ShouldAttempt(now, _detector.CurrentWorldId(),
+                _plugin.GetIpcSubscriber<bool>("Lifestream.IsBusy").InvokeFunc(), ready)) return;
+            if (Teleport(pending.Aetheryte)) _pending=null;
+            else { pending.Handoff.Refused(now); Status=$"Waiting for teleport to {pending.Aetheryte.Name} to become available…"; }
         }
         catch (Exception ex) { _pending=null; Fail(ex); }
     }
-    private void Teleport(AetheryteData nearest)
+    private bool Teleport(AetheryteData nearest)
     {
         var accepted = _plugin.GetIpcSubscriber<uint,byte,bool>("Lifestream.Teleport")
             .InvokeFunc(TeleportHelper.ResolveId(nearest.AetheryteId), nearest.SubIndex);
         Status=accepted ? $"Teleporting to {nearest.Name}." : $"Lifestream refused teleport to {nearest.Name}; check attunement and character state.";
-        _chat.Print("[Hunt Helper Evolved] " + Status);
+        if (accepted) _chat.Print("[Hunt Helper Evolved] " + Status);
+        return accepted;
     }
     public void Cancel()
     {
