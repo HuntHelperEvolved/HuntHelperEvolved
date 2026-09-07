@@ -34,7 +34,7 @@ public static class ReleaseNotes
 
     public static readonly Release[] All =
     {
-        new("0.5.0.1", "2026-09-07", "Testing: standalone hunts and private-group sync.",
+        new("0.5.0.1", "2026-09-07", "Beta: standalone hunts and private-group sync.",
         [
             new("Sync", "Share train scouting/order, live mark observations, S-rank mapping and personal trigger-kill totals through a private password-protected group server.", Kihtli),
             new("Boards", "Use /hhs for S-rank spawn windows and conditions, /hha for A-rank timers by instance, and /hhsa or /hhv for compact Active Marks with All/S/A/B tabs and live HP.", Kihtli),
