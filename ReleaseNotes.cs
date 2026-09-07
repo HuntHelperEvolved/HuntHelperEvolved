@@ -34,6 +34,11 @@ public static class ReleaseNotes
 
     public static readonly Release[] All =
     {
+        new("0.4.0.20", "2026-09-07", "Testing: compact Active Marks overlay.",
+        [
+            new("Sightings", "Active Marks uses compact coloured lines with HP after the name: green unpulled, orange pulled, red dead. Hover for details, click for a map, and Ctrl-click or right-click for travel. Tabs and filters remain available.", Kihtli),
+        ]),
+
         new("0.4.0.19", "2026-09-07", "Testing: Active Marks with rank tabs and live health.",
         [
             new("Sightings", "Active S Ranks becomes Active Marks (/hhsa or /hhv), with All/S/A/B tabs, live HP, alive/dead and combat state. S-rank community reports, travel and active timers remain available. Configure rank, world/DC, expansion and status filters in Sync settings. Requires server 0.3.11.", Kihtli),
