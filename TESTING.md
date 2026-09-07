@@ -1,6 +1,6 @@
-# Staged 0.5.0.3 / server 0.3.13
+# Beta 0.5.0.3 / server 0.3.13
 
-Not uploaded or deployed. The public installer feed stays on 0.5.0.2.
+Testing-exclusive beta release; update through the existing main installer feed.
 
 - Compare /hha sniped Opens/Window end with Discord for a mark seen alive earlier. Unknown lower bounds must remain unknown; repeat after train reset and reconnect.
 - End Train: successful Discord and server acknowledgement reset the unchanged train with Undo. Failed Discord, old/unavailable server, or a concurrent mark/order/watch edit must retain it. A lost acknowledgement may leave an already-reset train; inspect state and use Undo rather than immediately reposting Discord.
