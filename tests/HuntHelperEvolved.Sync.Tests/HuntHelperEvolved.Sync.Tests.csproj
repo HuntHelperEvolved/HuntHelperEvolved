@@ -16,6 +16,7 @@
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <Compile Include="../../Sync/SharedCounter.cs" Link="SharedCounter.cs" />
     <Compile Include="../../Sync/SpawnConditionData.cs" Link="SpawnConditionData.cs" />
+    <Compile Include="../../Sync/ARankHistory.cs" Link="ARankHistory.cs" />
     <Compile Include="../../Sync/ARankInstances.cs" Link="ARankInstances.cs" />
     <Compile Include="../../Sync/SharedRouteGrouping.cs" Link="SharedRouteGrouping.cs" />
     <Compile Include="../../Sync/VisibleMarkFilter.cs" Link="VisibleMarkFilter.cs" />

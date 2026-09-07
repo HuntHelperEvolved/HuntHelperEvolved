@@ -272,6 +272,7 @@ public static class ServerMessageTypes
 
 public sealed class WelcomeMessage
 {
+    public List<ARankKill> ARankKills { get; set; } = new();
     public bool SupportsVisibleMarks { get; set; }
     public List<VisibleMark> VisibleMarks { get; set; } = new();
     public string CounterServerId { get; set; } = string.Empty;

@@ -6,15 +6,6 @@ using Dalamud.Bindings.ImGui;
 
 namespace HuntHelperEvolved.Sync;
 
-public sealed class ARankKill
-{
-    public uint NameId { get; set; }
-    public uint WorldId { get; set; }
-    public uint Instance { get; set; }
-    public DateTime At { get; set; }
-    public bool Uncertain { get; set; }
-}
-
 public sealed class ARankWindow
 {
     private readonly Configuration _config;
@@ -40,11 +31,8 @@ public sealed class ARankWindow
                 if (!mark.Dead || mark.IsCustom || ExpansionData.Lookup(mark.NameId) is null) continue;
                 var at = mark.SnipedAtUtc ?? mark.DeathObservedAtUtc;
                 if (at is null || mark.WorldId == 0 || now - at.Value > TimeSpan.FromDays(14)) continue;
-                var previous = _config.ARankKills.FirstOrDefault(k => k.NameId == mark.NameId && k.WorldId == mark.WorldId && k.Instance == mark.Instance);
-                if (previous is not null && previous.At >= at.Value) continue;
-                if (previous is not null) _config.ARankKills.Remove(previous);
-                _config.ARankKills.Add(new() { NameId = mark.NameId, WorldId = mark.WorldId, Instance = mark.Instance, At = at.Value, Uncertain = mark.SnipedAtUtc is not null });
-                changed = true;
+                changed |= ARankHistory.Merge(_config.ARankKills, new[] { new ARankKill { NameId = mark.NameId,
+                    WorldId = mark.WorldId, Instance = mark.Instance, At = at.Value, Uncertain = mark.SnipedAtUtc is not null } }, now);
             }
             if (_config.ARankKills.RemoveAll(k => now - k.At > TimeSpan.FromDays(14)) > 0) changed = true;
             if (changed) _config.Save();
@@ -58,7 +46,7 @@ public sealed class ARankWindow
     }
     private void DrawContents(DateTime now)
     {
-        ImGui.TextWrapped("Windows from recorded local/shared train kills. No community A-rank kill feed. Unknown or sniped kill times have no countdown; elapsed windows do not confirm a mark is alive.");
+        ImGui.TextWrapped("Windows from local kills and server kill history, retrieved automatically on connection. No community A-rank kill feed. Unknown or sniped kill times have no countdown; elapsed windows do not confirm a mark is alive.");
         var worlds = DrawWorldPicker();
         ImGui.SameLine(); DrawExpansionFilter();
         var available = _config.ARankWindowAvailableOnly;

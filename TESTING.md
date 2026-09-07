@@ -1,3 +1,7 @@
+# 0.5.0-beta.2 hotfix
+
+A-rank cooldowns now load server kill history on connection, including after train resets and server restarts. Requires server 0.3.12. Test joining after a completed/reset train with an empty local history and with train sharing disabled; check each world and instance separately. Kill history cleared before the server upgrade cannot be recovered.
+
 # 0.5.0-beta.1
 
 This beta runs independently of Hunt Helper. Existing native trains and

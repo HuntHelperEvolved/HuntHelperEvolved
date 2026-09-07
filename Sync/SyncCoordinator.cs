@@ -386,9 +386,12 @@ public sealed partial class SyncCoordinator : IDisposable
             }
 
             case ServerMessageTypes.TrainUpsert:
-                if (_config.SyncShareTrain)
-                    ApplyMarks(SyncProtocol.Deserialize<TrainUpsertBroadcast>(payload)!.Marks);
+            {
+                var marks = SyncProtocol.Deserialize<TrainUpsertBroadcast>(payload)!.Marks;
+                if (ARankHistory.Merge(_config.ARankKills, ARankHistory.FromMarks(marks), DateTime.UtcNow)) _config.Save();
+                if (_config.SyncShareTrain) ApplyMarks(marks);
                 break;
+            }
 
             case ServerMessageTypes.TrainRemove:
                 if (_config.SyncShareTrain)
@@ -452,6 +455,7 @@ public sealed partial class SyncCoordinator : IDisposable
     private void ApplyWelcome(WelcomeMessage welcome)
     {
         _watchSent = null;
+        if (ARankHistory.Merge(_config.ARankKills, welcome.ARankKills.Concat(ARankHistory.FromMarks(welcome.Marks)), DateTime.UtcNow)) _config.Save();
         ClientId = welcome.ClientId;
         SupportsVisibleMarks = welcome.SupportsVisibleMarks;
         _visibleMarks.Clear();
