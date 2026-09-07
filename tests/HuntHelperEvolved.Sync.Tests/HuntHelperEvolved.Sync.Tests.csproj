@@ -18,6 +18,7 @@
     <Compile Include="../../Sync/SpawnConditionData.cs" Link="SpawnConditionData.cs" />
     <Compile Include="../../Sync/ARankInstances.cs" Link="ARankInstances.cs" />
     <Compile Include="../../Sync/SharedRouteGrouping.cs" Link="SharedRouteGrouping.cs" />
+    <Compile Include="../../Sync/VisibleMarkFilter.cs" Link="VisibleMarkFilter.cs" />
     <Compile Include="../../Sync/ActiveSRankFilter.cs" Link="ActiveSRankFilter.cs" />
     <Compile Include="../../Sync/TravelHandoff.cs" Link="TravelHandoff.cs" />
     <Compile Include="../../Sync/SpawnAlertFilter.cs" Link="SpawnAlertFilter.cs" />

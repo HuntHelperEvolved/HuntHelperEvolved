@@ -58,10 +58,14 @@ public sealed partial class SyncCoordinator : IDisposable
     private readonly Dictionary<(uint NameId, uint Instance, uint WorldId), OtherRankSighting> _remote = new();
     private readonly Dictionary<(uint NameId, uint Instance, uint WorldId), SyncSRankStatus> _sranks = new();
     private readonly Dictionary<(uint TerritoryId, uint WorldId, uint Instance), SyncSpawnZone> _zones = new();
+    private readonly Dictionary<(uint NameId, uint Instance, uint WorldId), VisibleMark> _visibleMarks = new();
+    public IReadOnlyCollection<VisibleMark> VisibleMarks => _visibleMarks.Values;
+    public string ClientId { get; private set; } = string.Empty;
+    public bool SupportsVisibleMarks { get; private set; }
     private List<SyncPresence> _clients = new();
     private SyncFaloopStatus _faloop = new();
 
-    private readonly Dictionary<(uint NameId, uint Instance, uint WorldId), (float Hp, Vector2 Pos, DateTime At, int? Point)> _sentSightings = new();
+    private readonly Dictionary<(uint NameId, uint Instance, uint WorldId), (float Hp, Vector2 Pos, DateTime At, int? Point, bool? InCombat)> _sentSightings = new();
     private readonly Dictionary<(uint NameId, uint Instance, uint WorldId), DateTime> _reportedKills = new();
 
     private List<SyncWorld>? _worlds;
@@ -361,6 +365,11 @@ public sealed partial class SyncCoordinator : IDisposable
     {
         switch (type)
         {
+            case "marks.visible":
+                var visible = SyncProtocol.Deserialize<VisibleMarksBroadcast>(payload)!;
+                foreach (var mark in visible.Marks) _visibleMarks[mark.Mark.Key] = mark;
+                foreach (var key in visible.Removed) _visibleMarks.Remove(key.ToTuple());
+                break;
             case "counter.state":
                 ApplyCounters(SyncProtocol.Deserialize<CounterBroadcast>(payload)!.Counters);
                 break;
@@ -443,6 +452,10 @@ public sealed partial class SyncCoordinator : IDisposable
     private void ApplyWelcome(WelcomeMessage welcome)
     {
         _watchSent = null;
+        ClientId = welcome.ClientId;
+        SupportsVisibleMarks = welcome.SupportsVisibleMarks;
+        _visibleMarks.Clear();
+        foreach (var mark in welcome.VisibleMarks) _visibleMarks[mark.Mark.Key] = mark;
         WelcomeCounters(welcome);
         ApplyWatches(welcome.WatchState, joining: true);
         ServerVersion = welcome.ServerVersion;
@@ -643,6 +656,7 @@ public sealed partial class SyncCoordinator : IDisposable
     private void AddRemoteSighting(SyncSighting s)
     {
         if (s.NameId == 0) return;
+        if (s.HpPercent <= 0) { _remote.Remove(s.Key); return; }
 
         // Our own reports come back to us too. They are already on the map
         // from the local scan, and once that expires the map should say the
@@ -675,6 +689,8 @@ public sealed partial class SyncCoordinator : IDisposable
 
     private void ExpireRemote()
     {
+        foreach (var key in _visibleMarks.Where(p => DateTime.UtcNow - p.Value.Mark.SeenAt > RemoteSightingTtl).Select(p => p.Key).ToList())
+            _visibleMarks.Remove(key);
         var now = DateTime.UtcNow;
         var stale = _remote.Where(kv => now - kv.Value.LastSeenUtc > RemoteSightingTtl).Select(kv => kv.Key).ToList();
         if (stale.Count == 0) return;
@@ -684,6 +700,7 @@ public sealed partial class SyncCoordinator : IDisposable
 
     private void ForgetRemoteState()
     {
+        _visibleMarks.Clear(); ClientId = string.Empty; SupportsVisibleMarks = false;
         _counterServerId = string.Empty; _counterReady = false; _sharedCounters.Clear();
         _known.Clear();
         _lastSentOrder = new();
@@ -777,26 +794,26 @@ public sealed partial class SyncCoordinator : IDisposable
     private void PublishSightings()
     {
         var now = DateTime.UtcNow;
-        var visible = _config.SyncShareSightings ? _detector.OtherRanks.Values.Where(s => !s.IsRemote
+        var visible = _config.SyncShareSightings ? _detector.VisibleMarks.Where(s => !s.IsRemote
             && s.TerritoryId == _clientState.TerritoryType && s.Instance == MarkDetector.GetCurrentInstance()
             && s.WorldId == _detector.CurrentWorldId() && now - s.LastSeenUtc < TimeSpan.FromSeconds(1)).ToList()
             : new List<OtherRankSighting>();
         var changed = visible.Count != _sentSightings.Count || visible.Any(s =>
             !_sentSightings.TryGetValue(s.Key, out var prev) || Math.Abs(prev.Hp - s.HealthPercent) >= 1f
             || Vector2.Distance(prev.Pos, s.MapPosition) >= 0.3f || prev.Point != s.SpawnPointIndex
-            || now - prev.At >= SightingHeartbeat);
+            || prev.InCombat != s.InCombat || now - prev.At >= SightingHeartbeat);
         if (!changed) return;
         // Protocol 4: the complete visible set. Empty withdraws this player's observations only.
         var batch = visible.Select(s => new SyncSighting
         {
             NameId = s.NameId, Instance = s.Instance, WorldId = s.WorldId, Name = s.Name,
             Rank = SsEventMobs.Contains(s.NameId) ? "SS" : s.Rank.ToString(), TerritoryId = s.TerritoryId,
-            MapId = s.MapId, X = s.MapPosition.X, Y = s.MapPosition.Y, HpPercent = s.HealthPercent,
+            MapId = s.MapId, X = s.MapPosition.X, Y = s.MapPosition.Y, HpPercent = s.HealthPercent, InCombat = s.InCombat,
             SeenAt = s.LastSeenUtc, SpawnPointIndex = s.SpawnPointIndex
         }).ToList();
         _client.Send(new SightingsMessage { Sightings = batch });
         _sentSightings.Clear();
-        foreach (var s in visible) _sentSightings[s.Key] = (s.HealthPercent, s.MapPosition, now, s.SpawnPointIndex);
+        foreach (var s in visible) _sentSightings[s.Key] = (s.HealthPercent, s.MapPosition, now, s.SpawnPointIndex, s.InCombat);
     }
 
     private void MaybeSendPresence()

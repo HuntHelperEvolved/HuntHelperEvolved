@@ -34,6 +34,11 @@ public static class ReleaseNotes
 
     public static readonly Release[] All =
     {
+        new("0.4.0.19", "2026-09-07", "Testing: Active Marks with rank tabs and live health.",
+        [
+            new("Sightings", "Active S Ranks becomes Active Marks (/hhsa or /hhv), with All/S/A/B tabs, live HP, alive/dead and combat state. S-rank community reports, travel and active timers remain available. Configure rank, world/DC, expansion and status filters in Sync settings. Requires server 0.3.11.", Kihtli),
+        ]),
+
         new("0.4.0.18", "2026-09-07", "Testing: shared spawn-trigger kill counters.",
         [
             new("Counters", "Kill counters show the group's personal-kill total in brackets. Counts sync by world and instance, survive reconnects, and have a separate shared reset. Requires server 0.3.10.", Kihtli),
