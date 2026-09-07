@@ -1,3 +1,14 @@
+# Staged 0.5.0.3 / server 0.3.13
+
+Not uploaded or deployed. The public installer feed stays on 0.5.0.2.
+
+- Compare /hha sniped Opens/Window end with Discord for a mark seen alive earlier. Unknown lower bounds must remain unknown; repeat after train reset and reconnect.
+- End Train: successful Discord and server acknowledgement reset the unchanged train with Undo. Failed Discord, old/unavailable server, or a concurrent mark/order/watch edit must retain it. A lost acknowledgement may leave an already-reset train; inspect state and use Undo rather than immediately reposting Discord.
+- Active Marks: verify zone, visible player count within 50 yalms (including self), expiry, unknown counts from older observers, and Faloop elapsed time. Multiple scouts must not inflate the count.
+- Two scouts add live marks; combine and deduplicate their configured sync display names with manual credits. Credits persist across reconnect and clear with the train. Manual credits accumulate until reset.
+- Collapse/reopen the train controls and scouts, including after plugin reload. The train list and End Train footer remain usable.
+- S-rank name colours: grey before the timer/when unknown, red in an open respawn window outside timed conditions, green when timer and timed conditions align. Manual actions are still required; active rows retain their highlight.
+
 # 0.5.0-beta.2 hotfix
 
 A-rank cooldowns now load server kill history on connection, including after train resets and server restarts. Requires server 0.3.12. Test joining after a completed/reset train with an empty local history and with train sharing disabled; check each world and instance separately. Kill history cleared before the server upgrade cannot be recovered.

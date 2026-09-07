@@ -236,6 +236,7 @@ public class Configuration : IPluginConfiguration
     public bool TeleportAlsoFlags { get; set; } = true;
 
     /// <summary>Drop the zone column in the train popout to keep it narrow.</summary>
+    public bool TrainPopoutControlsExpanded { get; set; } = true;
     public bool HideZonesInPopout { get; set; } = false;
 
     /// <summary>Show how long ago each mark was last seen, on its row.</summary>

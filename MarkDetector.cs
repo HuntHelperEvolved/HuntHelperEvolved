@@ -46,6 +46,7 @@ public class OtherRankSighting
     /// before walking to it.
     /// </summary>
     public float HealthPercent = 100f;
+    public int? NearbyPlayers;
     public bool? InCombat;
     public int? SpawnPointIndex;
 
@@ -66,6 +67,8 @@ public class OtherRankSighting
 
 public sealed class MarkDetector
 {
+    private Vector3[] _nearbyPlayers = Array.Empty<Vector3>();
+    private int CountPlayers(Vector3 position) => _nearbyPlayers.Count(p => Vector3.DistanceSquared(p, position) <= 2500f);
     private readonly IObjectTable _objectTable;
     private readonly IClientState _clientState;
     private readonly IDataManager _dataManager;
@@ -235,6 +238,7 @@ public sealed class MarkDetector
         _lastScannedScope = scope;
 
         var visibleObjects = new HashSet<ulong>();
+        _nearbyPlayers = _objectTable.OfType<Dalamud.Game.ClientState.Objects.SubKinds.IPlayerCharacter>().Select(p => p.Position).ToArray();
         foreach (var obj in _objectTable)
         {
             if (obj is not Dalamud.Game.ClientState.Objects.Types.IBattleNpc mob) continue;
@@ -374,7 +378,7 @@ public sealed class MarkDetector
                 WorldId=worldId, WorldName=worldName, Name=mob.Name.TextValue, NameId=mob.NameId,
                 Rank=rank, TerritoryId=territoryId, MapId=mapId, Instance=instance,
                 MapPosition=MapCoordinates.FromWorld(_dataManager,mapId,mob.Position.X,mob.Position.Z),
-                LastSeenUtc=now, HealthPercent=0, InCombat=false, ZoneName=GetZoneName(territoryId)
+                LastSeenUtc=now, HealthPercent=0, NearbyPlayers=CountPlayers(mob.Position), InCombat=false, ZoneName=GetZoneName(territoryId)
             };
             return;
         }
@@ -385,6 +389,7 @@ public sealed class MarkDetector
             existing.LastSeenUtc = now;
             existing.MapPosition = MapCoordinates.FromWorld(_dataManager, mapId, mob.Position.X, mob.Position.Z);
             existing.HealthPercent = HealthPercentOf(mob);
+            existing.NearbyPlayers = CountPlayers(mob.Position);
             existing.InCombat = mob.StatusFlags.HasFlag(Dalamud.Game.ClientState.Objects.Enums.StatusFlags.InCombat);
             if (existing.SpawnPointIndex is null && CanMatchSpawnPoint(mob))
                 existing.SpawnPointIndex = MatchSpawnPoint(territoryId, existing.MapPosition, rank);
@@ -404,6 +409,7 @@ public sealed class MarkDetector
             MapPosition = MapCoordinates.FromWorld(_dataManager, mapId, mob.Position.X, mob.Position.Z),
             LastSeenUtc = now,
             HealthPercent = HealthPercentOf(mob),
+            NearbyPlayers = CountPlayers(mob.Position),
             InCombat = mob.StatusFlags.HasFlag(Dalamud.Game.ClientState.Objects.Enums.StatusFlags.InCombat),
             SpawnPointIndex = CanMatchSpawnPoint(mob)
                 ? MatchSpawnPoint(territoryId, MapCoordinates.FromWorld(_dataManager, mapId, mob.Position.X, mob.Position.Z), rank) : null,
