@@ -39,7 +39,9 @@ public static class ReleaseNotes
             new("Sync", "Share train scouting/order, live mark observations, S-rank mapping and personal trigger-kill totals through a private password-protected group server.", Kihtli),
             new("Boards", "Use /hhs for S-rank spawn windows and conditions, /hha for A-rank timers by instance, and /hhsa or /hhv for compact Active Marks with All/S/A/B tabs and live HP.", Kihtli),
             new("Travel", "Optional Lifestream world/aetheryte travel, map-linked spawn alerts and suggested destinations for S-rank spawn attempts.", Kihtli),
-            new("Train", "Native report history retains exact kill/sniped evidence and reset recovery. Grouped headings count only marks and open the next unfinished expansion.", Kihtli),
+            new("Train", "Native report history retains exact kill/sniped evidence and reset recovery.", Kihtli),
+            new("Train", "Expansion headings count hunt marks only, without counting custom rally flags. Thanks to musicmanbowls for this fix in PR #32.", MusicManBowls, 31),
+            new("Train", "Open next automatically unfolds the next unfinished expansion when a leg finishes. Thanks to musicmanbowls for this fix in PR #32.", MusicManBowls, 30),
         ]),
 
         new("0.4.0.21", "2026-09-07", "Testing: blue for community reports without live feedback.",
