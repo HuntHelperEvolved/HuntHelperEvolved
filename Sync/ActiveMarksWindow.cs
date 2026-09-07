@@ -77,7 +77,7 @@ public sealed class ActiveMarksWindow(Configuration config, SyncCoordinator sync
                 if(dead) colour=new Vector4(1,0.3f,0.3f,1);
                 var hp=row.HealthKnown ? $"{m.HpPercent:0.#}%" : "?%";
                 var instance=m.Instance>0 ? $" i{m.Instance}" : string.Empty;
-                var nearby=row.HealthKnown && m.NearbyPlayers is { } count ? $"{count} nearby" : "? nearby";
+                var nearby=row.HealthKnown && m.NearbyPlayers is { } count ? $"[{count}]" : "[?]";
                 var faloopAge=row.Status?.FaloopActiveAt is { } released && row.Status.FaloopActiveUntil > now
                     ? $" · Faloop {Elapsed(now-released)}" : string.Empty;
                 var label=$"{(tab=="All" ? m.Rank+": " : string.Empty)}{m.Name} - {hp} [{r.World}{instance}] · {r.Zone} · {nearby}{faloopAge}";
@@ -119,7 +119,7 @@ public sealed class ActiveMarksWindow(Configuration config, SyncCoordinator sync
                         var age=now-spawned;
                         detail+=$"\nActive for {(int)Math.Max(0,age.TotalHours):00}:{Math.Max(0,age.Minutes):00}:{Math.Max(0,age.Seconds):00}";
                     }
-                    detail+="\nNearby players: currently visible within 50 yalms of the mark, including the scout. One observation; counts are not added across scouts.";
+                    detail+="\nNearby players: estimate within 50 yalms, including the scout. Last-known positions are retained for the zone session, like Sonar; players who leave unseen can remain counted. Counts are not added across scouts.";
                     detail+="\n"+(row.Visible is { } observation ? "Seen by: "+string.Join(", ",observation.Observers) : "Faloop report");
                     detail+=row.HasPosition ? "\nClick: map" : "\nLocation not reported";
                     if(canTravel) detail+=" · Ctrl-click: teleport";

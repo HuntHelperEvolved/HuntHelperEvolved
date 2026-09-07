@@ -28,6 +28,7 @@
     <Compile Include="../../Sync/SRankTimerData.cs" Link="SRankTimerData.cs" />
     <Compile Include="../../Sync/SpawnMapping.cs" Link="SpawnMapping.cs" />
     <Compile Include="../../Sync/SRankBoardFilter.cs" Link="SRankBoardFilter.cs" />
+    <Compile Include="../../NearbyPlayerCache.cs" Link="NearbyPlayerCache.cs" />
     <Compile Include="../../DetectedMark.cs" Link="DetectedMark.cs" />
     <Compile Include="../../TrainExchange.cs" Link="TrainExchange.cs" />
     <Compile Include="../../TrainReportHistory.cs" Link="TrainReportHistory.cs" />

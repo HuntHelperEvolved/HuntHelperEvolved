@@ -526,7 +526,11 @@ public sealed class Plugin : IDalamudPlugin
             ScheduleTallySeed();
     }
 
-    private void OnTallyLogout(int type, int code) => _tallyConfig.Flush(force: true);
+    private void OnTallyLogout(int type, int code)
+    {
+        _detector.ClearNearbyPlayers();
+        _tallyConfig.Flush(force: true);
+    }
 
     /// <summary>
     /// RunOnTick rather than Task.Delay: the continuation of a Task runs on a

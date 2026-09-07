@@ -34,6 +34,11 @@ public static class ReleaseNotes
 
     public static readonly Release[] All =
     {
+        new("0.5.0.4", "2026-09-07", "Nearby-player estimates through character culling.",
+        [
+            new("Active Marks", "Nearby-player estimates use native character-manager positions and retain them for the zone session, like Sonar. Culled characters remain counted; estimates reset on world/zone/instance changes or logout. Counts appear in brackets; departed players may remain counted until their position updates or the cache resets.", Kihtli),
+        ]),
+
         new("0.5.0.3", "2026-09-07", "Beta: train completion and clearer hunt windows.",
         [
             new("A ranks", "Sniped marks show the same bounded respawn window as Discord when last-seen-alive evidence is available. Bounds survive server resets/reconnects.", Kihtli),
