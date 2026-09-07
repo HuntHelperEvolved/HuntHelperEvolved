@@ -211,6 +211,7 @@ public class TrainWatcher : IDisposable
 
     private void OnUpdate(IFramework framework)
     {
+        _detector.RefreshNearbyPlayers();
         // Periodic save so a crash mid-train doesn't lose kill times. Ten
         // seconds keeps writes cheap while bounding the worst case loss.
         //
