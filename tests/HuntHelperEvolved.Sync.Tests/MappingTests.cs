@@ -5,6 +5,30 @@ public class MappingTests
 {
     private static readonly SpawnPoint[] Points={new(10,10,SpawnRanks.A|SpawnRanks.S),new(15,10,SpawnRanks.B|SpawnRanks.S)};
     [Fact]
+    public void TravelUsesRemainingCandidatesOnlyWithReliableMapping()
+    {
+        var zone = new SyncSpawnZone { SinceAt = DateTime.UtcNow, LastSDeathIndex = 0 };
+        Assert.Equal(new System.Numerics.Vector2(15,10), SpawnMapping.TravelEstimate(Points,zone,true));
+        Assert.Equal(new System.Numerics.Vector2(12.5f,10), SpawnMapping.TravelEstimate(Points,zone,false));
+        zone.SinceAt = null;
+        Assert.Equal(new System.Numerics.Vector2(12.5f,10), SpawnMapping.TravelEstimate(Points,zone,true));
+    }
+    [Fact]
+    public void TravelFallsBackForEmptyMappingAndIgnoresOtherRanks()
+    {
+        SpawnPoint[] points = { new(10,10,SpawnRanks.S), new(30,30,SpawnRanks.A) };
+        var zone = new SyncSpawnZone { SinceAt = DateTime.UtcNow, LastSDeathIndex = 0 };
+        Assert.Equal(new System.Numerics.Vector2(10,10), SpawnMapping.TravelEstimate(points,zone,true));
+        Assert.Equal(new System.Numerics.Vector2(10,10), SpawnMapping.TravelEstimate(points,null,false));
+        Assert.Equal(new System.Numerics.Vector2(21.5f,21.5f), SpawnMapping.TravelEstimate([],null,false));
+    }
+    [Fact]
+    public void TravelUsesObservedSpawnPointBeforeCandidateAverage()
+    {
+        var zone = new SyncSpawnZone { SCurrentIndex = 1 };
+        Assert.Equal(new System.Numerics.Vector2(15,10), SpawnMapping.TravelEstimate(Points,zone,false));
+    }
+    [Fact]
     public void IdlePatrolCanMatchOriginButDistantOrWrongRankCannot()
     {
         Assert.Equal(0,SpawnMapping.Match(Points,new(11.2f,10),SpawnRanks.A));

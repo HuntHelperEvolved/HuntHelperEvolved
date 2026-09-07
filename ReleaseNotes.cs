@@ -34,6 +34,11 @@ public static class ReleaseNotes
 
     public static readonly Release[] All =
     {
+        new("0.4.0.17", "2026-09-07", "Testing: travel to S-rank spawn attempts.",
+        [
+            new("Travel", "Ctrl-click an S-rank name even without a reported location. Travel suggests an aetheryte near remaining candidate spots, or the zone's S-rank spots when mapping is uncertain, respecting aetheryte exclusions.", Kihtli),
+        ]),
+
         new("0.4.0.16", "2026-09-07", "Testing: travel status clears when teleporting ends.",
         [
             new("Travel", "The Teleporting message clears after casting/loading finishes. Travel remains busy during the final teleport, preventing overlapping requests.", Kihtli),
