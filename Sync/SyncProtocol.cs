@@ -271,6 +271,8 @@ public static class ServerMessageTypes
 
 public sealed class WelcomeMessage
 {
+    public string CounterServerId { get; set; } = string.Empty;
+    public List<SharedCounter> Counters { get; set; } = new();
     public WatchesBroadcast WatchState { get; set; } = new();
     public int Protocol { get; set; }
     public string ServerVersion { get; set; } = string.Empty;

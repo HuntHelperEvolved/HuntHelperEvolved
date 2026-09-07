@@ -370,6 +370,7 @@ public sealed class Plugin : IDalamudPlugin
         _sync = new SyncCoordinator(
             framework, clientState, objectTable, _log, _config, _detector, _worldData,
             typeof(Plugin).Assembly.GetName().Version?.ToString(4) ?? "0.0.0");
+        _counter.PersonalKill += _sync.RecordCounterKill;
         _sync.RemoteTrainCleared += OnRemoteTrainCleared;
         _sync.SRankSpawned += OnRemoteSRankSpawn;
         _srankTravel = new LifestreamTravel(_pluginInterface, framework, _detector, _chatGui, _log);
@@ -3057,7 +3058,13 @@ public sealed class Plugin : IDalamudPlugin
             foreach (var mob in def.MobNames)
             {
                 var count = _counter.GetTally(worldId, instance, mob);
-                ImGui.TextDisabled($"    {mob}: {count}");
+                var shared = def.TriggerPatterns.Length == 0
+                    ? _sync.SharedCounterTotal(worldId, def.TerritoryId, instance, mob) : null;
+                ImGui.TextDisabled($"    {mob}: {count}" + (shared is { } total ? $" ({total})" : string.Empty));
+                if (ImGui.IsItemHovered() && def.TriggerPatterns.Length == 0)
+                    ImGui.SetTooltip(shared is not null
+                        ? "Brackets: group total of personal kills since the shared reset. Nearby kills and older local counts are not uploaded. Local Reset/auto-reset does not change the group total."
+                        : "Shared total unavailable: connect to a server with counter syncing enabled.");
             }
 
             var settings = _counter.SettingsFor(def.MarkName);
@@ -3097,6 +3104,24 @@ public sealed class Plugin : IDalamudPlugin
             if (ImGui.SmallButton("Reset"))
             {
                 _counter.ResetFor(def, worldId, instance);
+            }
+            if (def.TriggerPatterns.Length == 0 && _sync.CountersAvailable)
+            {
+                ImGui.SameLine();
+                if (ImGui.SmallButton("Reset shared…")) ImGui.OpenPopup("Reset shared counter");
+                if (ImGui.BeginPopup("Reset shared counter"))
+                {
+                    ImGui.TextWrapped($"Clear the group counts for {def.MarkName} on {worldName}" +
+                        (instance > 0 ? $" (instance {instance})?" : "?"));
+                    if (ImGui.Button("Reset shared counts"))
+                    {
+                        _sync.ResetSharedCounters(def, worldId, instance);
+                        ImGui.CloseCurrentPopup();
+                    }
+                    ImGui.SameLine();
+                    if (ImGui.Button("Cancel")) ImGui.CloseCurrentPopup();
+                    ImGui.EndPopup();
+                }
             }
 
             ImGui.Separator();
@@ -4182,6 +4207,7 @@ public sealed class Plugin : IDalamudPlugin
 
         _watcher.Dispose();
         _zoneReminder.Dispose();
+        _counter.PersonalKill -= _sync.RecordCounterKill;
         _counter.Dispose();
         _spawnWatch.Dispose();
         _mapOverlay.Dispose();

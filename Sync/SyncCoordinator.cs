@@ -19,7 +19,7 @@ namespace HuntHelperEvolved.Sync;
 /// Everything runs on the framework thread. The socket parks frames in a
 /// queue and this drains it once per tick, so nothing here needs a lock.
 /// </summary>
-public sealed class SyncCoordinator : IDisposable
+public sealed partial class SyncCoordinator : IDisposable
 {
     private static readonly TimeSpan DiffInterval = TimeSpan.FromSeconds(1);
     private static readonly TimeSpan PingInterval = TimeSpan.FromSeconds(30);
@@ -307,12 +307,13 @@ public sealed class SyncCoordinator : IDisposable
                 RefreshHello();
             }
 
-            if (!_client.IsConnected) return;
+            if (!_client.IsConnected) { _counterReady = false; return; }
 
             _sinceDiff += dt;
             if (_sinceDiff >= DiffInterval.TotalSeconds)
             {
                 _sinceDiff = 0;
+                SendCounterContributions();
                 DiffTrain();
                 ExpireRemote();
             }
@@ -360,6 +361,9 @@ public sealed class SyncCoordinator : IDisposable
     {
         switch (type)
         {
+            case "counter.state":
+                ApplyCounters(SyncProtocol.Deserialize<CounterBroadcast>(payload)!.Counters);
+                break;
             case ServerMessageTypes.Welcome:
                 ApplyWelcome(SyncProtocol.Deserialize<WelcomeMessage>(payload)!);
                 break;
@@ -439,6 +443,7 @@ public sealed class SyncCoordinator : IDisposable
     private void ApplyWelcome(WelcomeMessage welcome)
     {
         _watchSent = null;
+        WelcomeCounters(welcome);
         ApplyWatches(welcome.WatchState, joining: true);
         ServerVersion = welcome.ServerVersion;
         ServerName = string.IsNullOrEmpty(welcome.ServerName) ? "group server" : welcome.ServerName;
@@ -679,6 +684,7 @@ public sealed class SyncCoordinator : IDisposable
 
     private void ForgetRemoteState()
     {
+        _counterServerId = string.Empty; _counterReady = false; _sharedCounters.Clear();
         _known.Clear();
         _lastSentOrder = new();
         _remote.Clear();

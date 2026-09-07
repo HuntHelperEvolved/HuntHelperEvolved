@@ -34,6 +34,11 @@ public static class ReleaseNotes
 
     public static readonly Release[] All =
     {
+        new("0.4.0.18", "2026-09-07", "Testing: shared spawn-trigger kill counters.",
+        [
+            new("Counters", "Kill counters show the group's personal-kill total in brackets. Counts sync by world and instance, survive reconnects, and have a separate shared reset. Requires server 0.3.10.", Kihtli),
+        ]),
+
         new("0.4.0.17", "2026-09-07", "Testing: travel to S-rank spawn attempts.",
         [
             new("Travel", "Ctrl-click an S-rank name even without a reported location. Travel suggests an aetheryte near remaining candidate spots, or the zone's S-rank spots when mapping is uncertain, respecting aetheryte exclusions.", Kihtli),
