@@ -34,6 +34,74 @@ public static class ReleaseNotes
 
     public static readonly Release[] All =
     {
+        new("0.5.0.1", "2026-09-07", "Beta: standalone hunts and private-group sync.",
+        [
+            new("Sync", "Share train scouting/order, live mark observations, S-rank mapping and personal trigger-kill totals through a private password-protected group server.", Kihtli),
+            new("Boards", "Use /hhs for S-rank spawn windows and conditions, /hha for A-rank timers by instance, and /hhsa or /hhv for compact Active Marks with All/S/A/B tabs and live HP.", Kihtli),
+            new("Travel", "Optional Lifestream world/aetheryte travel, map-linked spawn alerts and suggested destinations for S-rank spawn attempts.", Kihtli),
+            new("Train", "Native report history retains exact kill/sniped evidence and reset recovery. Grouped headings count only marks and open the next unfinished expansion.", Kihtli),
+        ]),
+
+        new("0.4.0.21", "2026-09-07", "Testing: blue for community reports without live feedback.",
+        [
+            new("Sightings", "Compact Active Marks lines are blue for Faloop-only reports. Fresh scout observations replace blue with the live status colour; grey is reserved for live reports with unknown combat state.", Kihtli),
+        ]),
+
+        new("0.4.0.20", "2026-09-07", "Testing: compact Active Marks overlay.",
+        [
+            new("Sightings", "Active Marks uses compact coloured lines with HP after the name: green unpulled, orange pulled, red dead. Hover for details, click for a map, and Ctrl-click or right-click for travel. Tabs and filters remain available.", Kihtli),
+        ]),
+
+        new("0.4.0.19", "2026-09-07", "Testing: Active Marks with rank tabs and live health.",
+        [
+            new("Sightings", "Active S Ranks becomes Active Marks (/hhsa or /hhv), with All/S/A/B tabs, live HP, alive/dead and combat state. S-rank community reports, travel and active timers remain available. Configure rank, world/DC, expansion and status filters in Sync settings. Requires server 0.3.11.", Kihtli),
+        ]),
+
+        new("0.4.0.18", "2026-09-07", "Testing: shared spawn-trigger kill counters.",
+        [
+            new("Counters", "Kill counters show the group's personal-kill total in brackets. Counts sync by world and instance, survive reconnects, and have a separate shared reset. Requires server 0.3.10.", Kihtli),
+        ]),
+
+        new("0.4.0.17", "2026-09-07", "Testing: travel to S-rank spawn attempts.",
+        [
+            new("Travel", "Ctrl-click an S-rank name even without a reported location. Travel suggests an aetheryte near remaining candidate spots, or the zone's S-rank spots when mapping is uncertain, respecting aetheryte exclusions.", Kihtli),
+        ]),
+
+        new("0.4.0.16", "2026-09-07", "Testing: travel status clears when teleporting ends.",
+        [
+            new("Travel", "The Teleporting message clears after casting/loading finishes. Travel remains busy during the final teleport, preventing overlapping requests.", Kihtli),
+        ]),
+
+        new("0.4.0.15", "2026-09-07", "Testing: one-click S-rank travel and clearer active reports.",
+        [
+            new("Travel", "World travel retains the aetheryte step through loading and temporary refusals, so one click completes both stages. Ctrl-click a name on /hhs to use the same travel when its location is known.", Kihtli),
+            new("S ranks", "Active local and fresh community reports move to the top of /hhs and have a red row background. Recently detected local S ranks no longer echo a duplicate relay alert.", Kihtli),
+        ]),
+
+        new("0.4.0.14", "2026-09-07", "Testing: undo is visible wherever you manage the train.",
+        [
+            new("Train", "Undo reset is shown at the top of the Train tab and popout, even for an empty train. Reset and Clear All now save recovery data consistently. Undo restores locally and turns train sharing off.", Kihtli),
+        ]),
+
+        new("0.4.0.13", "2026-09-07", "Testing: native train reports and reliable kill evidence.",
+        [
+            new("Reports", "Reports use HHE's own train history, preserve worlds, and separate live marks and unknown-time deaths from confirmed kills. Removed dead rows remain in report history across reloads.", Kihtli),
+            new("Reports", "Overlapping report submissions are blocked. Posting keeps shared or changed trains intact; an unchanged local train can be cleared with undo available.", Kihtli),
+            new("Detection", "First-seen corpses no longer create an exact kill time. A witnessed death requires the same object to have been observed alive.", Kihtli),
+            new("Sharing", "Native clipboard codes and version 2 IPC preserve worlds and explicit death/sniped times. Legacy codes without a death timestamp remain unknown. Queued tally kills keep their original world.", Kihtli),
+        ]),
+
+        new("0.4.0.12", "2026-09-07", "Testing: shared scouting, S-rank tracking and smoother expansion handovers.",
+        [
+            new("Train", "Expansion headings count hunt marks only; custom rally flags remain visible without inflating the total.", MusicManBowls, 31),
+            new("Train", "Open next automatically unfolds the next unfinished expansion when a leg finishes. It respects route order and Hide dead, and leaves completed legs open. Outstanding custom rally stops still need completing.", MusicManBowls, 30),
+            new("Sync", "Share scouting, mark order, observed health and location through a password-protected group server. Shared scouting keeps expansion blocks together, and train resets have a local undo option.", Kihtli),
+            new("Map", "Observed A/B ranks eliminate S-rank candidates for the current kill cycle. Possible spots have adjustable gold outlines; a confirmed final candidate is filled gold. Live mark overlays expire when nobody can see the mark.", Kihtli),
+            new("S ranks", "Use /hhs for respawn windows, world and expansion filters, configurable columns, spawn-condition tooltips and weather/time countdowns. Use /hhsa for active reports, elapsed active time and optional Lifestream travel.", Kihtli),
+            new("Alerts", "Shared S-rank alerts use RELAY with coordinates and map links when known. FOUND and RELAY messages include the world, and alerts wait through loading screens.", Kihtli),
+            new("A ranks", "Use /hha for A-rank windows, including separate instance rows. Uninstanced cells are blank and the instance column hides when unnecessary.", Kihtli),
+        ]),
+
         new("0.4.0", "2026-09-06", "The train organises itself, and a sniped mark stops inventing its own kill time.",
         [
             new("Train", "The train can group itself into expansion blocks, keeping scout order inside each one. It sorts the train rather than only redrawing it, so Next Mark, the export code and the report all follow what is on screen. Blocks start in the order the expansions already stand in — ticking the box folds a list into blocks without rearranging it.", Kihtli),
@@ -81,8 +149,7 @@ public static class ReleaseNotes
     };
 
     /// <summary>
-    /// The running version, as three parts — the fourth is always zero here and
-    /// only ever gets in the way of matching what the notes are keyed on.
+    /// The running version, including a nonzero testing-build revision.
     /// </summary>
     public static string CurrentVersion
     {
@@ -91,7 +158,7 @@ public static class ReleaseNotes
             var version = Assembly.GetExecutingAssembly().GetName().Version;
             return version is null
                 ? "unknown"
-                : $"{version.Major}.{version.Minor}.{version.Build}";
+                : version.Revision > 0 ? version.ToString(4) : version.ToString(3);
         }
     }
 

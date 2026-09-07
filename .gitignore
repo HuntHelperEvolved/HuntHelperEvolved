@@ -1,2 +1,10 @@
 bin/
 obj/
+
+# Local credentials, configuration and release staging are never source files.
+.env
+.env.*
+*.user
+*.pdb
+.DS_Store
+release-staging/

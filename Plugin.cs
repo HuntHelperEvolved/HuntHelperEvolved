@@ -17,6 +17,7 @@ using Dalamud.Game.Command;
 using Dalamud.Interface.Windowing;
 using HuntTally;
 using HuntTally.Windows;
+using HuntHelperEvolved.Sync;
 
 namespace HuntHelperEvolved;
 
@@ -29,6 +30,7 @@ public sealed class Plugin : IDalamudPlugin
     private const string CounterCommand = "/htrc";
     private const string NextAetheryteCommand = "/htra";
     private const string MapCommand = "/htrm";
+    private const string SRankCommand = "/htrs";
 
     /// <summary>
     /// Hunt Helper's own commands, taken over only when Hunt Helper itself is
@@ -115,6 +117,14 @@ public sealed class Plugin : IDalamudPlugin
     private readonly WorldData _worldData;
     private readonly HuntMapOverlay _mapOverlay;
     private readonly SsEventWatcher _ssEvent;
+
+    // Sharing with a group through their own server. See Sync/.
+    private readonly SyncCoordinator _sync;
+    private readonly SRankWindow _srankWindow;
+    private bool _selectSyncTab;
+    private readonly ActiveMarksWindow _activeMarksWindow;
+    private readonly LifestreamTravel _srankTravel;
+    private readonly ARankWindow _arankWindow;
     private int _counterDcIndex;
     private int _counterWorldIndex;
 
@@ -128,7 +138,6 @@ public sealed class Plugin : IDalamudPlugin
     private uint _clientTerritory => _clientState.TerritoryType;
 
     private readonly Configuration _config;
-    private readonly HuntHelperIpc _ipc;
     private readonly TrainWatcher _watcher;
 
     // --- The tally, formerly the separate Hunt Tally plugin ---
@@ -201,6 +210,8 @@ public sealed class Plugin : IDalamudPlugin
     private int _dragExpansionFrom = -1;
     private int _dragExpansionTo = -1;
 
+    private readonly TrainExpansionProgress _expansionProgress = new();
+
     // The mark the conductor is currently on. Tracked by identity rather than
     // list position, so dragging rows or removing marks can't silently change
     // what "current" points at.
@@ -270,14 +281,13 @@ public sealed class Plugin : IDalamudPlugin
 
         ShowReleaseNotesIfUpdated();
 
-        _ipc = new HuntHelperIpc(_pluginInterface);
         _gameGui = gameGui;
         _textureProvider = textureProvider;
         _clientState = clientState;
         _detector = new MarkDetector(objectTable, clientState, dataManager, _config);
         _teleport = new TeleportHelper(_pluginInterface, _log, dataManager);
         SyncBlacklist();
-        _watcher = new TrainWatcher(framework, _ipc, _detector, _config, chatGui, _log);
+        _watcher = new TrainWatcher(framework, _detector, _config, chatGui, _log);
 
         // The tally reaches Dalamud through its own injected service class
         // rather than this constructor's parameters, which is how it was built
@@ -324,6 +334,11 @@ public sealed class Plugin : IDalamudPlugin
             _tracker.OnMarkDeath += _tallyIpc.PublishMarkDeath;
             _tracker.OnKill += AnnounceTallyKill;
 
+            // Every death the tally sees, credited or not. An S rank dying in
+            // front of anyone in the group is how the group's clock for it
+            // starts.
+            _tracker.OnMarkDeath += OnAnyMarkDeath;
+
             // Off the publisher rather than the tracker, so the train sees
             // exactly the feed an external subscriber would have seen over IPC —
             // including the tally's own switch between credited kills and every
@@ -351,6 +366,18 @@ public sealed class Plugin : IDalamudPlugin
         _spawnWatch = new SpawnWatchCounters(framework, clientState, objectTable, fateTable, _log);
         _worldData = new WorldData(dataManager);
 
+        // Built before the map overlay, which draws what other members can
+        // see. Connects straight away if sync is on in the saved settings.
+        _sync = new SyncCoordinator(
+            framework, clientState, objectTable, _log, _config, _detector, _worldData,
+            typeof(Plugin).Assembly.GetName().Version?.ToString(4) ?? "0.0.0");
+        _counter.PersonalKill += _sync.RecordCounterKill;
+        _sync.RemoteTrainCleared += OnRemoteTrainCleared;
+        _sync.SRankSpawned += OnRemoteSRankSpawn;
+        _srankTravel = new LifestreamTravel(_pluginInterface, framework, _detector, _chatGui, _log);
+        _activeMarksWindow = new ActiveMarksWindow(_config, _sync, _worldData, _detector, _gameGui, _srankTravel, () => { _configWindowVisible=true; _selectSyncTab=true; });
+        _srankWindow = new SRankWindow(_config, _sync, _worldData, _detector, _srankTravel);
+        _arankWindow = new ARankWindow(_config, _sync, _worldData, _detector);
         // After the detector exists, since the gates read straight off it.
         _trainIpc = new TrainIpcProvider(_pluginInterface, _detector, _log);
 
@@ -367,7 +394,7 @@ public sealed class Plugin : IDalamudPlugin
         }
 
         _ssEvent = new SsEventWatcher(chatGui, clientState, _log, _detector);
-        _mapOverlay = new HuntMapOverlay(framework, clientState, objectTable, dataManager, addonLifecycle, gameGui, _log, _config, _detector, _ssEvent, _pluginInterface);
+        _mapOverlay = new HuntMapOverlay(framework, clientState, objectTable, dataManager, addonLifecycle, gameGui, _log, _config, _detector, _ssEvent, _pluginInterface, _sync);
         _detector.OtherRankDetected += OnSightingDetected;
         _watcher.PersistRequested += PersistTrain;
         RestoreSavedTrain();
@@ -397,6 +424,15 @@ public sealed class Plugin : IDalamudPlugin
             HelpMessage = "Open the map dot filters.",
         });
 
+        _commandManager.AddHandler(SRankCommand, new CommandInfo(OnSRankCommand)
+        {
+            HelpMessage = "Open the S-rank board: windows, kill times and spawn points, shared through sync.",
+        });
+        _commandManager.AddHandler("/hhv", new CommandInfo((_, _) => _activeMarksWindow.Toggle()) { HelpMessage = "Open marks currently visible to group members, with health and combat status." });
+        _commandManager.AddHandler("/hhsa", new CommandInfo((_, _) => _activeMarksWindow.Toggle()) { HelpMessage = "Open Active Marks across covered worlds, with All/S/A/B tabs." });
+        _commandManager.AddHandler("/hhs", new CommandInfo(OnSRankCommand)
+        { HelpMessage = "Open the S-rank board with world, expansion and availability filters." });
+        _commandManager.AddHandler("/hha", new CommandInfo((_, _) => _arankWindow.Toggle()) { HelpMessage = "Open the A-rank respawn window board." });
         RegisterHuntHelperAliases();
 
         _commandManager.AddHandler(TallyCommand, new CommandInfo(OnTallyCommand)
@@ -534,7 +570,7 @@ public sealed class Plugin : IDalamudPlugin
             (int)kill.Mark.Rank,
             kill.TerritoryId,
             kill.InstanceId,
-            new DateTimeOffset(kill.Time).ToUnixTimeSeconds()));
+            new DateTimeOffset(kill.Time).ToUnixTimeSeconds(), _worldData.IdOf(kill.World)));
     }
 
     /// <summary>
@@ -727,7 +763,12 @@ public sealed class Plugin : IDalamudPlugin
 
     private void OnTrainCommand(string command, string args) => _trainPopoutVisible = !_trainPopoutVisible;
 
-    private void OnSightingDetected(OtherRankSighting sighting) => _notifier.Announce(sighting);
+    private void OnSightingDetected(OtherRankSighting sighting)
+    {
+        if (sighting.Rank == HuntRank.S && !sighting.IsRemote)
+            _spawnAlertFilter.RecordLocal(sighting.NameId,sighting.WorldId,sighting.Instance,DateTime.UtcNow);
+        _notifier.Announce(sighting);
+    }
 
     /// <summary>Compact "how long ago was this last seen" label, e.g. 5m / 1h 12m.</summary>
     private static string FormatAge(DateTime lastSeenUtc)
@@ -754,87 +795,8 @@ public sealed class Plugin : IDalamudPlugin
 
     private void OnOpenConfigUi() => _configWindowVisible = true;
 
-    /// <summary>
-    /// Builds the current merged mark set — Hunt Helper's live list plus anything
-    /// the background tracker already recorded that's no longer in that live list
-    /// (e.g. cleared away mid-train with Remove Dead). Returns null if Hunt Helper
-    /// isn't detected at all.
-    /// </summary>
-    private List<TrackedMark>? BuildCurrentMarks()
-    {
-        if (_config.UseOwnTrainList)
-        {
-            return _detector.Ordered().Where(d => !d.IsCustom).Select(d => new TrackedMark
-            {
-                Name = d.Name,
-                ModelId = d.NameId,
-                Instance = d.Instance,
-                Dead = d.Dead,
-                LastSeenUtc = d.LastSeenUtc,
-                DeathObservedAtUtc = d.DeathObservedAtUtc,
-                SnipedAtUtc = d.SnipedAtUtc,
-            }).ToList();
-        }
-
-        var list = _ipc.TryGetTrainList();
-        if (list == null) return null;
-
-        var now = DateTime.UtcNow;
-        var tracked = _watcher.GetTrackedSnapshot();
-
-        // Sniped is recorded on our own rows, because that is the list with the
-        // button on it — but the report may well be built from Hunt Helper's,
-        // which is still the default. Carrying it across is what stops the fix
-        // depending on a setting the conductor never turned on.
-        //
-        // Keyed without the world, because Hunt Helper's list has no world in
-        // it to match against. First one wins: the same mark up on two worlds
-        // is two rows here and one there, and there is nothing in the Hunt
-        // Helper record that could tell them apart.
-        var snipedTimes = new Dictionary<(uint, uint), DateTime?>();
-        foreach (var d in _detector.Ordered())
-        {
-            if (d.SnipedAtUtc == null) continue;
-            snipedTimes.TryAdd((d.NameId, d.Instance), d.SnipedAtUtc);
-        }
-
-        var marks = list.Select(m => new TrackedMark
-        {
-            Name = m.Name,
-            ModelId = m.MobID,
-            Instance = m.Instance,
-            Dead = m.Dead,
-            LastSeenUtc = m.LastSeenUTC,
-            DeathObservedAtUtc = m.Dead
-                ? (tracked.TryGetValue((m.MobID, m.Instance), out var t) ? t.DeathObservedAtUtc : null) ?? now
-                : null,
-            SnipedAtUtc = snipedTimes.GetValueOrDefault((m.MobID, m.Instance)),
-        }).ToList();
-
-        var seenKeys = marks.Select(m => (m.ModelId, m.Instance)).ToHashSet();
-        foreach (var (key, trackedMark) in tracked)
-        {
-            if (seenKeys.Contains(key)) continue;
-
-            // A copy, not the watcher's own object. GetTrackedSnapshot copies
-            // the dictionary but not the marks in it, and this runs every frame
-            // the Marks Slain preview is open — writing a sniped time back into
-            // live tracking state would make merely looking at the report
-            // change it.
-            marks.Add(new TrackedMark
-            {
-                Name = trackedMark.Name,
-                ModelId = trackedMark.ModelId,
-                Instance = trackedMark.Instance,
-                Dead = trackedMark.Dead,
-                LastSeenUtc = trackedMark.LastSeenUtc,
-                DeathObservedAtUtc = trackedMark.DeathObservedAtUtc,
-                SnipedAtUtc = trackedMark.SnipedAtUtc ?? snipedTimes.GetValueOrDefault(key),
-            });
-        }
-
-        return marks;
-    }
+    /// <summary>Native report history, including removed dead rows and full world identity.</summary>
+    private List<TrackedMark> BuildCurrentMarks() => _watcher.GetTrackedSnapshot().Values.ToList();
 
     private async Task SendTestAsync()
     {
@@ -845,31 +807,16 @@ public sealed class Plugin : IDalamudPlugin
 
     private async Task SendScoutingReportAsync()
     {
-        List<HuntHelperMobRecord>? list;
-
-        if (_config.UseOwnTrainList)
-        {
-            list = _detector.Ordered().Where(d => !d.IsCustom).Select(d => new HuntHelperMobRecord(
-                d.Name, d.NameId, d.TerritoryId, d.MapId, d.Instance,
-                d.MapPosition, d.Dead, d.LastSeenUtc)).ToList();
-        }
-        else
-        {
-            list = _ipc.TryGetTrainList();
-        }
-
-        if (list == null)
-        {
-            _lastPostResult = "Hunt Helper not detected — can't build a scouting report.";
-            return;
-        }
+        var list = _detector.Ordered().Where(d => !d.IsCustom).Select(d => new HuntHelperMobRecord(
+            d.Name, d.NameId, d.TerritoryId, d.MapId, d.Instance,
+            d.MapPosition, d.Dead, d.LastSeenUtc)).ToList();
 
         var names = new List<string>();
         var selfName = _objectTable.LocalPlayer?.Name?.TextValue;
         if (!string.IsNullOrWhiteSpace(selfName)) names.Add(selfName);
         names.AddRange(_config.AdditionalScouts.Where(n => !string.IsNullOrWhiteSpace(n)));
 
-        var ownCode = _config.UseOwnTrainList ? TrainExchange.Export(_detector.Ordered()) : null;
+        var ownCode = TrainExchange.Export(_detector.Ordered());
 
         var (success, message) = await DiscordRelay.PostScoutingReportAsync(_config.Webhooks, list, names, ownCode);
         _lastPostResult = message;
@@ -883,38 +830,64 @@ public sealed class Plugin : IDalamudPlugin
     /// clear once the post is confirmed to have actually succeeded — if it
     /// fails, everything stays put so this can just be tried again.
     /// </summary>
+    private readonly TrainCompletionGuard _completion = new();
+
+    private string CompletionSnapshot() => Newtonsoft.Json.JsonConvert.SerializeObject(new
+    {
+        Generation = _detector.TrainGeneration,
+        Marks = _detector.Ordered(),
+        History = BuildCurrentMarks().OrderBy(m => m.WorldId).ThenBy(m => m.ModelId).ThenBy(m => m.Instance),
+        Flags = _config.Flags,
+        Shared = _config.SyncEnabled && _config.SyncShareTrain
+    });
+
     private async Task EndTrainNowAsync()
     {
+        if (_completion.IsBusy) { _lastPostResult = "A train report is already being sent."; return; }
         var marks = BuildCurrentMarks();
-        if (marks == null)
-        {
-            _lastPostResult = "Hunt Helper not detected — nothing to post.";
-            return;
-        }
-
-        if (marks.Count == 0)
-        {
-            _lastPostResult = "Nothing to post — Hunt Helper's train list is empty.";
-            return;
-        }
-
+        if (marks.Count == 0) { _lastPostResult = "Nothing to post — the train is empty."; return; }
+        var snapshot = CompletionSnapshot();
+        if (!_completion.TryBegin(snapshot)) return;
         var endedBy = _objectTable.LocalPlayer?.Name?.TextValue;
-
-        var (success, message) = await DiscordRelay.PostTrainCompleteAsync(_config.Webhooks, marks, endedBy, _config.Flags);
-        _lastPostResult = message;
-
-        if (success)
+        try
         {
-            _chatGui.Print($"[Hunt Helper Evolved] Posted train summary to Discord ({marks.Count} marks).");
-            _watcher.ResetNow();
-            _config.Flags.Clear();
-            _config.Save();
-            ClearSavedTrain();
+            var flags = Newtonsoft.Json.JsonConvert.DeserializeObject<List<FlagEntry>>(
+                Newtonsoft.Json.JsonConvert.SerializeObject(_config.Flags))!;
+            var webhooks = Newtonsoft.Json.JsonConvert.DeserializeObject<List<WebhookEntry>>(
+                Newtonsoft.Json.JsonConvert.SerializeObject(_config.Webhooks))!;
+            var (success, message) = await DiscordRelay.PostTrainCompleteAsync(webhooks, marks, endedBy, flags);
+            await HuntTally.Service.Framework.RunOnFrameworkThread(() =>
+            {
+                if (_disposal.IsCancellationRequested) return;
+                _lastPostResult = message;
+                if (!success) { _chatGui.PrintError($"[Hunt Helper Evolved] Failed to post to Discord: {message}"); return; }
+                if (_completion.CanClear(CompletionSnapshot(), _config.SyncEnabled && _config.SyncShareTrain))
+                {
+                    CaptureResetUndo("Report completed");
+                    _watcher.ResetNow();
+                    _config.Flags.Clear();
+                    ClearSavedTrain();
+                    _chatGui.Print("[Hunt Helper Evolved] Report posted; unchanged local train cleared. Undo is available.");
+                }
+                else
+                    _chatGui.Print("[Hunt Helper Evolved] Report posted. The train was kept because it is shared or changed while sending; use Reset when ready.");
+            });
         }
-        else
+        catch (Exception ex)
         {
-            _chatGui.PrintError($"[Hunt Helper Evolved] Failed to post to Discord: {message}");
-            _log.Error($"Hunt Helper Evolved manual end-train post failed: {message}");
+            _log.Error(ex, "Train report failed; the train has been preserved.");
+            if (!_disposal.IsCancellationRequested)
+                await HuntTally.Service.Framework.RunOnFrameworkThread(() =>
+                {
+                    if (_disposal.IsCancellationRequested) return;
+                    _lastPostResult = "Report failed; the train has been preserved. See the plugin log.";
+                    _chatGui.PrintError($"[Hunt Helper Evolved] {_lastPostResult}");
+                });
+        }
+        finally
+        {
+            if (!_disposal.IsCancellationRequested)
+                await HuntTally.Service.Framework.RunOnFrameworkThread(_completion.Finish);
         }
     }
 
@@ -932,6 +905,10 @@ public sealed class Plugin : IDalamudPlugin
         UpdateAutoAdvance();
         DrawTrainPopout();
         DrawCounterPopout();
+        DrainPendingSpawnAlerts();
+        _activeMarksWindow.Draw();
+        _srankWindow.Draw();
+        _arankWindow.Draw();
         DrawReleaseNotesWindow();
         DrawMapControlBar();
 
@@ -974,6 +951,13 @@ public sealed class Plugin : IDalamudPlugin
                 if (ImGui.BeginTabItem("Settings"))
                 {
                     DrawSettingsTab();
+                    ImGui.EndTabItem();
+                }
+
+                if (ImGui.BeginTabItem("Sync", _selectSyncTab ? ImGuiTabItemFlags.SetSelected : ImGuiTabItemFlags.None))
+                {
+                    _selectSyncTab = false;
+                    DrawSyncTab();
                     ImGui.EndTabItem();
                 }
 
@@ -1281,10 +1265,11 @@ public sealed class Plugin : IDalamudPlugin
     /// </summary>
     private void PersistTrain()
     {
+        _config.ReportHistory = _watcher.GetTrackedSnapshot().Values.ToList();
         var marks = _detector.ToPersisted();
 
         // Nothing to save and nothing saved: don't churn the config file.
-        if (marks.Count == 0 && _config.SavedTrain.Count == 0) return;
+        if (marks.Count == 0 && _config.SavedTrain.Count == 0 && _config.ReportHistory.Count == 0) return;
 
         _config.SavedTrain = marks;
         _config.SavedTrainAtUtc = marks.Count > 0 ? DateTime.UtcNow : null;
@@ -1420,16 +1405,7 @@ public sealed class Plugin : IDalamudPlugin
         var resetPressed = ImGui.Button("Reset");
         ImGui.PopStyleColor();
 
-        if (resetPressed && armed)
-        {
-            _watcher.ResetNow();
-            _detector.Clear();
-            _currentMark = null;
-            _config.Flags.Clear();
-            _config.Save();
-            ClearSavedTrain();
-            _lastPostResult = "Train reset — nothing was posted.";
-        }
+        if (resetPressed && armed) ResetTrainWithUndo();
 
         if (!armed) ImGui.PopStyleVar();
 
@@ -2029,6 +2005,8 @@ public sealed class Plugin : IDalamudPlugin
 
     private void DrawTrainControls()
     {
+        DrawTrainUndo();
+
         // Row 1: scanning state.
         if (_config.ScanningPaused)
         {
@@ -2126,12 +2104,33 @@ public sealed class Plugin : IDalamudPlugin
         if (ImGui.Checkbox("Group by expansion", ref grouped))
         {
             _config.GroupTrainByExpansion = grouped;
+            if (grouped) _detector.ApplyOrder(GroupByExpansion(_detector.Ordered()));
             _config.Save();
         }
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip(
                 "Sorts the train into expansion blocks, keeping scout order inside each one.\n"
                 + "Drag a block heading to move a whole expansion.");
+
+        // Only offered while the train is in blocks, since there is no next
+        // block to open without them. Hidden rather than greyed out, for the
+        // same reason the rest of this window greys nothing: BeginDisabled is
+        // an API this project has stayed off.
+        if (grouped)
+        {
+            ImGui.SameLine();
+            var autoExpand = _config.AutoExpandNextExpansion;
+            if (ImGui.Checkbox("Open next automatically", ref autoExpand))
+            {
+                _config.AutoExpandNextExpansion = autoExpand;
+                _config.Save();
+            }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip(
+                    "When the last mark in an expansion goes down, unfolds the next block\n"
+                    + "that still has something up. Never folds one away — a finished leg\n"
+                    + "stays open if you left it open.");
+        }
 
         // Row 5 — same setting as the one on the Settings tab, so the two
         // always agree.
@@ -2163,6 +2162,7 @@ public sealed class Plugin : IDalamudPlugin
 
         if (allMarks.Count == 0)
         {
+            _expansionProgress.Reset();
             ImGui.TextDisabled("No marks detected yet — fly near one and it'll appear here.");
             DrawSRankWatchRows();
             return;
@@ -2178,6 +2178,8 @@ public sealed class Plugin : IDalamudPlugin
         // Never while a drag is in progress, or the re-sort would fight the
         // conductor for the row they are holding.
         var grouping = _config.GroupTrainByExpansion;
+        // Shared grouping follows the route's existing block order, so every scout
+        // reaches the same order without applying conflicting local preferences.
         if (grouping && _dragFromIndex == -1 && _dragExpansionFrom == -1)
         {
             var grouped = GroupByExpansion(allMarks);
@@ -2187,6 +2189,14 @@ public sealed class Plugin : IDalamudPlugin
                 allMarks = grouped;
             }
         }
+
+        // After the re-sort, because "the next block" is a question about the
+        // order the blocks are in, and before the dead marks are filtered out,
+        // because a leg ending is precisely a block whose marks are all dead.
+        if (grouping && _config.AutoExpandNextExpansion)
+            AutoExpandNextExpansion(allMarks);
+        else
+            _expansionProgress.Reset();
 
         // What's shown may be a subset, but ordering maths always works against
         // the full list so hidden dead marks keep their place in the train.
@@ -2214,15 +2224,18 @@ public sealed class Plugin : IDalamudPlugin
             foreach (var m in marks)
             {
                 var e = ExpansionData.ExpansionOf(m.NameId, m.ZoneName);
-                if (expansionCounts.TryGetValue(e, out var seen))
-                {
-                    expansionCounts[e] = seen + 1;
-                }
-                else
-                {
-                    expansionCounts[e] = 1;
-                    presentExpansions.Add(e);
-                }
+                if (!presentExpansions.Contains(e)) presentExpansions.Add(e);
+
+                // Custom flags are rally points and route notes, not quarry.
+                // "(6)" on a heading is a promise about how many A-ranks that
+                // leg holds, and a conductor reading it off should never have
+                // to subtract the flags they dropped themselves. The flag rows
+                // are still drawn in the block — they are simply not the count,
+                // which is also why a block is still listed as present when
+                // flags are all it holds.
+                if (m.IsCustom) continue;
+
+                expansionCounts[e] = expansionCounts.GetValueOrDefault(e) + 1;
 
                 if (!m.Dead)
                     expansionUpCounts[e] = expansionUpCounts.GetValueOrDefault(e) + 1;
@@ -2290,7 +2303,7 @@ public sealed class Plugin : IDalamudPlugin
                     blockIsFolded = DrawExpansionHeader(
                         blockExpansion,
                         presentExpansions.IndexOf(blockExpansion),
-                        expansionCounts[blockExpansion],
+                        expansionCounts.GetValueOrDefault(blockExpansion),
                         expansionUpCounts.GetValueOrDefault(blockExpansion),
                         rowHeight);
                 }
@@ -2500,7 +2513,7 @@ public sealed class Plugin : IDalamudPlugin
             if (wasSniped) ImGui.PopStyleColor();
             if (ImGui.IsItemHovered())
                 ImGui.SetTooltip(wasSniped
-                    ? $"Sniped — found gone at {mark.SnipedAtUtc!.Value.ToLocalTime():t}. Click to unset.\n"
+                    ? $"Sniped — found gone at {mark.SnipedAtUtc.GetValueOrDefault().ToLocalTime():t}. Click to unset.\n"
                       + "The report gives a window running from when it was last seen alive."
                     : "Sniped — the mark was already gone when the train got here.\n"
                       + "Records a spawn window from last seen alive, rather than a kill time nobody saw.");
@@ -2600,7 +2613,7 @@ public sealed class Plugin : IDalamudPlugin
         {
             var block = presentExpansions[_dragExpansionFrom];
             ImGui.BeginTooltip();
-            ImGui.TextUnformatted($"{block} ({expansionCounts[block]})");
+            ImGui.TextUnformatted($"{block} ({expansionCounts.GetValueOrDefault(block)})");
             ImGui.EndTooltip();
         }
 
@@ -2678,9 +2691,17 @@ public sealed class Plugin : IDalamudPlugin
 
         // The up-count only earns its place while the block is shut, when the
         // rows that would have said it are not on screen.
-        var label = collapsed
-            ? $"▶ {expansion} ({count} — {upCount} up)"
-            : $"▼ {expansion} ({count})";
+        //
+        // A block holding nothing but custom flags counts zero, since flags are
+        // not marks, and then says no number at all rather than an "(0)" that
+        // would read as a bug over rows that are plainly there.
+        var arrow = collapsed ? "▶" : "▼";
+        var tally = count == 0
+            ? string.Empty
+            : collapsed
+                ? $" ({count} — {upCount} up)"
+                : $" ({count})";
+        var label = $"{arrow} {expansion}{tally}";
 
         ImGui.PushStyleColor(ImGuiCol.Text, new Vector4(0.62f, 0.78f, 1f, 1f));
         ImGui.Selectable(label, _dragExpansionFrom == index,
@@ -2748,6 +2769,15 @@ public sealed class Plugin : IDalamudPlugin
         return collapsed;
     }
 
+    private void AutoExpandNextExpansion(List<DetectedMark> allMarks)
+    {
+        var opened = false;
+        foreach (var expansion in _expansionProgress.Update(allMarks.Select(mark =>
+            (ExpansionData.ExpansionOf(mark.NameId, mark.ZoneName), mark.Dead))))
+            opened |= _config.CollapsedExpansions.Remove(expansion);
+        if (opened) _config.Save();
+    }
+
     /// <summary>
     /// The train sorted into expansion blocks.
     ///
@@ -2757,6 +2787,8 @@ public sealed class Plugin : IDalamudPlugin
     /// </summary>
     private List<DetectedMark> GroupByExpansion(List<DetectedMark> marks)
     {
+        if (_config.SyncEnabled && _config.SyncShareTrain)
+            return Sync.SharedRouteGrouping.GroupInRouteOrder(marks, m => ExpansionData.ExpansionOf(m.NameId, m.ZoneName));
         var order = ExpansionDisplayOrder(marks);
         return marks
             .OrderBy(m => order.IndexOf(ExpansionData.ExpansionOf(m.NameId, m.ZoneName)))
@@ -2784,8 +2816,9 @@ public sealed class Plugin : IDalamudPlugin
     {
         var order = new List<string>();
 
-        foreach (var name in _config.ExpansionOrder)
-            if (!order.Contains(name)) order.Add(name);
+        if (!_config.SyncEnabled || !_config.SyncShareTrain)
+            foreach (var name in _config.ExpansionOrder)
+                if (!order.Contains(name)) order.Add(name);
 
         foreach (var mark in marks)
         {
@@ -2824,6 +2857,8 @@ public sealed class Plugin : IDalamudPlugin
         order.Insert(to, moving);
 
         _config.ExpansionOrder = order;
+        _detector.ApplyOrder(_detector.Ordered()
+            .OrderBy(m => order.IndexOf(ExpansionData.ExpansionOf(m.NameId, m.ZoneName))).ToList());
         _config.Save();
     }
 
@@ -2907,13 +2942,7 @@ public sealed class Plugin : IDalamudPlugin
     {
         ImGui.Spacing();
 
-        var useOwn = _config.UseOwnTrainList;
-        if (ImGui.Checkbox("Use this list for reports (instead of Hunt Helper's)", ref useOwn))
-        {
-            _config.UseOwnTrainList = useOwn;
-            _config.Save();
-        }
-        ImGui.TextDisabled("Both lists always populate, so you can compare them before switching over.");
+        ImGui.TextDisabled("Reports use this train and its recorded history.");
 
         ImGui.Spacing();
         DrawTrainControls();
@@ -2924,10 +2953,7 @@ public sealed class Plugin : IDalamudPlugin
             _trainPopoutVisible = true;
         }
         ImGui.SameLine();
-        if (ImGui.Button("Clear All"))
-        {
-            _detector.Clear();
-        }
+        if (ImGui.Button("Clear All")) ResetTrainWithUndo(clearWatches: false);
 
         ImGui.Spacing();
         if (ImGui.Button("Copy Export Code"))
@@ -3035,7 +3061,13 @@ public sealed class Plugin : IDalamudPlugin
             foreach (var mob in def.MobNames)
             {
                 var count = _counter.GetTally(worldId, instance, mob);
-                ImGui.TextDisabled($"    {mob}: {count}");
+                var shared = def.TriggerPatterns.Length == 0
+                    ? _sync.SharedCounterTotal(worldId, def.TerritoryId, instance, mob) : null;
+                ImGui.TextDisabled($"    {mob}: {count}" + (shared is { } total ? $" ({total})" : string.Empty));
+                if (ImGui.IsItemHovered() && def.TriggerPatterns.Length == 0)
+                    ImGui.SetTooltip(shared is not null
+                        ? "Brackets: group total of personal kills since the shared reset. Nearby kills and older local counts are not uploaded. Local Reset/auto-reset does not change the group total."
+                        : "Shared total unavailable: connect to a server with counter syncing enabled.");
             }
 
             var settings = _counter.SettingsFor(def.MarkName);
@@ -3075,6 +3107,24 @@ public sealed class Plugin : IDalamudPlugin
             if (ImGui.SmallButton("Reset"))
             {
                 _counter.ResetFor(def, worldId, instance);
+            }
+            if (def.TriggerPatterns.Length == 0 && _sync.CountersAvailable)
+            {
+                ImGui.SameLine();
+                if (ImGui.SmallButton("Reset shared…")) ImGui.OpenPopup("Reset shared counter");
+                if (ImGui.BeginPopup("Reset shared counter"))
+                {
+                    ImGui.TextWrapped($"Clear the group counts for {def.MarkName} on {worldName}" +
+                        (instance > 0 ? $" (instance {instance})?" : "?"));
+                    if (ImGui.Button("Reset shared counts"))
+                    {
+                        _sync.ResetSharedCounters(def, worldId, instance);
+                        ImGui.CloseCurrentPopup();
+                    }
+                    ImGui.SameLine();
+                    if (ImGui.Button("Cancel")) ImGui.CloseCurrentPopup();
+                    ImGui.EndPopup();
+                }
             }
 
             ImGui.Separator();
@@ -3374,7 +3424,7 @@ public sealed class Plugin : IDalamudPlugin
             _config.Save();
         }
         ImGui.TextDisabled(TallyFeedStatus());
-        ImGui.TextDisabled("Marks are recorded dead here automatically, with the tally's exact kill time. Your Hunt Helper list still needs clicking yourself for its own navigation.");
+        ImGui.TextDisabled("Observed deaths update this train automatically; unknown kill times remain unknown.");
 
         ImGui.Spacing();
         ImGui.Separator();
@@ -3387,16 +3437,11 @@ public sealed class Plugin : IDalamudPlugin
         ImGui.TextDisabled("Posts the report, sorted by the order marks actually died, plus any S-rank checks below. Only clears once the post actually succeeds.");
 
         ImGui.Spacing();
-        if (ImGui.Button("Reset train tracking now"))
-        {
-            _watcher.ResetNow();
-            _detector.Clear();
-            _currentMark = null;
-            _config.Flags.Clear();
-            _config.Save();
-            ClearSavedTrain();
-        }
+        if (ImGui.Button("Reset train tracking now")) ResetTrainWithUndo();
+        DrawTrainUndo();
         ImGui.TextDisabled("Clears tracking and S-rank watches without posting anything — use if you need to abandon a train.");
+        if (_config.SyncEnabled && _config.SyncShareTrain)
+            ImGui.TextDisabled("Sync is on: this also empties the shared train for everyone.");
 
         ImGui.Spacing();
         ImGui.Separator();
@@ -3504,7 +3549,7 @@ public sealed class Plugin : IDalamudPlugin
         {
             _ = SendScoutingReportAsync();
         }
-        ImGui.TextDisabled("Posts Hunt Helper's current train list as a paste-able import code, plus a per-expansion up count.");
+        ImGui.TextDisabled("Posts this train as an import code with worlds, flags and known kill times, plus a per-expansion up count.");
 
         ImGui.Spacing();
         ImGui.Separator();
@@ -3601,7 +3646,7 @@ public sealed class Plugin : IDalamudPlugin
     private void DrawMarksSlainTab()
     {
         ImGui.Spacing();
-        ImGui.TextWrapped("Preview of what End Train Now would post right now, in the order marks actually died.");
+        ImGui.TextWrapped("Preview of the report: confirmed kills, sniped marks, and unfinished or unknown-time entries. Posting keeps shared trains intact; use Reset when ready.");
         ImGui.Spacing();
         ImGui.Separator();
         ImGui.Spacing();
@@ -3609,7 +3654,7 @@ public sealed class Plugin : IDalamudPlugin
         var marks = BuildCurrentMarks();
         if (marks == null)
         {
-            ImGui.TextDisabled("Hunt Helper not detected.");
+            ImGui.TextDisabled("No train history recorded.");
             return;
         }
 
@@ -3637,6 +3682,8 @@ public sealed class Plugin : IDalamudPlugin
             DrawReportEntries(sniped);
         }
 
+        foreach (var mark in marks.Where(m => !m.Dead || (m.DeathObservedAtUtc is null && m.SnipedAtUtc is null)))
+            ImGui.TextWrapped($"{mark.Name}{ExpansionData.InstanceGlyph(mark.Instance)} — {mark.WorldName}: {(mark.Dead ? "found dead; kill time unknown" : "unfinished / still alive")}");
         var neverSeen = TrainReport.BuildSniped(marks);
         if (neverSeen.Count > 0)
         {
@@ -3674,14 +3721,14 @@ public sealed class Plugin : IDalamudPlugin
 
             if (!entry.HasWindow)
             {
-                ImGui.TextWrapped($"{localTime} — {entry.Name} — no fixed respawn timer");
+                ImGui.TextWrapped($"{localTime} — {entry.DisplayName} — no fixed respawn timer");
                 continue;
             }
 
             var openLocal = entry.WindowOpensUtc!.Value.ToLocalTime().ToString("t");
             var capLocal = entry.WindowCapsUtc!.Value.ToLocalTime().ToString("t");
             var instanceGlyph = ExpansionData.InstanceGlyph(entry.Instance);
-            ImGui.TextWrapped($"{localTime} — {entry.Location} — {entry.Name}{instanceGlyph} — window {openLocal} → {capLocal}");
+            ImGui.TextWrapped($"{localTime} — {entry.Location} — {entry.DisplayName}{instanceGlyph} — window {openLocal} → {capLocal}");
         }
     }
 
@@ -4132,6 +4179,7 @@ public sealed class Plugin : IDalamudPlugin
 
         _tallyIpc.KillPublished -= OnTallyKillPublished;
         _tracker.OnKill -= AnnounceTallyKill;
+        _tracker.OnMarkDeath -= OnAnyMarkDeath;
         _tracker.OnKill -= _tallyIpc.PublishCredited;
         _tracker.OnMarkDeath -= _tallyIpc.PublishMarkDeath;
         _tracker.Dispose();
@@ -4162,10 +4210,15 @@ public sealed class Plugin : IDalamudPlugin
 
         _watcher.Dispose();
         _zoneReminder.Dispose();
+        _counter.PersonalKill -= _sync.RecordCounterKill;
         _counter.Dispose();
         _spawnWatch.Dispose();
         _mapOverlay.Dispose();
         _ssEvent.Dispose();
+        _sync.RemoteTrainCleared -= OnRemoteTrainCleared;
+        _srankTravel.Dispose();
+        _sync.SRankSpawned -= OnRemoteSRankSpawn;
+        _sync.Dispose();
 
         try
         {
@@ -4188,9 +4241,394 @@ public sealed class Plugin : IDalamudPlugin
         _commandManager.RemoveHandler(CounterCommand);
         _commandManager.RemoveHandler(NextAetheryteCommand);
         _commandManager.RemoveHandler(MapCommand);
+        _commandManager.RemoveHandler(SRankCommand);
+        _commandManager.RemoveHandler("/hhs");
+        _commandManager.RemoveHandler("/hhsa");
+        _commandManager.RemoveHandler("/hhv");
+        _commandManager.RemoveHandler("/hha");
         _commandManager.RemoveHandler(TallyCommand);
 
         foreach (var alias in _claimedAliases)
             _commandManager.RemoveHandler(alias);
+    }
+
+    // ---------------------------------------------------------------------
+    // Sync
+    // ---------------------------------------------------------------------
+
+    private void OnSRankCommand(string command, string args) => _srankWindow.Toggle();
+
+    /// <summary>
+    /// Somebody else emptied the shared train. Everything that Reset does
+    /// locally happens here too, minus the posting, so this client does not
+    /// keep a pointer into a train that no longer exists.
+    /// </summary>
+    private readonly Sync.SpawnAlertFilter _spawnAlertFilter = new();
+    private string _lastCommunityAlert = "No community spawn/release received this session.";
+
+    private readonly Queue<Sync.SRankSpawnBroadcast> _pendingSpawnAlerts = new();
+    private void OnRemoteSRankSpawn(Sync.SRankSpawnBroadcast spawn)
+    {
+        if (_objectTable.LocalPlayer is null || _detector.CurrentWorldId() == 0)
+        {
+            if (_pendingSpawnAlerts.Count >= 100) _pendingSpawnAlerts.Dequeue();
+            _pendingSpawnAlerts.Enqueue(spawn);
+            _lastCommunityAlert = "S-rank alert queued until loading finishes (up to two minutes).";
+            return;
+        }
+        ShowSpawnAlert(spawn);
+    }
+    private void DrainPendingSpawnAlerts()
+    {
+        if (!_config.SyncEnabled) { _pendingSpawnAlerts.Clear(); return; }
+        while (_pendingSpawnAlerts.TryPeek(out var pending) && DateTime.UtcNow - pending.SpawnedAt > TimeSpan.FromMinutes(2))
+        { _pendingSpawnAlerts.Dequeue(); _lastCommunityAlert = "Queued S-rank alert expired during loading."; }
+        if (_objectTable.LocalPlayer is null || _detector.CurrentWorldId() == 0) return;
+        while (_pendingSpawnAlerts.TryDequeue(out var spawn)) ShowSpawnAlert(spawn);
+    }
+    private void ShowSpawnAlert(Sync.SRankSpawnBroadcast spawn, bool test = false)
+    {
+        _lastCommunityAlert = $"{DateTime.Now:HH:mm:ss}: {spawn.Event} received for mark {spawn.NameId}, world {spawn.WorldId}.";
+        _log.Information(_lastCommunityAlert);
+        if (!_config.SyncSpawnAlerts) { _lastCommunityAlert += " Alerts disabled."; return; }
+        if (_objectTable.LocalPlayer == null) { _lastCommunityAlert += " No local player."; return; }
+        if (!Sync.SRankTimerData.ByNameId.TryGetValue(spawn.NameId, out var mark)) { _lastCommunityAlert += " Unknown timed S rank."; return; }
+        var destination = _worldData.LocateWorld(spawn.WorldId);
+        var current = _worldData.LocateWorld(_detector.CurrentWorldId());
+        if (destination is null || current is null) { _lastCommunityAlert += " Could not resolve world/DC."; return; }
+        var dc = _worldData.DataCenters[destination.Value.DcIndex];
+        var allowed = _config.SyncSpawnCurrentDc
+            ? destination.Value.DcIndex == current.Value.DcIndex
+            : _config.SyncSpawnDataCenters.Contains(dc.Id);
+        if (!allowed) { _lastCommunityAlert += " Excluded by DC filter."; return; }
+        if (!(test ? new Sync.SpawnAlertFilter() : _spawnAlertFilter).Accept(spawn, true, DateTime.UtcNow)) { _lastCommunityAlert += " Duplicate or invalid event time."; return; }
+        if (!test && _detector.OtherRanks.TryGetValue((spawn.NameId,spawn.Instance,spawn.WorldId),out var local)
+            && !local.IsRemote && DateTime.UtcNow-local.LastSeenUtc < TimeSpan.FromSeconds(2))
+        { _lastCommunityAlert += " Already detected locally; relay suppressed."; return; }
+        var position = SpawnPosition(spawn.X, spawn.Y);
+        _notifier.SendRelay(new OtherRankSighting
+        {
+            NameId=spawn.NameId, Name=mark.Name, Rank=HuntRank.S, Instance=spawn.Instance,
+            WorldId=spawn.WorldId, WorldName=_worldData.NameOf(spawn.WorldId), TerritoryId=mark.TerritoryId,
+            MapId=_detector.GetMapId(mark.TerritoryId), MapPosition=position ?? Vector2.Zero,
+            HealthPercent=float.NaN,
+        },position is not null,test,spawn.Event=="release");
+        _lastCommunityAlert += test ? " Test shown in chat." : " Shown in chat.";
+        _log.Information(_lastCommunityAlert);
+        if (_config.SyncSpawnSound)
+        {
+            try { FFXIVClientStructs.FFXIV.Client.UI.UIGlobals.PlayChatSoundEffect(6); }
+            catch (Exception ex) { _log.Debug(ex, "Could not play S-rank alert sound."); }
+        }
+    }
+
+    private static Vector2? SpawnPosition(float? x, float? y) => x is { } px && y is { } py
+        && float.IsFinite(px) && float.IsFinite(py) && px >= 1 && px <= 100 && py >= 1 && py <= 100 ? new Vector2(px,py) : null;
+
+    private void DrawTrainUndo()
+    {
+        if (_config.ResetUndoAt is not { } resetAt) return;
+        if (ImGui.Button("Undo reset")) UndoTrainReset();
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip($"Restore {_config.ResetUndoMarks.Count} marks, {_config.ResetUndoReportHistory.Count} history entries and {_config.ResetUndoFlags.Count} watches from {resetAt.ToLocalTime():ddd HH:mm:ss} ({_config.ResetUndoBy}). No Shift required. Turns train sharing off and restores locally without changing your friends' train.");
+        ImGui.SameLine();
+        ImGui.TextDisabled("Restore locally; turns train sharing off");
+    }
+
+    private void ResetTrainWithUndo(bool clearWatches = true)
+    {
+        CaptureResetUndo("You");
+        _ownResetPendingAt = _sync.IsConnected && _config.SyncShareTrain ? DateTime.UtcNow : null;
+        _watcher.ResetNow();
+        _currentMark = null;
+        if (clearWatches) _config.Flags.Clear();
+        ClearSavedTrain();
+        _lastPostResult = "Train reset — nothing was posted.";
+        if (_config.ResetUndoAt is not null)
+            _chatGui.Print("[Hunt Helper Evolved] Train reset. Use Undo reset at the top of the train window to restore it locally.");
+    }
+
+    private DateTime? _ownResetPendingAt;
+    private void CaptureResetUndo(string by)
+    {
+        var marks = _detector.ToPersisted();
+        var history = BuildCurrentMarks();
+        if (marks.Count == 0 && _config.Flags.Count == 0 && history.Count == 0) return;
+        _config.ResetUndoReportHistory = history;
+        _config.ResetUndoMarks = marks;
+        _config.ResetUndoFlags = CloneWatches(_config.Flags);
+        _config.ResetUndoAt = DateTime.UtcNow;
+        _config.ResetUndoBy = by;
+        _config.ResetUndoCurrentNameId = _currentMark?.NameId;
+        _config.ResetUndoCurrentInstance = _currentMark?.Instance;
+        _config.ResetUndoCurrentWorldId = _currentMark?.WorldId;
+        _config.Save();
+    }
+    private static List<FlagEntry> CloneWatches(IEnumerable<FlagEntry> watches) => watches.Select(f => new FlagEntry
+    { Label=f.Label, SpawnStatus=f.SpawnStatus, TerritoryId=f.TerritoryId, HasLocation=f.HasLocation, X=f.X, Y=f.Y }).ToList();
+
+    private void UndoTrainReset()
+    {
+        if (_config.ResetUndoAt is null) return;
+        // Stop applying/publishing train changes before restoring; sightings and timers stay connected.
+        _config.SyncShareTrain = false;
+        var restored = TrainResetRecovery.Merge(_config.ResetUndoMarks, _detector.ToPersisted(),
+            m => (m.NameId,m.Instance,m.WorldId),
+            m => new[]{m.LastSeenUtc,m.DeathObservedAtUtc ?? DateTime.MinValue,m.SnipedAtUtc ?? DateTime.MinValue}.Max());
+        for (var i=0; i<restored.Count; i++) restored[i].Order=i;
+        var watches = CloneWatches(_config.ResetUndoFlags);
+        foreach (var current in CloneWatches(_config.Flags))
+        {
+            var index=watches.FindIndex(w=>w.Label==current.Label && w.TerritoryId==current.TerritoryId && w.X==current.X && w.Y==current.Y);
+            if (index<0) watches.Add(current); else watches[index]=current;
+        }
+        var history = TrainResetRecovery.Merge(_config.ResetUndoReportHistory, BuildCurrentMarks(),
+            m => m.Key, m => m.DeathObservedAtUtc ?? m.SnipedAtUtc ?? m.LastSeenUtc);
+        _watcher.ResetNow();
+        _watcher.RestoreHistory(history);
+        _config.ResetUndoReportHistory.Clear();
+        _detector.LoadPersisted(restored);
+        _config.Flags = watches;
+        _currentMark = _config.ResetUndoCurrentNameId is { } name && _config.ResetUndoCurrentInstance is { } instance
+            ? (name, instance, _config.ResetUndoCurrentWorldId ?? 0) : null;
+        _config.ResetUndoMarks.Clear(); _config.ResetUndoFlags.Clear(); _config.ResetUndoAt=null;
+        _config.Save(); PersistTrain();
+        _chatGui.Print("[Hunt Helper Evolved] Train reset undone locally. Train sharing is off; the group's current train is unchanged.");
+    }
+
+    private void OnRemoteTrainCleared(string by)
+    {
+        var ownEcho = _ownResetPendingAt is { } at && DateTime.UtcNow-at < TimeSpan.FromSeconds(30) && by == _sync.DisplayName();
+        if (!ownEcho) CaptureResetUndo(by);
+        if (ownEcho) _ownResetPendingAt=null;
+        _watcher.ResetNow();
+        _currentMark = null;
+        _config.Flags.Clear();
+        _config.Save();
+        ClearSavedTrain();
+        _chatGui.Print($"[Hunt Helper Evolved] {by} cleared the shared train. Use Undo reset at the top of the train window (or on the Conductor tab) to recover it locally.");
+    }
+
+    /// <summary>
+    /// A mark died where this client could see it. Its dot comes off the
+    /// group's maps; an S rank also starts the group's respawn clock.
+    /// </summary>
+    private void OnAnyMarkDeath(KillDetail kill)
+    {
+        try
+        {
+            _sync.ReportMarkDeath(
+                kill.Mark.NameId,
+                kill.InstanceId,
+                kill.TerritoryId,
+                kill.Time.ToUniversalTime(),
+                kill.Mark.Rank == MarkRank.S);
+        }
+        catch (Exception ex)
+        {
+            _log.Warning(ex, "Could not report a mark death to the sync server.");
+        }
+    }
+
+    private bool _showSyncPassword;
+
+    private void DrawSyncTab()
+    {
+        ImGui.Spacing();
+        ImGui.TextWrapped(
+            "Share the hunt with a group through a server one of you runs. Everyone with its URL " +
+            "and password sees the same train, each other's marks on the map, and the same S-rank " +
+            "clocks. Nothing goes anywhere else, and without the password the URL alone gets nobody in.");
+        ImGui.Spacing();
+
+        var enabled = _config.SyncEnabled;
+        if (ImGui.Checkbox("Enabled", ref enabled))
+        {
+            _config.SyncEnabled = enabled;
+            _config.Save();
+            _sync.ApplySettings();
+        }
+
+        ImGui.SetNextItemWidth(360);
+        var url = _config.SyncServerUrl;
+        if (ImGui.InputTextWithHint("Server URL", "wss://hunts.example.com/ws", ref url, 512))
+            _config.SyncServerUrl = url;
+        if (ImGui.IsItemDeactivatedAfterEdit())
+        {
+            _config.Save();
+            _sync.ApplySettings();
+        }
+
+        ImGui.SetNextItemWidth(360);
+        var password = _config.SyncPassword;
+        var passwordFlags = _showSyncPassword ? ImGuiInputTextFlags.None : ImGuiInputTextFlags.Password;
+        if (ImGui.InputText("Password", ref password, 256, passwordFlags))
+            _config.SyncPassword = password;
+        if (ImGui.IsItemDeactivatedAfterEdit())
+        {
+            _config.Save();
+            _sync.ApplySettings();
+        }
+        ImGui.SameLine();
+        ImGui.Checkbox("show", ref _showSyncPassword);
+
+        ImGui.SetNextItemWidth(360);
+        var name = _config.SyncDisplayName;
+        if (ImGui.InputTextWithHint("Display name", "Anonymous", ref name, 40))
+            _config.SyncDisplayName = name;
+        if (ImGui.IsItemDeactivatedAfterEdit())
+            _config.Save();
+        if (ImGui.IsItemDeactivatedAfterEdit()) _sync.ApplySettings();
+        ImGui.TextDisabled("Your chosen alias is shared. Blank uses Anonymous.");
+
+        ImGui.Spacing();
+        if (_config.SyncEnabled && !_sync.IsConnected && !string.IsNullOrEmpty(_sync.LastError))
+            ImGui.TextColored(new Vector4(1f, 0.4f, 0.4f, 1f), _sync.Status);
+        else
+            ImGui.TextWrapped($"Status: {_sync.Status}");
+
+        if (_sync.IsConnected && !string.IsNullOrEmpty(_sync.LastError))
+            ImGui.TextColored(new Vector4(1f, 0.6f, 0.3f, 1f), $"Server said: {_sync.LastError}");
+
+        if (_sync.IsConnected)
+        {
+            if (_sync.LocalBackupCount > 0 && _config.SyncShareTrain
+                && ImGui.Button($"Upload saved local marks ({_sync.LocalBackupCount})"))
+                _sync.UploadLocalBackup();
+            if (_sync.LocalWatchBackupCount > 0 && _config.SyncShareTrain
+                && ImGui.Button($"Upload saved local watches ({_sync.LocalWatchBackupCount})"))
+                _sync.UploadWatchBackup();
+            ImGui.TextDisabled("Joining uses the server train. Upload saved local marks explicitly if needed.");
+            ImGui.SameLine();
+            if (ImGui.SmallButton("Reconnect"))
+            {
+                _sync.ApplySettings(force: true);
+            }
+
+            ImGui.Spacing();
+            ImGui.TextWrapped("Online now:");
+            foreach (var client in _sync.Clients)
+            {
+                var where = client.TerritoryId != 0
+                    ? $" — {_detector.GetZoneName(client.TerritoryId)}{ExpansionData.InstanceGlyph(client.Instance)}"
+                    : string.Empty;
+                var world = client.WorldId != 0 ? $" [{_worldData.NameOf(client.WorldId)}]" : string.Empty;
+                ImGui.BulletText($"{client.Name}{world}{where}");
+            }
+
+            var faloop = _sync.Faloop;
+            if (faloop.Enabled)
+                ImGui.TextDisabled($"Faloop on the server: {faloop.Status} Live feed: {(faloop.LiveConnected ? "connected" : "disconnected")}");
+        }
+
+        ImGui.Spacing();
+        if (ImGui.CollapsingHeader("Community S-rank spawn alerts", ImGuiTreeNodeFlags.DefaultOpen))
+        {
+            var alerts = _config.SyncSpawnAlerts;
+            if (ImGui.Checkbox("Chat alerts for group S sightings and Faloop spawns/releases", ref alerts)) { _config.SyncSpawnAlerts = alerts; _config.Save(); }
+            var sound = _config.SyncSpawnSound;
+            if (ImGui.Checkbox("Play an alert sound", ref sound)) { _config.SyncSpawnSound = sound; _config.Save(); }
+            var currentDc = _config.SyncSpawnCurrentDc;
+            if (ImGui.Checkbox("Only my current data centre", ref currentDc)) { _config.SyncSpawnCurrentDc = currentDc; _config.Save(); }
+            if (!currentDc)
+                foreach (var dc in _worldData.DataCenters)
+                {
+                    var selected = _config.SyncSpawnDataCenters.Contains(dc.Id);
+                    if (ImGui.Checkbox(dc.Name + "##spawnDc", ref selected))
+                    {
+                        if (selected) _config.SyncSpawnDataCenters.Add(dc.Id); else _config.SyncSpawnDataCenters.Remove(dc.Id);
+                        _config.Save();
+                    }
+                }
+            ImGui.TextWrapped("Alerts arrive for the first group S-rank sighting and for public Faloop spawns/releases. Your server must follow the selected data centres. Historical snapshots do not trigger alerts.");
+            ImGui.TextWrapped("Server coverage: " + string.Join(", ", _sync.Faloop.DataCenters));
+            if (ImGui.Button("Test S-rank chat alert"))
+                ShowSpawnAlert(new Sync.SRankSpawnBroadcast { NameId = Sync.SRankTimerData.All[0].NameId,
+                    WorldId = _detector.CurrentWorldId(), SpawnedAt = DateTime.UtcNow, X = 21.5f, Y = 21.5f, Source = "Local test" }, test: true);
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip("Local chat/sound/map-link test with example coordinates using your current world and alert settings. No report is sent to the server.");
+            ImGui.TextWrapped(_lastCommunityAlert);
+            ImGui.TextDisabled($"Last server feed message: {_sync.Faloop.LastLiveMessageAt?.ToLocalTime().ToString("HH:mm:ss") ?? "none"}; last broadcast alert: {_sync.Faloop.LastAlertAt?.ToLocalTime().ToString("HH:mm:ss") ?? "none"}");
+        }
+
+        _activeMarksWindow.DrawSettings();
+        ImGui.Separator();
+        if (ImGui.Button("Active Marks (/hhsa)")) _activeMarksWindow.Toggle();
+        if (ImGui.Button("Open the S-rank board"))
+            _srankWindow.Toggle();
+        ImGui.SameLine();
+        ImGui.TextDisabled("Windows, kill times and spawn points for every S rank. Also /hhs or /htrs.");
+
+        ImGui.Spacing();
+        ImGui.Separator();
+        ImGui.Spacing();
+
+        if (ImGui.CollapsingHeader("What to share", ImGuiTreeNodeFlags.DefaultOpen))
+        {
+            var train = _config.SyncShareTrain;
+            if (ImGui.Checkbox("The train", ref train))
+            {
+                _config.SyncShareTrain = train;
+                _config.Save();
+                _sync.ApplySettings();
+            }
+            ImGui.TextDisabled("Marks scouted, their order, what is dead, custom flags and spicing. Everyone edits one list. Reset and Clear All empty it for everyone.");
+
+            var sightings = _config.SyncShareSightings;
+            if (ImGui.Checkbox("What I can see", ref sightings))
+            {
+                _config.SyncShareSightings = sightings;
+                _config.Save();
+            }
+            ImGui.TextDisabled("Each mark's position and health while it is in your range, refreshed as it changes. Also what rules spawn points out for the S.");
+
+            var kills = _config.SyncReportSRankKills;
+            if (ImGui.Checkbox("S-rank kills I witness", ref kills))
+            {
+                _config.SyncReportSRankKills = kills;
+                _config.Save();
+            }
+            ImGui.TextDisabled("The exact moment an S dies in front of you starts the group's clock for it.");
+            if (_standaloneTallyPresent)
+                ImGui.TextDisabled("Deaths are watched by the built-in tally, which is standing down while the standalone Hunt Tally is installed — so nothing is reported.");
+        }
+
+        if (ImGui.CollapsingHeader("What to show", ImGuiTreeNodeFlags.DefaultOpen))
+        {
+            var remote = _config.SyncShowRemoteMarksOnMap;
+            if (ImGui.Checkbox("Marks other members can see, on my map", ref remote))
+            {
+                _config.SyncShowRemoteMarksOnMap = remote;
+                _config.Save();
+            }
+            ImGui.TextDisabled("Drawn like your own, with who saw it and how long ago in the tooltip. Removed when nobody sees it; missing heartbeats expire after three seconds.");
+
+            var candidates = _config.ShowSRankCandidatesOnMap;
+            if (ImGui.Checkbox("Which spawn points the S can still use", ref candidates))
+            {
+                _config.ShowSRankCandidatesOnMap = candidates;
+                _config.Save();
+            }
+            ImGui.TextDisabled("An S cannot spawn where an A or B has spawned since it last died, nor twice running where it died. Possible points have a gold outline. A confirmed point is filled gold; ruled-out points keep their normal fill.");
+
+            const ImGuiColorEditFlags flags = ImGuiColorEditFlags.AlphaBar | ImGuiColorEditFlags.AlphaPreviewHalf;
+            var outlineWidth = _config.SpawnCandidateOutlineWidth;
+            if (ImGui.SliderInt("S candidate outline width", ref outlineWidth, 1, 12, "%d / 32"))
+            {
+                _config.SpawnCandidateOutlineWidth = outlineWidth;
+                _config.Save();
+            }
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip("Outline thickness relative to the 32-pixel spot texture. Scales with spot size and map zoom.");
+            var candidate = _config.SpawnDotColourSCandidate;
+            if (ImGui.ColorEdit4("S candidate outline / confirmed fill", ref candidate, flags))
+            {
+                _config.SpawnDotColourSCandidate = candidate;
+                _config.Save();
+            }
+
+
+        }
+
+        ImGui.Spacing();
+        ImGui.TextDisabled("Running the server: github.com/HuntHelperEvolved/HuntHelperEvolvedServer");
     }
 }

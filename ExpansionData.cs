@@ -21,31 +21,30 @@ public record MarkInfo(string Name, string Expansion, string Location, double Mi
 /// </summary>
 public static class ExpansionData
 {
-    // ARR A-ranks: window opens ~3h after death, guaranteed ("capped") by ~4h.
-    private const double ArrMin = 3, ArrMax = 4;
+    // ARR windows differ by mark; bounds below match Faloop public client data.
     // HW through Dawntrail A-ranks: window opens ~4h after death, capped by ~6h.
     private const double PostArrMin = 4, PostArrMax = 6;
 
     public static readonly Dictionary<uint, MarkInfo> ModelIdToMark = new()
     {
         // --- ARR --- (La Noscea -> Thanalan -> Shroud -> Coerthas/Mor Dhona)
-        [2945] = new("Vogaal Ja", "ARR", "Middle La Noscea", ArrMin, ArrMax, 0, 0),
-        [2946] = new("Unktehi", "ARR", "Lower La Noscea", ArrMin, ArrMax, 0, 1),
-        [2947] = new("Hellsclaw", "ARR", "Eastern La Noscea", ArrMin, ArrMax, 0, 2),
-        [2948] = new("Nahn", "ARR", "Western La Noscea", ArrMin, ArrMax, 0, 3),
-        [2949] = new("Marberry", "ARR", "Upper La Noscea", ArrMin, ArrMax, 0, 4),
-        [2950] = new("Cornu", "ARR", "Outer La Noscea", ArrMin, ArrMax, 0, 5),
-        [2941] = new("Sabotender Bailarina", "ARR", "Central Thanalan", ArrMin, ArrMax, 0, 6),
-        [2942] = new("Maahes", "ARR", "Eastern Thanalan", ArrMin, ArrMax, 0, 7),
-        [2940] = new("Alectryon", "ARR", "Western Thanalan", ArrMin, ArrMax, 0, 8),
-        [2943] = new("Zanig'oh", "ARR", "Southern Thanalan", ArrMin, ArrMax, 0, 9),
-        [2944] = new("Dalvag's Final Flame", "ARR", "Northern Thanalan", ArrMin, ArrMax, 0, 10),
-        [2936] = new("Forneus", "ARR", "Central Shroud", ArrMin, ArrMax, 0, 11),
-        [2937] = new("Melt", "ARR", "East Shroud", ArrMin, ArrMax, 0, 12),
-        [2938] = new("Ghede Ti Malice", "ARR", "South Shroud", ArrMin, ArrMax, 0, 13),
-        [2939] = new("Girtab", "ARR", "North Shroud", ArrMin, ArrMax, 0, 14),
-        [2951] = new("Marraco", "ARR", "Coerthas Central Highlands", ArrMin, ArrMax, 0, 15),
-        [2952] = new("Kurrea", "ARR", "Mor Dhona", ArrMin, ArrMax, 0, 16),
+        [2945] = new("Vogaal Ja", "ARR", "Middle La Noscea", 3.5, 4.5, 0, 0),
+        [2946] = new("Unktehi", "ARR", "Lower La Noscea", 3.5, 4.5, 0, 1),
+        [2947] = new("Hellsclaw", "ARR", "Eastern La Noscea", 3.5, 4.5, 0, 2),
+        [2948] = new("Nahn", "ARR", "Western La Noscea", 3.5, 4.5, 0, 3),
+        [2949] = new("Marberry", "ARR", "Upper La Noscea", 4, 5, 0, 4),
+        [2950] = new("Cornu", "ARR", "Outer La Noscea", 3.5, 4.5, 0, 5),
+        [2941] = new("Sabotender Bailarina", "ARR", "Central Thanalan", 4, 5, 0, 6),
+        [2942] = new("Maahes", "ARR", "Eastern Thanalan", 3, 4, 0, 7),
+        [2940] = new("Alectryon", "ARR", "Western Thanalan", 3.5, 4.5, 0, 8),
+        [2943] = new("Zanig'oh", "ARR", "Southern Thanalan", 3.5, 4.5, 0, 9),
+        [2944] = new("Dalvag's Final Flame", "ARR", "Northern Thanalan", 4, 5, 0, 10),
+        [2936] = new("Forneus", "ARR", "Central Shroud", 3.5, 4.5, 0, 11),
+        [2937] = new("Melt", "ARR", "East Shroud", 3, 4, 0, 12),
+        [2938] = new("Ghede Ti Malice", "ARR", "South Shroud", 3.5, 4.5, 0, 13),
+        [2939] = new("Girtab", "ARR", "North Shroud", 3.5, 4.5, 0, 14),
+        [2951] = new("Marraco", "ARR", "Coerthas Central Highlands", 3, 4, 0, 15),
+        [2952] = new("Kurrea", "ARR", "Mor Dhona", 3.5, 4.5, 0, 16),
 
         // --- Heavensward --- (Coerthas -> Forelands -> Churning Mists -> Sea of Clouds -> Hinterlands -> Azys Lla)
         [4362] = new("Mirka", "Heavensward", "Coerthas Western Highlands", PostArrMin, PostArrMax, 1, 0),

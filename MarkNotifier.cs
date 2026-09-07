@@ -108,6 +108,18 @@ public sealed class MarkNotifier
         }
     }
 
+    public void SendRelay(OtherRankSighting sighting, bool hasLocation, bool test, bool released)
+    {
+        var template=_config.DetectionChatMessageS;
+        if(string.IsNullOrWhiteSpace(template)) template="FOUND: <name> @ <flag> --- <rank> -- <hpp>";
+        template=Regex.IsMatch(template,"FOUND:",RegexOptions.IgnoreCase)
+            ? Regex.Replace(template,"FOUND:","RELAY:",RegexOptions.IgnoreCase) : "RELAY: "+template;
+        if(!template.Contains("<flag>",StringComparison.OrdinalIgnoreCase)) template+=" @ <flag>";
+        if(test) template="TEST — "+template;
+        if(released) template+=" [released]";
+        _chatGui.Print(BuildChatMessage(template,sighting,hasLocation));
+    }
+
     /// <summary>
     /// Every placeholder Hunt Helper understands, matched case-insensitively
     /// and split out of the template so the text around them survives exactly
@@ -121,7 +133,7 @@ public sealed class MarkNotifier
         + @"|<exclamationrectangle>|<notoriousmonster>"
         + @"|<alarm>|<fanfestival>)";
 
-    private SeString BuildChatMessage(string template, OtherRankSighting sighting)
+    private SeString BuildChatMessage(string template, OtherRankSighting sighting, bool hasLocation = true)
     {
         var rankColour = sighting.Rank switch
         {
@@ -139,6 +151,7 @@ public sealed class MarkNotifier
                 case "<flag>":
                     // A real link rather than typed-out numbers, so it can be
                     // clicked to set the flag.
+                    if (!hasLocation) { sb.AddText("location not reported"); break; }
                     if (sighting.TerritoryId != 0 && sighting.MapId != 0)
                     {
                         sb.AddUiForeground(FlagColour);
@@ -164,6 +177,7 @@ public sealed class MarkNotifier
 
                 case "<hpp>":
                     var hp = sighting.HealthPercent;
+                    if (!float.IsFinite(hp)) { sb.AddText("HP unknown"); break; }
                     var hpColour = hp >= 99.5f ? FullHealthColour
                         : hp >= 70f ? HurtColour
                         : BadlyHurtColour;
@@ -189,6 +203,7 @@ public sealed class MarkNotifier
             }
         }
 
+        if (!string.IsNullOrWhiteSpace(sighting.WorldName)) sb.AddText(" — " + sighting.WorldName);
         return sb.BuiltString;
     }
 

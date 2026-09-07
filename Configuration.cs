@@ -1,3 +1,4 @@
+using System.Linq;
 using Dalamud.Configuration;
 using Dalamud.Plugin;
 using Newtonsoft.Json;
@@ -117,7 +118,7 @@ public class Configuration : IPluginConfiguration
     public bool TrackingEnabled { get; set; } = false;
 
     /// <summary>
-    /// How often (in seconds) to check Hunt Helper's train list for changes.
+    /// How often (in seconds) to record new train marks and process queued kill evidence.
     /// </summary>
     public int PollIntervalSeconds { get; set; } = 3;
 
@@ -145,12 +146,11 @@ public class Configuration : IPluginConfiguration
     /// (Narrow-rift) or Elpis (Ophioneus).
     /// </summary>
     /// <summary>
-    /// Use our own mark detection for reports instead of Hunt Helper's list.
-    /// Defaults to false so updating changes nothing until deliberately switched
-    /// — both lists are always populated, so they can be compared side by side
-    /// on the Train tab first.
+    /// Legacy preference accepted during migration; reports always use native state.
     /// </summary>
-    public bool UseOwnTrainList { get; set; } = false;
+    public bool UseOwnTrainList { get; set; } = true;
+    public List<TrackedMark> ReportHistory { get; set; } = new();
+    public List<TrackedMark> ResetUndoReportHistory { get; set; } = new();
 
     /// <summary>
     /// Pauses picking up NEW marks, without stopping anything else — marks
@@ -306,6 +306,21 @@ public class Configuration : IPluginConfiguration
     /// open again on reload would undo that every time.
     /// </summary>
     public List<string> CollapsedExpansions { get; set; } = new();
+
+    /// <summary>
+    /// Open the next expansion block by itself once the one before it has
+    /// nothing left standing.
+    ///
+    /// The other half of <see cref="CollapsedExpansions"/>: a conductor folds
+    /// the legs already finished away, and the block they want next is
+    /// therefore always the shut one below. Opening it costs them a click at
+    /// the exact moment the train is moving fastest.
+    ///
+    /// Only ever opens a block, never closes one — the finished leg is left
+    /// exactly as they had it, because its kill times are still worth reading
+    /// after the last mark in it went down.
+    /// </summary>
+    public bool AutoExpandNextExpansion { get; set; } = true;
 
     /// <summary>
     /// Draw A-rank spawn points on the real in-game map. Currently a proof of
@@ -552,6 +567,13 @@ public class Configuration : IPluginConfiguration
     /// times. Cleared only by Reset or a successful End Train Now.
     /// </summary>
     public List<PersistedMark> SavedTrain { get; set; } = new();
+    public List<PersistedMark> ResetUndoMarks { get; set; } = new();
+    public List<FlagEntry> ResetUndoFlags { get; set; } = new();
+    public DateTime? ResetUndoAt { get; set; }
+    public string ResetUndoBy { get; set; } = "";
+    public uint? ResetUndoCurrentNameId { get; set; }
+    public uint? ResetUndoCurrentInstance { get; set; }
+    public uint? ResetUndoCurrentWorldId { get; set; }
 
     /// <summary>When the saved train was last written, so its age can be shown.</summary>
     public DateTime? SavedTrainAtUtc { get; set; }
@@ -590,6 +612,90 @@ public class Configuration : IPluginConfiguration
     /// Capped at 3 in the UI.
     /// </summary>
     public List<string> AdditionalScouts { get; set; } = new() { string.Empty };
+
+    // ------------------------------------------------------------------
+    // Sync — sharing with a group through their own server
+    // ------------------------------------------------------------------
+
+    /// <summary>
+    /// Connect to a sync server. Everything below it is inert until this is
+    /// on, and turning it off drops the connection at once.
+    /// </summary>
+    public string CounterContributorId { get; set; } = Guid.NewGuid().ToString("N");
+    public string CounterSyncScope { get; set; } = string.Empty;
+    public List<Sync.CounterContribution> CounterContributions { get; set; } = new();
+    public Sync.VisibleMarkOptions VisibleMarkFilters { get; set; } = new();
+    public bool SyncEnabled { get; set; } = false;
+    public List<Sync.SyncWatch> SyncLocalWatchBackup { get; set; } = new();
+    public bool SyncSpawnAlerts { get; set; } = true;
+    public bool SyncSpawnSound { get; set; } = true;
+    public bool SyncSpawnCurrentDc { get; set; } = true;
+    public List<uint> SyncSpawnDataCenters { get; set; } = new();
+
+    /// <summary>
+    /// The server's WebSocket URL, e.g. wss://hunts.example.com/ws. A
+    /// setting rather than a constant on purpose: each group of friends
+    /// runs its own server and shares with each other, not with the world.
+    /// </summary>
+    public string SyncServerUrl { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The server's password. Having the URL is not enough to join. Stored
+    /// as typed, alongside the webhook URLs, which are secrets of the same
+    /// weight.
+    /// </summary>
+    public string SyncPassword { get; set; } = string.Empty;
+
+    /// <summary>What the others see you as. Empty means Anonymous.</summary>
+    public string SyncDisplayName { get; set; } = string.Empty;
+
+    /// <summary>Share the train: what has been scouted, in what order, and what is dead.</summary>
+    public bool SyncShareTrain { get; set; } = true;
+
+    /// <summary>Local-only recovery copy; uploaded only by an explicit user action.</summary>
+    public List<Sync.SyncMark> SyncLocalTrainBackup { get; set; } = new();
+
+    /// <summary>Share what you can see: each mark's position and health while it is in range.</summary>
+    public bool SyncShareSightings { get; set; } = true;
+
+    /// <summary>Tell the server when an S rank dies in front of you.</summary>
+    public bool SyncReportSRankKills { get; set; } = true;
+
+    /// <summary>Draw marks other members can see on your map, with who saw them.</summary>
+    public bool SyncShowRemoteMarksOnMap { get; set; } = true;
+
+    /// <summary>
+    /// Colour the S-capable spawn points by whether the S can still spawn
+    /// there: an A or B seen on a point since the S last died rules it out,
+    /// and so does the point the S died on.
+    /// </summary>
+    public bool ShowSRankCandidatesOnMap { get; set; } = true;
+
+    /// <summary>A point the S may still spawn on. Gold, so it reads as the prize it is.</summary>
+    public int SpawnCandidateOutlineWidth { get; set; } = 6;
+    public Vector4 SpawnDotColourSCandidate { get; set; } = new(1f, 0.84f, 0.1f, 1f);
+
+    /// <summary>A point ruled out for the S. Dim, and translucent so the map shows through.</summary>
+    public Vector4 SpawnDotColourSRuledOut { get; set; } = new(0.35f, 0.35f, 0.35f, 0.45f);
+
+    /// <summary>Show the S-rank window at all, and remember whether it was open.</summary>
+    public bool ActiveSRankWindowOpen { get; set; } = false;
+    public bool SRankWindowOpen { get; set; } = false;
+
+    /// <summary>Which expansion the S-rank window is filtered to; -1 for all.</summary>
+    public int SRankWindowExpansion { get; set; } = -1;
+    public bool ARankWindowOpen { get; set; }
+    public bool ARankWindowCurrentWorld { get; set; } = true;
+    public List<uint> ARankWindowWorlds { get; set; } = new();
+    public List<string> ARankWindowExpansions { get; set; } = ExpansionData.ModelIdToMark.Values.Select(m => m.Expansion).Distinct().ToList();
+    public bool ARankWindowAvailableOnly { get; set; }
+    public string ARankWindowSearch { get; set; } = "";
+    public List<Sync.ARankKill> ARankKills { get; set; } = new();
+    public bool SRankWindowCurrentWorld { get; set; } = true;
+    public List<uint> SRankWindowWorlds { get; set; } = new();
+    public List<string>? SRankWindowExpansions { get; set; }
+    public bool SRankWindowAvailableOnly { get; set; }
+    public string SRankWindowSearch { get; set; } = "";
 
     [NonSerialized]
     private IDalamudPluginInterface? _pluginInterface;
@@ -677,6 +783,7 @@ public class Configuration : IPluginConfiguration
     public void Initialize(IDalamudPluginInterface pluginInterface)
     {
         _pluginInterface = pluginInterface;
+        UseOwnTrainList = true; // Legacy preference retained only for config migration.
 
 #pragma warning disable CS0618 // reading the obsolete field deliberately, once, to migrate it
         if ((Webhooks == null || Webhooks.Count == 0) && WebhookUrls is { Count: > 0 })

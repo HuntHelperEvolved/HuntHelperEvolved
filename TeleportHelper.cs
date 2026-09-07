@@ -220,7 +220,7 @@ public sealed class TeleportHelper
         }
     }
 
-    private static uint ResolveId(uint tableId) =>
+    internal static uint ResolveId(uint tableId) =>
         IdCorrections.TryGetValue(tableId, out var corrected) ? corrected : tableId;
 
     /// <summary>
