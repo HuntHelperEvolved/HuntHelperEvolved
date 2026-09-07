@@ -34,6 +34,11 @@ public static class ReleaseNotes
 
     public static readonly Release[] All =
     {
+        new("0.4.0.16", "2026-09-07", "Testing: travel status clears when teleporting ends.",
+        [
+            new("Travel", "The Teleporting message clears after casting/loading finishes. Travel remains busy during the final teleport, preventing overlapping requests.", Kihtli),
+        ]),
+
         new("0.4.0.15", "2026-09-07", "Testing: one-click S-rank travel and clearer active reports.",
         [
             new("Travel", "World travel retains the aetheryte step through loading and temporary refusals, so one click completes both stages. Ctrl-click a name on /hhs to use the same travel when its location is known.", Kihtli),
