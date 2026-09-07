@@ -67,8 +67,32 @@ public class OtherRankSighting
 
 public sealed class MarkDetector
 {
-    private Vector3[] _nearbyPlayers = Array.Empty<Vector3>();
-    private int CountPlayers(Vector3 position) => _nearbyPlayers.Count(p => Vector3.DistanceSquared(p, position) <= 2500f);
+    private readonly NearbyPlayerCache _nearbyPlayers = new();
+    private bool _nearbyPlayersAvailable;
+    private int? CountPlayers(Vector3 position) => _nearbyPlayersAvailable ? _nearbyPlayers.CountNear(position) : null;
+
+    public void ClearNearbyPlayers() { _nearbyPlayers.Clear(); _nearbyPlayersAvailable = false; }
+
+    // Like Sonar's PlayerCounterService: native character slots, refreshed each
+    // framework tick, with last-known positions retained for this zone session.
+    public unsafe void RefreshNearbyPlayers()
+    {
+        var world = CurrentWorldId();
+        var territory = _clientState.TerritoryType;
+        if (_objectTable.LocalPlayer is null || world == 0 || territory == 0)
+        { ClearNearbyPlayers(); return; }
+        _nearbyPlayers.SetScope(world, territory, GetCurrentInstance());
+        var manager = FFXIVClientStructs.FFXIV.Client.Game.Character.CharacterManager.Instance();
+        _nearbyPlayersAvailable = manager is not null;
+        if (manager is null) return;
+        foreach (var pointer in manager->BattleCharas)
+        {
+            var character = pointer.Value;
+            if (character is null || character->ObjectKind != FFXIVClientStructs.FFXIV.Client.Game.Object.ObjectKind.Pc) continue;
+            var position = character->Position;
+            _nearbyPlayers.Observe(character->EntityId, new Vector3(position.X, position.Y, position.Z));
+        }
+    }
     private readonly IObjectTable _objectTable;
     private readonly IClientState _clientState;
     private readonly IDataManager _dataManager;
@@ -238,7 +262,6 @@ public sealed class MarkDetector
         _lastScannedScope = scope;
 
         var visibleObjects = new HashSet<ulong>();
-        _nearbyPlayers = _objectTable.OfType<Dalamud.Game.ClientState.Objects.SubKinds.IPlayerCharacter>().Select(p => p.Position).ToArray();
         foreach (var obj in _objectTable)
         {
             if (obj is not Dalamud.Game.ClientState.Objects.Types.IBattleNpc mob) continue;
