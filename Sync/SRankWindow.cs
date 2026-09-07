@@ -127,7 +127,7 @@ public sealed class SRankWindow
             .ThenBy(r => r.Row.Timer.Name).ThenBy(r => _worldData.NameOf(r.World)).ToList();
         ImGui.TextDisabled($"{rows.Count} marks across {worlds.Count} selected worlds. Server feed: {string.Join(", ", _sync.Faloop.DataCenters)}");
 
-        ImGui.TextDisabled("Right-click headers for columns. Ctrl-click a mark name to travel when its location is known.");
+        ImGui.TextDisabled("Right-click headers for columns. Ctrl-click a mark name to travel for a hunt or spawn attempt.");
         if (!string.IsNullOrEmpty(_travel.Status)) ImGui.TextWrapped(_travel.Status);
         if (_travel.Busy && ImGui.SmallButton("Cancel travel")) _travel.Cancel();
         const ImGuiTableFlags flags = ImGuiTableFlags.RowBg | ImGuiTableFlags.BordersInnerH | ImGuiTableFlags.ScrollY
@@ -311,11 +311,21 @@ public sealed class SRankWindow
         ImGui.Text($"{timer.Name}{ExpansionData.InstanceGlyph(row.Instance)}");
         if (ImGui.IsItemHovered())
         {
-            var position=TravelPosition(row,worldId);
+            var exact = TravelPosition(row, worldId);
+            var position = exact ?? SpawnMapping.TravelEstimate(
+                SpawnPointData.For(timer.TerritoryId),
+                _sync.ZoneFor(timer.TerritoryId, worldId, row.Instance),
+                row.Status?.KilledAt is not null && !row.Status.Uncertain);
+            var destination = TeleportHelper.NearestTo(timer.TerritoryId, position);
             ImGui.SetTooltip(SpawnConditionData.Description(timer.Name) + "\n" +
-                (!_travel.Available ? "Lifestream is not available." : position is null ? "No current mark location is known." : "Ctrl-click to travel to this world and the nearest aetheryte. Select the instance on arrival."));
-            if (ImGui.GetIO().KeyCtrl && ImGui.IsMouseClicked(ImGuiMouseButton.Left) && position is { } pos && _travel.Available)
-                _travel.Start(worldId,timer.TerritoryId,pos);
+                (!_travel.Available ? "Lifestream is not available."
+                    : destination is not { } target ? "No allowed aetheryte is available for this zone."
+                    : $"Ctrl-click to travel to {target.Name} on {_worldData.NameOf(worldId)}. " +
+                      (exact is null ? "Suggested for a spawn attempt; exact location unknown. " : "Nearest to the reported location. ") +
+                      "Select the instance on arrival."));
+            if (ImGui.GetIO().KeyCtrl && ImGui.IsMouseClicked(ImGuiMouseButton.Left)
+                && destination is not null && _travel.Available)
+                _travel.Start(worldId, timer.TerritoryId, position);
         }
 
         ImGui.TableNextColumn();

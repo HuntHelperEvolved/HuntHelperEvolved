@@ -23,4 +23,21 @@ public static class SpawnMapping
         var possible = points.Select((p,i)=>(p,i)).Where(x=>x.p.Ranks.HasFlag(SpawnRanks.S)&&!zone.IsRuledOut(x.i)).Take(2).ToArray();
         return possible.Length == 1 ? possible[0].i : null;
     }
+    // The centroid selects the aetheryte with the lowest mean squared map distance
+    // to the candidates. This is a travel estimate, never a reported mark location.
+    public static Vector2 TravelEstimate(SpawnPoint[] points, SyncSpawnZone? zone, bool reliableCycle)
+    {
+        if (zone is not null && ConfirmedPoint(points, zone, reliableCycle) is { } confirmed)
+            return new(points[confirmed].X, points[confirmed].Y);
+
+        var all = points.Select((p, i) => (Point: p, Index: i))
+            .Where(x => x.Point.Ranks.HasFlag(SpawnRanks.S)).ToArray();
+        var candidates = reliableCycle && zone?.SinceAt is not null
+            ? all.Where(x => !zone.IsRuledOut(x.Index)).ToArray() : all;
+        // An empty/inconsistent mapping must not prevent a spawn attempt.
+        if (candidates.Length == 0) candidates = all;
+        if (candidates.Length == 0) return new(21.5f, 21.5f);
+        return new(candidates.Average(x => x.Point.X), candidates.Average(x => x.Point.Y));
+    }
+
 }
