@@ -34,6 +34,14 @@ public static class ReleaseNotes
 
     public static readonly Release[] All =
     {
+        new("0.5.0.1", "2026-09-07", "Testing: standalone hunts and private-group sync.",
+        [
+            new("Sync", "Share train scouting/order, live mark observations, S-rank mapping and personal trigger-kill totals through a private password-protected group server.", Kihtli),
+            new("Boards", "Use /hhs for S-rank spawn windows and conditions, /hha for A-rank timers by instance, and /hhsa or /hhv for compact Active Marks with All/S/A/B tabs and live HP.", Kihtli),
+            new("Travel", "Optional Lifestream world/aetheryte travel, map-linked spawn alerts and suggested destinations for S-rank spawn attempts.", Kihtli),
+            new("Train", "Native report history retains exact kill/sniped evidence and reset recovery. Grouped headings count only marks and open the next unfinished expansion.", Kihtli),
+        ]),
+
         new("0.4.0.21", "2026-09-07", "Testing: blue for community reports without live feedback.",
         [
             new("Sightings", "Compact Active Marks lines are blue for Faloop-only reports. Fresh scout observations replace blue with the live status colour; grey is reserved for live reports with unknown combat state.", Kihtli),

@@ -6,7 +6,7 @@ order marks actually died, draws spawn points, your detection range and SS
 event locations on the **in-game map**, counts S-rank trigger mobs, and keeps a
 lifetime per-mark kill tally for every character you play.
 
-> **v0.4 — a testing build.** It is not finished, and it is published as a
+> **v0.5 — private-group sync testing.** It is not finished, and it is published as a
 > testing-only release on purpose: you will not see it in the plugin installer
 > unless you have opted into testing builds. Expect rough edges and expect to
 > report them.
@@ -21,11 +21,16 @@ lifetime per-mark kill tally for every character you play.
    at all — this release is testing-only.
 3. Find **Custom Plugin Repositories** near the bottom of the same tab, paste
    this into the empty box and click the **+**:
-   `https://raw.githubusercontent.com/HuntHelperEvolved/HuntHelperEvolved/main/repo.json`
+   `https://raw.githubusercontent.com/HuntHelperEvolved/HuntHelperEvolved/feature/cloud-sync-review/repo.json`
 4. Click **Save and Close**.
 5. Type `/xlplugins`, search for **Hunt Helper Evolved**, and click **Install**.
 
-Updates show up as a normal **Update** button in `/xlplugins`.
+This is an opt-in feed for the sync testing branch; the main feed remains unchanged.
+If you already have the main feed installed, disable/remove that repository entry
+before adding this testing feed, so only one feed supplies Hunt Helper Evolved.
+Updates show up as a normal **Update** button in `/xlplugins`. Keep a backup of
+your plugin configuration before switching feeds. Hunt Helper is not required.
+See [TESTING.md](TESTING.md) for the current features and feedback checklist.
 
 If you cannot find it after adding the repository, step 2 is almost certainly
 why.
@@ -186,8 +191,8 @@ is not enough, because the server has a password.
 
 The server is its own project:
 [HuntHelperEvolved/HuntHelperEvolvedServer](https://github.com/HuntHelperEvolved/HuntHelperEvolvedServer).
-It is one small container with one SQLite file and takes a few minutes to put
-up. Its README covers hosting it.
+It is private and requires maintainer access. Testers receive a server URL and
+group password separately; neither is bundled in this plugin or its installer feed.
 
 What sync does, each with its own switch:
 
@@ -202,7 +207,7 @@ What sync does, each with its own switch:
 - **S-rank clocks.** When an S dies in front of any member, the plugin reports
   the exact moment and everyone's window opens on time. Kills can also be
   entered by hand on the S-rank board, and the server can read Faloop's
-  timers for your data centre every minute or two, so the board is full even
+  timers for your data centre through a live feed with six-hour reconciliation, so the board is full even
   when nobody in the group was at the kill. Observed reports win for the same cycle; a plausible later Faloop death
   advances the timer. Conflicts remain visible. Faloop is experimental and off by default.
 - **Spawn point elimination.** An S cannot spawn where an A or B has spawned
@@ -224,7 +229,7 @@ configuration for explicit upload from the Sync tab. Shared-row edits made while
 offline are replaced by server state. Blank display aliases send Anonymous.
 All password holders can edit, reorder and clear the shared train.
 
-This local testing branch requires the matching protocol 3 server. Run
+This testing branch uses protocol 4; the complete feature set requires server 0.3.11 or newer. Run
 `dotnet test tests/HuntHelperEvolved.Sync.Tests -c Release` for transport and
 timer tests. See SYNC-REVIEW.md for the review and testing boundaries.
 ## Talking to other plugins
