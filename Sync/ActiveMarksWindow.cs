@@ -71,7 +71,8 @@ public sealed class ActiveMarksWindow(Configuration config, SyncCoordinator sync
             foreach(var r in rows)
             {
                 var row=r.Row; var m=row.Mark; var dead=row.HealthKnown && m.HpPercent==0;
-                var colour=!row.HealthKnown || m.InCombat is null ? new Vector4(0.75f,0.75f,0.8f,1)
+                var colour=!row.HealthKnown ? new Vector4(0.35f,0.7f,1f,1)
+                    : m.InCombat is null ? new Vector4(0.75f,0.75f,0.8f,1)
                     : m.InCombat==true ? new Vector4(1,0.65f,0.15f,1) : new Vector4(0.35f,0.95f,0.4f,1);
                 if(dead) colour=new Vector4(1,0.3f,0.3f,1);
                 var hp=row.HealthKnown ? $"{m.HpPercent:0.#}%" : "?%";
@@ -143,7 +144,8 @@ public sealed class ActiveMarksWindow(Configuration config, SyncCoordinator sync
         ImGui.TextColored(new Vector4(0.35f,0.95f,0.4f,1),"Green: alive, not pulled");
         ImGui.SameLine(); ImGui.TextColored(new Vector4(1,0.65f,0.15f,1),"Orange: pulled");
         ImGui.SameLine(); ImGui.TextColored(new Vector4(1,0.3f,0.3f,1),"Red: dead");
-        ImGui.TextDisabled("Grey / ?%: unknown status or health. Hover for details; click for map; Ctrl-click or right-click for travel.");
+        ImGui.TextColored(new Vector4(0.35f,0.7f,1f,1),"Blue: Faloop report, no live feedback");
+        ImGui.TextDisabled("Grey: live report with unknown combat state. ?%: health unknown. Hover for details; click for map; Ctrl-click or right-click for travel.");
         var o=config.VisibleMarkFilters;
         Option("Include community S-rank reports",o.IncludeCommunity,v=>o.IncludeCommunity=v);
         Option("Include marks seen only by me",o.IncludeOwn,v=>o.IncludeOwn=v);

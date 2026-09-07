@@ -34,6 +34,11 @@ public static class ReleaseNotes
 
     public static readonly Release[] All =
     {
+        new("0.4.0.21", "2026-09-07", "Testing: blue for community reports without live feedback.",
+        [
+            new("Sightings", "Compact Active Marks lines are blue for Faloop-only reports. Fresh scout observations replace blue with the live status colour; grey is reserved for live reports with unknown combat state.", Kihtli),
+        ]),
+
         new("0.4.0.20", "2026-09-07", "Testing: compact Active Marks overlay.",
         [
             new("Sightings", "Active Marks uses compact coloured lines with HP after the name: green unpulled, orange pulled, red dead. Hover for details, click for a map, and Ctrl-click or right-click for travel. Tabs and filters remain available.", Kihtli),
