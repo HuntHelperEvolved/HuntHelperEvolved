@@ -6,7 +6,7 @@ order marks actually died, draws spawn points, your detection range and SS
 event locations on the **in-game map**, counts S-rank trigger mobs, and keeps a
 lifetime per-mark kill tally for every character you play.
 
-> **v0.4 — a testing build.** It is not finished, and it is published as a
+> **v0.5 — beta.** It is not finished, and it is published as a
 > testing-only release on purpose: you will not see it in the plugin installer
 > unless you have opted into testing builds. Expect rough edges and expect to
 > report them.
@@ -25,7 +25,11 @@ lifetime per-mark kill tally for every character you play.
 4. Click **Save and Close**.
 5. Type `/xlplugins`, search for **Hunt Helper Evolved**, and click **Install**.
 
-Updates show up as a normal **Update** button in `/xlplugins`.
+This beta uses the existing main repository feed and remains testing-exclusive.
+If you already use that feed, update normally in `/xlplugins`; no repository change
+is needed. Keep a backup of your plugin configuration before updating.
+Hunt Helper is not required.
+See [TESTING.md](TESTING.md) for the current features and feedback checklist.
 
 If you cannot find it after adding the repository, step 2 is almost certainly
 why.
@@ -39,6 +43,7 @@ why.
 | `/htrc` | the trigger-mob counter popout — also Narrow-rift's Wee Ea headcount in Ultima Thule and Nunyunuwi's no-FATE-failed clock in Southern Thanalan |
 | `/htra` | name the closest aetheryte to the next mark |
 | `/htrm` | show or hide the control bar above the map |
+| `/hhs` or `/htrs` | the S-rank board — windows, kill times and spawn points, shared through sync |
 | `/hunttally` | the kill tally. `/hunttally config` for its settings |
 
 If **Hunt Helper is not installed**, this plugin also answers to its commands,
@@ -175,6 +180,57 @@ kills — so picking a rank puts your most-killed mark of that rank at the top.
 
 `/hunttally` opens it. Its settings live on the **Tally** tab of the main window.
 
+## Sharing with a group
+
+Everything above works alone. With a **sync server** it works together: one
+of you runs the server, everyone puts its URL and password into the **Sync**
+tab, and from then on you are hunting as one. The URL is a setting, not a
+constant, so a group shares with itself and nobody else — and having the URL
+is not enough, because the server has a password.
+
+The server is its own project:
+[HuntHelperEvolved/HuntHelperEvolvedServer](https://github.com/HuntHelperEvolved/HuntHelperEvolvedServer).
+It is private and requires maintainer access. Testers receive a server URL and
+group password separately; neither is bundled in this plugin or its installer feed.
+
+What sync does, each with its own switch:
+
+- **One train.** Every mark any member scouts lands in one list, in one
+  order. Ticking a mark dead, dragging it, spicing it, adding a custom flag
+  or removing a row shows up for everyone within a second. Two scouts can
+  split an expansion and the conductor watches the whole thing assemble.
+  Reset and Clear All empty it for everyone, and say so.
+- **Live marks.** While a member can see a mark, everyone sees where it is
+  and how much health it has, on the in-game map, drawn like their own with
+  who saw it in the tooltip. Removed when the last observer loses sight of it; missing heartbeats expire after three seconds.
+- **S-rank clocks.** When an S dies in front of any member, the plugin reports
+  the exact moment and everyone's window opens on time. Kills can also be
+  entered by hand on the S-rank board, and the server can read Faloop's
+  timers for your data centre through a live feed with six-hour reconciliation, so the board is full even
+  when nobody in the group was at the kill. Observed reports win for the same cycle; a plausible later Faloop death
+  advances the timer. Conflicts remain visible. Faloop is experimental and off by default.
+- **Spawn point elimination.** An S cannot spawn where an A or B has spawned
+  since it last died, nor twice running on its previous spawn point. Members'
+  sightings rule points out as they scout; the map colours what is left,
+  and the board counts it.
+
+The **S-rank board** (`/htrs`) is the in-game version of what the trackers
+show: every timed S on a world, whether it is up, in cooldown, in its window
+(and how far through, as a percentage) or ready for its spawn conditions, when the
+window opens and closes in your local time, who last saw it, and how many
+spawn points are still possible. ARR S ranks have their own timers; everything
+since Heavensward is 84 to 132 hours, or 50 to 80 after maintenance, which the
+board handles from an explicit maintenance report or Faloop restart timeline.
+The percentage measures elapsed window time, not a confirmed spawn probability.
+
+Joining or reconnecting uses the server train. Local-only rows are saved in
+configuration for explicit upload from the Sync tab. Shared-row edits made while
+offline are replaced by server state. Blank display aliases send Anonymous.
+All password holders can edit, reorder and clear the shared train.
+
+This testing branch uses protocol 4; the complete feature set requires server 0.3.11 or newer. Run
+`dotnet test tests/HuntHelperEvolved.Sync.Tests -c Release` for transport and
+timer tests. See SYNC-REVIEW.md for the review and testing boundaries.
 ## Talking to other plugins
 
 The train is published over Dalamud IPC, so other plugins can read it and add to
@@ -247,3 +303,96 @@ plugin borrows or redistributes, are in
 In short: Hunt Helper's spawn point data, territory ids, mark names and map
 design (MIT, © 2022 imaginary-png), and KamiToolKit (MIT), which ships inside
 the release archive. SS event coordinates are from Faloop.
+
+## Sync testing build 0.4.0.1
+
+Includes main through 52558e0 (0.4.0). Requires server 0.2.0 / protocol 3.
+Sniped marks retain their last-seen-alive and found-missing times across sync;
+they do not become exact S-rank kill reports. Clipboard and IPC imports feed the
+same shared train. IPC retains the main branch's Hunt Helper-compatible contract.
+
+S-rank watch additions, removals and checkboxes share with the train and persist
+on the server. These are train checklist observations, not authoritative kills
+or spawn-point eliminations. Joining uses the server checklist; differing local
+watches are saved for explicit upload from Sync settings. Concurrent checklist
+edits use revisions: a conflicting local list is saved with a visible message,
+and the current server list wins until the user reviews/uploads their changes.
+
+With Group by expansion enabled, newly scouted or synced marks automatically join
+their expansion block. Grouping preserves the shared route's existing block order
+and the relative mark order inside each block; local expansion preferences do not
+override another scout's route. Regrouping waits until any row/block drag finishes.
+Local folding and display preferences stay local.
+
+## Sync testing build 0.4.0.2
+
+Requires server 0.3.0 (protocol 4). `/hhs` opens the S-rank board; `/htrs` still works. Filters persist: current world or any selection of worlds across data centers, multiple expansions, available-to-spawn only, and mark/zone search. Available means a known open window, excluding live, unknown and uncertain timers; spawn conditions still apply.
+
+Live map observations refresh every half second independently of train recording. The last observer leaving render range removes the live mark; missing heartbeats expire within three seconds. Idle, full-health A/B sightings match nearby unambiguous spawn points and automatically eliminate them, retrying an initially unmatched position. The exclusions persist until the next S kill. Gold outlines indicate possible S spots; solid gold indicates an observed S origin or the sole remaining spot in a confirmed kill cycle. In-game rendering and patrol matching still need field testing.
+
+Community alerts include public Faloop releases as well as spawn reports. Release alerts are independent of earlier spawn notifications and use the same DC and sound preferences.
+
+## Sync testing build 0.4.0.3
+
+S candidate outlines default to 6/32 of the spot texture width (previously 3/32). Adjust **S candidate outline width** from 1–12 in Sync settings; it scales with spot size and map zoom. Live map nodes now update position, health and observer details in place, and only missing marks are removed. Sync heartbeats no longer recreate all map items. Server 0.3.0 remains compatible.
+
+## Testing build 0.4.0.5
+
+`/hha` opens A-rank windows with saved multi-world/expansion filters, search, and open-window filtering. Recorded local/shared-train deaths are retained locally for 14 days after train clearing, including while the board is closed. Unknown/sniped kills and kills before a known maintenance restart have no inferred countdown. A-rank kills are not imported from Faloop, and a new client cannot recover A kills from a train already cleared before it connected.
+
+Right-click S- or A-board column headers to show/hide columns; ImGui saves the layout. ARR A-rank bounds now follow the per-mark timing definitions in Faloop's public client, rather than one generic 3–4 hour value.
+
+Server 0.3.2 emits an alert on the first group S sighting per kill cycle, including when a polling snapshot already knew the spawn. Group and Faloop spawn notifications share client duplicate suppression; public release alerts remain independent. Faloop live sessions now load their configured DC after socket authentication, matching its web client, with a separate connection/session per DC. Server logs retain event decisions for field verification.
+
+## Testing build 0.4.0.6
+
+**Undo reset — keep locally**, beside **Reset train tracking now**, recovers the last nonempty train/watches cleared locally or by another sync user. The backup survives reloads. Recovery disables this client's train sharing before restoring, preserving the group's current train. It keeps the saved order, retains newer edits, and appends marks added since reset. Sightings and timer sync remain available. Reset now emits one shared clear instead of two.
+
+Anonymous Faloop access remains under investigation: a fresh Guest browser on Crystal returned the same window-only permissions as the server, but no active spawn was present to compare. The absence of an advertised spawn permission alone does not establish that every anonymous website view is unable to display active reports.
+
+## Testing build 0.4.0.7
+
+`/hhsa` opens active S-rank reports across all worlds supplied by the server, with mark/world/DC/zone search and hideable columns. It distinguishes a currently visible scout sighting from a fresh Faloop active report. Community entries clear when absent from the next complete DC snapshot or killed, and expire after five minutes without confirmation. Server coverage is still configured separately from the plugin's notification filters.
+
+S-rank alerts received while loading are queued for up to two minutes. The Sync tab includes **Test S-rank chat alert**, which uses the actual chat/sound handler and current alert settings, labels the message TEST, and sends nothing to the server. Server delivery and plugin filtering have automated coverage; actual Dalamud chat/sound display must be checked in game.
+
+## Testing build 0.4.0.8
+
+Fixed new shared scouting rows remaining at the bottom while Group by expansion is enabled. They now join their existing expansion automatically, preserving shared block order and the relative order of marks inside each block. No server update is required.
+
+## Testing build 0.4.0.9
+
+`/hha` now has an explicit Instance column and learns zone instances from living local/shared train marks, sightings, and recorded timers. Scouting I2 produces separate I1 and I2 rows for each A rank in the zone; kill times remain specific to mark, world and instance. Missing kills stay unknown, and old instance-zero records are never copied to an instanced timer. No server update is required.
+
+## Testing build 0.4.0.10
+
+In `/hha`, uninstanced cells are blank. The Instance column automatically disappears when no rows passing the current filters have an instance, and returns when instanced rows are present. Kill-time tracking is unchanged.
+
+## Testing build 0.4.0.11
+
+S-rank chat alerts include a clickable map flag when the server supplies coordinates; otherwise they say location not reported. The local alert test uses explicitly labelled example coordinates to test the link without publishing a report. `/hhsa` replaces confirmation columns with **Active for** (elapsed since the earliest known spawn report) and an optional **Teleport** button.
+
+The button uses [Lifestream's IPC](https://github.com/NightmareXIV/Lifestream/blob/main/Lifestream/IPC/IPCProvider.cs): `IsBusy`, `ChangeWorldById`, `Teleport` and `Abort`. Travel starts only when clicked, waits for the destination world, then teleports to the nearest eligible aetheryte using the existing blacklist and corrected game IDs. Missing locations disable travel; absent Lifestream hides the column. Cross-DC eligibility is decided by Lifestream. Select the correct zone instance after arrival. The window provides cancellation while waiting for a world change. Actual travel and map-link rendering require in-game verification.
+
+The `/hhs` board includes a one-line spawn-condition tooltip on every mark name and a Conditions countdown column. Red counts down to the next overlap with the respawn window; green counts down to the end of an open time/weather/moon window when the kill timer is known. Unknown/sniped kill times use amber for an open condition. Actions such as kills, gathering, minions and FATE completion remain required and are not inferred from the clock. Marks without timed restrictions do not get a fabricated closing time. Forecast rules and 39 reference forecasts come from Faloop's public frontend (`main.a8fa335a5cf92d82.js`, 2026-09-06); combined requirements and real-time weather persistence offsets are supported.
+
+Relayed S-rank chat messages now use the configured detection-message template with `RELAY:` in place of `FOUND:`, retaining rank colours and map flags. Both relayed and detected messages append the world. Community HP is shown as unknown when it was not supplied. Release notifications retain a released label.
+
+## Standalone testing build 0.4.0.13
+
+HHE uses its native train and retained report history whether HuntHelper is installed
+or absent. The old report-source preference is migrated to native reporting. Reports
+keep world/instance identity, exclude live marks from kills, and show first-seen corpses
+without an invented death time. Clipboard exports preserve explicit death and sniped
+timestamps; legacy inputs without these fields remain unknown.
+
+Posting a train report is limited to one request at a time. A shared train is kept
+after posting, as is a local train that changed during the request. An unchanged local
+train may be cleared after success, with reset undo including report history.
+
+IPC API version 2 adds `HuntHelperEvolved.GetTrainListV2` returning
+`List<NativeTrainRecord>` and `HuntHelperEvolved.ImportTrainListV2` accepting the same
+list through an action gate. These carry world, instance, coordinates and nullable
+observed-death/sniped timestamps. Existing HHE version-1 gate names and optional HH
+compatibility gates retain their old signatures. Native imports require a known world;
+legacy import timestamps are sightings, not exact death evidence.

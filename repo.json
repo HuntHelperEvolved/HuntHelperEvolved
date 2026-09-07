@@ -2,20 +2,20 @@
   {
     "Author": "MusicManBowls, kihtli",
     "Name": "Hunt Helper Evolved",
-    "Description": "Hunt tracking for FFXIV. Detects marks and records a train with exact kill times, posts Discord reports sorted by the order marks actually died, draws spawn points, your detection range and SS event locations on the in-game map, counts S-rank trigger mobs, and keeps a lifetime per-mark kill tally per character.",
-    "Punchline": "Hunt trains, Discord reports, spawn points and your detection range on the in-game map.",
+    "Description": "Standalone hunt tracking for FFXIV: scout and share trains, track S/A-rank windows, map possible S-rank spawn points, view live marks and pool trigger-mob kills with a private group. Includes native train reports, lifetime hunt tallies and optional Lifestream travel.",
+    "Punchline": "Standalone hunt scouting, private-group sync, spawn windows and live mark tracking.",
     "IconUrl": "https://raw.githubusercontent.com/HuntHelperEvolved/HuntHelperEvolved/main/icon.png",
     "InternalName": "HuntHelperEvolved",
-    "AssemblyVersion": "0.4.0.0",
-    "TestingAssemblyVersion": "0.4.0.0",
-    "RepoUrl": "https://raw.githubusercontent.com/HuntHelperEvolved/HuntHelperEvolved/main/repo.json",
+    "AssemblyVersion": "0.5.0.1",
+    "TestingAssemblyVersion": "0.5.0.1",
+    "RepoUrl": "https://github.com/HuntHelperEvolved/HuntHelperEvolved",
     "ApplicableVersion": "any",
     "DalamudApiLevel": 15,
     "TestingDalamudApiLevel": 15,
     "IsHide": false,
     "IsTestingExclusive": true,
-    "DownloadLinkInstall": "https://github.com/HuntHelperEvolved/HuntHelperEvolved/releases/download/0.4.0/HuntHelperEvolved.zip",
-    "DownloadLinkUpdate": "https://github.com/HuntHelperEvolved/HuntHelperEvolved/releases/download/0.4.0/HuntHelperEvolved.zip",
-    "DownloadLinkTesting": "https://github.com/HuntHelperEvolved/HuntHelperEvolved/releases/download/0.4.0/HuntHelperEvolved.zip"
+    "DownloadLinkInstall": "https://github.com/HuntHelperEvolved/HuntHelperEvolved/releases/download/0.5.0-beta.1/HuntHelperEvolved.zip",
+    "DownloadLinkUpdate": "https://github.com/HuntHelperEvolved/HuntHelperEvolved/releases/download/0.5.0-beta.1/HuntHelperEvolved.zip",
+    "DownloadLinkTesting": "https://github.com/HuntHelperEvolved/HuntHelperEvolved/releases/download/0.5.0-beta.1/HuntHelperEvolved.zip"
   }
 ]

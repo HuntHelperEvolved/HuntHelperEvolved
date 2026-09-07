@@ -9,71 +9,6 @@ using System.Numerics;
 namespace HuntHelperEvolved;
 
 /// <summary>
-/// One mark detected by our own scanning. Position is stored in in-game map
-/// coordinates (the 1-42ish numbers shown on the map), not raw world position,
-/// so it can be handed straight to a map link or an aetheryte distance check.
-/// </summary>
-public class DetectedMark
-{
-    public string Name = string.Empty;
-    public uint NameId;
-    public uint TerritoryId;
-    public uint MapId;
-    public uint Instance;
-
-    /// <summary>
-    /// The world it was seen on. Part of a mark's identity, not decoration: the
-    /// same mark is up on every world at once, and they are different marks.
-    /// </summary>
-    public uint WorldId;
-    public string WorldName = string.Empty;
-    public Vector2 MapPosition;
-    public bool Dead;
-    public DateTime FirstSeenUtc;
-    public DateTime LastSeenUtc;
-    public DateTime? DeathObservedAtUtc;
-
-    /// <summary>
-    /// Position in the train. Assigned incrementally as marks are first spotted,
-    /// so the default order is simply the order they were scouted — and it can
-    /// be rewritten freely by drag-and-drop reordering.
-    /// </summary>
-    public int Order;
-
-    /// <summary>
-    /// A conductor-placed flag rather than a detected mark. Behaves like any
-    /// other row (teleport, dead, drag, auto-advance) but is left out of the
-    /// final train report.
-    /// </summary>
-    public bool IsCustom;
-
-    /// <summary>Zone label for custom entries, which have no mark data to look up.</summary>
-    public string ZoneName = string.Empty;
-
-    /// <summary>A scout intends to prep this mark before the train reaches it.</summary>
-    public bool Spiced;
-
-    /// <summary>
-    /// When the train arrived to find this mark already gone — killed by
-    /// somebody else after it was scouted.
-    ///
-    /// Not a kill time, and deliberately not stored as one. All this says is
-    /// when the mark was found missing, which is the LATEST it can have died;
-    /// the earliest is LastSeenUtc, when it was last seen standing there. The
-    /// truth is somewhere between the two, and the report says so rather than
-    /// picking one and calling it the kill.
-    /// </summary>
-    public DateTime? SnipedAtUtc;
-
-    /// <summary>
-    /// What makes this mark this mark. Compare against it rather than picking
-    /// fields off by hand — the same mark is up on every world at once, and a
-    /// comparison that forgets to say which one silently matches the wrong row.
-    /// </summary>
-    public (uint NameId, uint Instance, uint WorldId) Key => (NameId, Instance, WorldId);
-}
-
-/// <summary>
 /// Scans the object table for A-rank hunt marks and maintains our own train
 /// list, independent of Hunt Helper. Detection runs on IObjectTable, a stable
 /// first-class Dalamud service — the same tier as everything else here.
@@ -111,9 +46,19 @@ public class OtherRankSighting
     /// before walking to it.
     /// </summary>
     public float HealthPercent = 100f;
+    public bool? InCombat;
+    public int? SpawnPointIndex;
 
     /// <summary>Zone name, resolved once at first sighting.</summary>
     public string ZoneName = string.Empty;
+
+    /// <summary>
+    /// Who saw it, when it came from the sync server rather than this
+    /// client's own scan. Empty for anything seen here.
+    /// </summary>
+    public string Reporter = string.Empty;
+
+    public bool IsRemote => Reporter.Length > 0;
 
     /// <summary>As DetectedMark.Key, and for the same reason.</summary>
     public (uint NameId, uint Instance, uint WorldId) Key => (NameId, Instance, WorldId);
@@ -128,10 +73,18 @@ public sealed class MarkDetector
 
     private readonly Dictionary<(uint NameId, uint Instance, uint WorldId), DetectedMark> _marks = new();
     private int _nextOrder;
+    private readonly MarkDeathEvidence _deathEvidence = new();
 
     // Synthetic ids for custom flags, counting down from the top so they can
     // never collide with a real BNpcName row id.
-    private uint _nextCustomId = uint.MaxValue;
+    //
+    // Started from a random spot near the top rather than the very top, so
+    // two clients sharing a train through the sync server do not both mint
+    // 4294967295 for their first flag and have the server treat them as one.
+    private uint _nextCustomId = uint.MaxValue - (uint)Random.Shared.Next(0, 8_000_000) * 16;
+
+    private readonly Dictionary<(uint NameId, uint Instance, uint WorldId), OtherRankSighting> _visibleCorpses = new();
+    public IEnumerable<OtherRankSighting> VisibleMarks => _otherRanks.Values.Concat(_visibleCorpses.Values);
 
     private readonly Dictionary<(uint NameId, uint Instance, uint WorldId), OtherRankSighting> _otherRanks = new();
 
@@ -154,6 +107,14 @@ public sealed class MarkDetector
     /// <summary>Raised once when a mark is first picked up by scanning.</summary>
     public event Action<DetectedMark>? MarkDetected;
 
+    /// <summary>Raised when the train is emptied, by whoever did it.</summary>
+    public event System.Action? Cleared;
+    public event System.Action? Removing;
+    public long TrainGeneration { get; private set; }
+
+    /// <summary>Raised at the end of every scan pass, once the sightings are current.</summary>
+    public event System.Action? Scanned;
+    public event Action<OtherRankSighting, DateTime>? SightingObservedDead;
     /// <summary>
     /// Raised when a mark in the train is seen at zero health, whoever killed
     /// it. The row is already flagged dead by the time this fires; it exists so
@@ -162,6 +123,7 @@ public sealed class MarkDetector
     public event Action<DetectedMark>? MarkObservedDead;
 
     public IReadOnlyDictionary<(uint NameId, uint Instance, uint WorldId), DetectedMark> Marks => _marks;
+    public uint CurrentTerritoryId => _clientState.TerritoryType;
 
     public MarkDetector(IObjectTable objectTable, IClientState clientState, IDataManager dataManager, Configuration config)
     {
@@ -173,9 +135,12 @@ public sealed class MarkDetector
 
     public void Clear()
     {
+        TrainGeneration++;
         _marks.Clear();
-        _otherRanks.Clear();
+        _deathEvidence.Clear();
+        _otherRanks.Clear(); _visibleCorpses.Clear();
         _nextOrder = 0;
+        Cleared?.Invoke();
     }
 
     /// <summary>
@@ -196,7 +161,7 @@ public sealed class MarkDetector
         _nextOrder = ordered.Count;
     }
 
-    public void Remove((uint NameId, uint Instance, uint WorldId) key) => _marks.Remove(key);
+    public void Remove((uint NameId, uint Instance, uint WorldId) key) { Removing?.Invoke(); _marks.Remove(key); }
 
     /// <summary>
     /// Removes every mark currently flagged dead — the equivalent of Hunt
@@ -204,6 +169,7 @@ public sealed class MarkDetector
     /// </summary>
     public void RemoveDead()
     {
+        Removing?.Invoke();
         foreach (var key in _marks.Where(kv => kv.Value.Dead).Select(kv => kv.Key).ToList())
             _marks.Remove(key);
     }
@@ -255,7 +221,7 @@ public sealed class MarkDetector
     public void Scan(bool recordNew = true)
     {
         var territoryId = _clientState.TerritoryType;
-        if (territoryId == 0) return;
+        if (territoryId == 0) { _deathEvidence.Clear(); _otherRanks.Clear(); _visibleCorpses.Clear(); Scanned?.Invoke(); return; }
 
         var mapId = GetMapId(territoryId);
         var instance = GetCurrentInstance();
@@ -263,25 +229,12 @@ public sealed class MarkDetector
         var worldName = CurrentWorldName();
         var now = DateTime.UtcNow;
 
-        // A mark we have stopped seeing is no longer there to show. One scan
-        // interval plus a little slack: any shorter and a mark simply missed by
-        // one pass would be wrongly dropped.
-        //
-        // Arriving somewhere new is the exception, and it gets no slack at all.
-        // Sightings are only ever expired for the scope being stood in, so
-        // another instance's — or another world's — sit there untouched however
-        // long you are away. Walking back in and keeping them for a few seconds
-        // would put marks on the map that may well be dead by now, on the
-        // strength of having seen them last time. Everything remembered here is
-        // dropped instead, and the sweep below immediately re-adds whatever is
-        // actually present.
+        // Live sightings belong only to the current world, instance and scan.
         var scope = (territoryId, instance, worldId);
-        var arrived = scope != _lastScannedScope;
+        if (scope != _lastScannedScope) { _otherRanks.Clear(); _visibleCorpses.Clear(); _deathEvidence.Clear(); }
         _lastScannedScope = scope;
 
-        var stale = arrived ? 0 : Math.Max(2, _config.PollIntervalSeconds) + 1;
-        ExpireStaleSightings(territoryId, instance, worldId, stale);
-
+        var visibleObjects = new HashSet<ulong>();
         foreach (var obj in _objectTable)
         {
             if (obj is not Dalamud.Game.ClientState.Objects.Types.IBattleNpc mob) continue;
@@ -299,10 +252,13 @@ public sealed class MarkDetector
             // also joins the train is decided below.
             TrackSighting(mob, territoryId, mapId, instance, worldId, worldName, now, HuntRank.A);
 
+            visibleObjects.Add(mob.GameObjectId);
+            var witnessedDeath = _deathEvidence.Observe(mob.GameObjectId, mob.CurrentHp, mob.MaxHp);
+            if (mob.MaxHp == 0) continue;
             var key = (mob.NameId, instance, worldId);
             if (_marks.TryGetValue(key, out var existing))
             {
-                existing.LastSeenUtc = now;
+                if (!IsDead(mob)) existing.LastSeenUtc = now;
                 existing.MapPosition = MapCoordinates.FromWorld(_dataManager, mapId, mob.Position.X, mob.Position.Z);
 
                 // Zero health is the death itself, seen rather than inferred,
@@ -312,8 +268,8 @@ public sealed class MarkDetector
                 if (IsDead(mob) && !existing.Dead && _config.MarkDeadOnObservedDefeat)
                 {
                     existing.Dead = true;
-                    existing.DeathObservedAtUtc = now;
-                    MarkObservedDead?.Invoke(existing);
+                    existing.DeathObservedAtUtc = witnessedDeath ? now : null;
+                    if (witnessedDeath) MarkObservedDead?.Invoke(existing);
                 }
 
                 continue;
@@ -331,7 +287,7 @@ public sealed class MarkDetector
                 MapId = mapId,
                 Instance = instance,
                 MapPosition = MapCoordinates.FromWorld(_dataManager, mapId, mob.Position.X, mob.Position.Z),
-                Dead = false,
+                Dead = IsDead(mob),
                 FirstSeenUtc = now,
                 LastSeenUtc = now,
                 Order = _nextOrder++,
@@ -339,6 +295,14 @@ public sealed class MarkDetector
 
             MarkDetected?.Invoke(_marks[key]);
         }
+
+        _deathEvidence.Retain(visibleObjects);
+        // A live icon needs an object in this exact pass. Train history is kept separately.
+        foreach (var key in _otherRanks.Where(p => p.Value.LastSeenUtc != now).Select(p => p.Key).ToList())
+            _otherRanks.Remove(key);
+        foreach (var key in _visibleCorpses.Where(p => p.Value.LastSeenUtc != now).Select(p => p.Key).ToList())
+            _visibleCorpses.Remove(key);
+        Scanned?.Invoke();
     }
 
     /// <summary>
@@ -402,15 +366,28 @@ public sealed class MarkDetector
         // body lingers.
         if (IsDead(mob))
         {
+            if (_otherRanks.TryGetValue(key, out var dying))
+                SightingObservedDead?.Invoke(dying, now);
             _otherRanks.Remove(key);
+            _visibleCorpses[key] = new OtherRankSighting
+            {
+                WorldId=worldId, WorldName=worldName, Name=mob.Name.TextValue, NameId=mob.NameId,
+                Rank=rank, TerritoryId=territoryId, MapId=mapId, Instance=instance,
+                MapPosition=MapCoordinates.FromWorld(_dataManager,mapId,mob.Position.X,mob.Position.Z),
+                LastSeenUtc=now, HealthPercent=0, InCombat=false, ZoneName=GetZoneName(territoryId)
+            };
             return;
         }
 
+        _visibleCorpses.Remove(key);
         if (_otherRanks.TryGetValue(key, out var existing))
         {
             existing.LastSeenUtc = now;
             existing.MapPosition = MapCoordinates.FromWorld(_dataManager, mapId, mob.Position.X, mob.Position.Z);
             existing.HealthPercent = HealthPercentOf(mob);
+            existing.InCombat = mob.StatusFlags.HasFlag(Dalamud.Game.ClientState.Objects.Enums.StatusFlags.InCombat);
+            if (existing.SpawnPointIndex is null && CanMatchSpawnPoint(mob))
+                existing.SpawnPointIndex = MatchSpawnPoint(territoryId, existing.MapPosition, rank);
             return;
         }
 
@@ -427,6 +404,9 @@ public sealed class MarkDetector
             MapPosition = MapCoordinates.FromWorld(_dataManager, mapId, mob.Position.X, mob.Position.Z),
             LastSeenUtc = now,
             HealthPercent = HealthPercentOf(mob),
+            InCombat = mob.StatusFlags.HasFlag(Dalamud.Game.ClientState.Objects.Enums.StatusFlags.InCombat),
+            SpawnPointIndex = CanMatchSpawnPoint(mob)
+                ? MatchSpawnPoint(territoryId, MapCoordinates.FromWorld(_dataManager, mapId, mob.Position.X, mob.Position.Z), rank) : null,
             ZoneName = GetZoneName(territoryId),
         };
 
@@ -441,6 +421,14 @@ public sealed class MarkDetector
     /// which would divide to infinity; an unknown mark is reported as untouched
     /// rather than as a mark on the point of dying.
     /// </summary>
+    private static bool CanMatchSpawnPoint(Dalamud.Game.ClientState.Objects.Types.IBattleNpc mob) =>
+        !mob.StatusFlags.HasFlag(Dalamud.Game.ClientState.Objects.Enums.StatusFlags.InCombat)
+        && mob.MaxHp > 0 && mob.CurrentHp == mob.MaxHp;
+
+    private static int? MatchSpawnPoint(uint territory, Vector2 position, HuntRank rank) =>
+        Sync.SpawnMapping.Match(SpawnPointData.For(territory), position,
+            rank == HuntRank.S ? SpawnRanks.S : rank == HuntRank.A ? SpawnRanks.A : SpawnRanks.B);
+
     private static float HealthPercentOf(Dalamud.Game.ClientState.Objects.Types.IBattleNpc mob)
     {
         if (mob.MaxHp == 0) return 100f;
@@ -458,7 +446,7 @@ public sealed class MarkDetector
         mob.MaxHp > 0 && mob.CurrentHp == 0;
 
     /// <summary>Clears all sightings.</summary>
-    public void ClearOtherRanks() => _otherRanks.Clear();
+    public void ClearOtherRanks() { _otherRanks.Clear(); _visibleCorpses.Clear(); }
 
     /// <summary>
     /// Forgets one sighting, e.g. when a mark is known to be dead.
@@ -469,39 +457,6 @@ public sealed class MarkDetector
     /// </summary>
     public void RemoveSighting(uint nameId, uint instance, uint worldId) =>
         _otherRanks.Remove((nameId, instance, worldId));
-
-    /// <summary>
-    /// Drops sightings for marks that have gone from a spot we're still
-    /// standing next to — almost always because they were just killed.
-    ///
-    /// A sighting says a mark is there NOW. Anything not seen for a scan or two
-    /// is not visible any more — killed, despawned, or simply left behind — and
-    /// the dot goes out.
-    ///
-    /// This used to expire only marks close enough that we ought to still be
-    /// able to see them, keeping the rest as scouting information. That made a
-    /// dot lit once stay lit for the session however far away it was, which
-    /// reads as a mark that is still up. The train list is where a scouted mark
-    /// is remembered; this store is only what the map is showing, and the map
-    /// should show what is actually there.
-    /// </summary>
-    public void ExpireStaleSightings(uint territoryId, uint instance, uint worldId, double staleSeconds)
-    {
-        var now = DateTime.UtcNow;
-        foreach (var (key, sighting) in _otherRanks.ToList())
-        {
-            if (sighting.TerritoryId != territoryId) continue;
-            if (sighting.Instance != instance) continue;
-
-            // Only judge the world we are on. Somewhere else's sightings are
-            // not visible from here, and "not visible" would expire every one
-            // of them the moment you changed world.
-            if (sighting.WorldId != worldId) continue;
-            if ((now - sighting.LastSeenUtc).TotalSeconds < staleSeconds) continue;
-
-            _otherRanks.Remove(key);
-        }
-    }
 
     /// <summary>Zone name straight from the game's own data, so it's always correct.</summary>
     public string GetZoneName(uint territoryId)
@@ -549,6 +504,7 @@ public sealed class MarkDetector
     /// </summary>
     public void LoadPersisted(List<PersistedMark> saved)
     {
+        TrainGeneration++;
         _marks.Clear();
         _nextOrder = 0;
 

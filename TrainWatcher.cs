@@ -23,45 +23,13 @@ public readonly record struct HuntTallyKill(
     int Rank,
     uint TerritoryId,
     uint InstanceId,
-    long UnixSeconds);
+    long UnixSeconds,
+    uint WorldId);
 
-public class TrackedMark
-{
-    public string Name = string.Empty;
-    public uint ModelId;
-    public uint Instance;
-    public bool Dead;
-
-    /// <summary>
-    /// The moment we personally observed this mark flip to dead while polling.
-    /// Falls back to Hunt Helper's LastSeenUTC if the mark was already dead
-    /// the first time we saw it (e.g. plugin was (re)loaded mid-train).
-    /// </summary>
-    public DateTime? DeathObservedAtUtc;
-    public DateTime LastSeenUtc;
-
-    /// <summary>
-    /// When the train found this mark already gone, if it did. See
-    /// DetectedMark.SnipedAtUtc — it is the latest the mark can have died, not
-    /// the moment it died.
-    /// </summary>
-    public DateTime? SnipedAtUtc;
-}
-
-/// <summary>
-/// Continuously watches Hunt Helper's train list and records the exact moment
-/// each mark flips to dead — a running "ingested kills" log, independent of
-/// Hunt Helper's own list contents. Never posts or fires anything itself;
-/// reporting is entirely manual via Plugin's "End Train Now", which reads this
-/// history. This is deliberate: automatically firing on "everything currently
-/// tracked is dead" doesn't work for multi-expansion trains (DT -> ShB -> EW),
-/// since DT alone looks "fully cleared" the moment the conductor starts
-/// travelling to ShB, well before the real end of the run.
-/// </summary>
+/// <summary>Schedules local detection, applies scoped kill evidence and retains native report history.</summary>
 public class TrainWatcher : IDisposable
 {
     private readonly IFramework _framework;
-    private readonly HuntHelperIpc _ipc;
     private readonly MarkDetector _detector;
     private readonly Configuration _config;
     private readonly IChatGui _chatGui;
@@ -80,10 +48,10 @@ public class TrainWatcher : IDisposable
         XivChatType.Action,
     };
 
-    private readonly Dictionary<(uint ModelId, uint Instance), TrackedMark> _tracked = new();
+    private readonly TrainReportHistory _history = new();
 
     // Kills are queued rather than applied where they arrive, so a kill and a
-    // poll can never interleave halfway through updating _tracked. Since the
+    // poll can never interleave halfway through updating train history. Since the
     // merge these come from the tally on the framework thread rather than over
     // IPC on its own one, so the queue no longer has to be concurrent - but it
     // stays that way, because it costs nothing and the ordering guarantee it
@@ -91,11 +59,12 @@ public class TrainWatcher : IDisposable
     private readonly ConcurrentQueue<HuntTallyKill> _pendingKills = new();
 
     // Cheap insurance against a death being reported twice.
-    private readonly HashSet<(uint, uint, uint, long)> _seenKills = new();
+    private readonly HashSet<(uint, uint, uint, uint, long)> _seenKills = new();
 
     private double _secondsSinceLastPoll;
     private double _secondsSinceSave;
     private double _secondsSinceScan;
+    private double _secondsSinceRecordScan;
 
     /// <summary>
     /// Raised periodically so the in-progress train can be written to disk.
@@ -106,25 +75,21 @@ public class TrainWatcher : IDisposable
 
     public string LastStatus { get; private set; } = "Idle.";
 
-    /// <summary>
-    /// A defensive-copy snapshot of everything currently tracked, keyed the same
-    /// way as internal state — including marks that vanished from Hunt Helper's
-    /// live list while already dead (see the Remove Dead handling in Poll). Used
-    /// by "End Train Now" so it also benefits from this retained history instead
-    /// of only seeing Hunt Helper's current live list.
-    /// </summary>
-    public Dictionary<(uint ModelId, uint Instance), TrackedMark> GetTrackedSnapshot() =>
-        new(_tracked);
+    /// <summary>A defensive snapshot of native report history, including removed dead rows.</summary>
+    public Dictionary<(uint ModelId, uint Instance, uint WorldId), TrackedMark> GetTrackedSnapshot()
+    {
+        CaptureHistory();
+        return _history.Snapshot();
+    }
 
     /// <summary>Number of marks auto-marked dead by Hunt Tally this train.</summary>
     public int AutoMarkedCount { get; private set; }
 
     public TrainWatcher(
-        IFramework framework, HuntHelperIpc ipc, MarkDetector detector, Configuration config,
+        IFramework framework, MarkDetector detector, Configuration config,
         IChatGui chatGui, IPluginLog log)
     {
         _framework = framework;
-        _ipc = ipc;
         _detector = detector;
         _config = config;
         _chatGui = chatGui;
@@ -133,6 +98,9 @@ public class TrainWatcher : IDisposable
         _framework.Update += OnUpdate;
         _chatGui.ChatMessage += OnChatMessage;
         _detector.MarkObservedDead += OnMarkObservedDead;
+        _detector.Removing += CaptureHistory;
+        _detector.Cleared += ClearHistory;
+        _history.Restore(config.ReportHistory);
     }
 
     public void Dispose()
@@ -140,11 +108,13 @@ public class TrainWatcher : IDisposable
         _framework.Update -= OnUpdate;
         _chatGui.ChatMessage -= OnChatMessage;
         _detector.MarkObservedDead -= OnMarkObservedDead;
+        _detector.Removing -= CaptureHistory;
+        _detector.Cleared -= ClearHistory;
     }
 
     /// <summary>
     /// The detector saw a mark at zero health. It has already flagged its own
-    /// row; this keeps Hunt Helper's parallel list in step and clears the dot.
+    /// row; this keeps native report history in step and clears the dot.
     /// </summary>
     private void OnMarkObservedDead(DetectedMark mark)
     {
@@ -153,11 +123,7 @@ public class TrainWatcher : IDisposable
             ObservedDeathCount++;
             _detector.RemoveSighting(mark.NameId, mark.Instance, mark.WorldId);
 
-            if (_tracked.TryGetValue((mark.NameId, mark.Instance), out var tracked) && !tracked.Dead)
-            {
-                tracked.Dead = true;
-                tracked.DeathObservedAtUtc = mark.DeathObservedAtUtc ?? DateTime.UtcNow;
-            }
+            CaptureHistory();
 
             _log.Information($"{mark.Name} was seen at zero health; marked dead in the train.");
         }
@@ -214,15 +180,7 @@ public class TrainWatcher : IDisposable
                 _log.Information($"{mark.Name} was defeated; marked dead in the train.");
             }
 
-            // Hunt Helper's own list, keyed differently, so matched separately.
-            foreach (var tracked in _tracked.Values)
-            {
-                if (tracked.Dead || string.IsNullOrWhiteSpace(tracked.Name)) continue;
-                if (!DefeatedInLine(text, tracked.Name)) continue;
-
-                tracked.Dead = true;
-                tracked.DeathObservedAtUtc = now;
-            }
+            CaptureHistory();
         }
         catch (Exception ex)
         {
@@ -248,7 +206,7 @@ public class TrainWatcher : IDisposable
     {
         if (!_config.TrackingEnabled) return;
         if (!_config.AutoMarkDeadEnabled) return;
-        _pendingKills.Enqueue(kill);
+        if (kill.WorldId != 0) _pendingKills.Enqueue(kill);
     }
 
     private void OnUpdate(IFramework framework)
@@ -270,12 +228,15 @@ public class TrainWatcher : IDisposable
         // B, A and S ranks all the time. Only whether A-ranks get RECORDED into
         // the train is gated by tracking and the pause button.
         _secondsSinceScan += framework.UpdateDelta.TotalSeconds;
-        if (_secondsSinceScan >= Math.Max(1, _config.PollIntervalSeconds))
+        _secondsSinceRecordScan += framework.UpdateDelta.TotalSeconds;
+        if (_secondsSinceScan >= 0.5)
         {
             _secondsSinceScan = 0;
             try
             {
-                _detector.Scan(recordNew: _config.TrackingEnabled && !_config.ScanningPaused);
+                var recordNow = _secondsSinceRecordScan >= Math.Max(1, _config.PollIntervalSeconds);
+                if (recordNow) _secondsSinceRecordScan = 0;
+                _detector.Scan(recordNew: recordNow && _config.TrackingEnabled && !_config.ScanningPaused);
             }
             catch (Exception ex)
             {
@@ -300,7 +261,7 @@ public class TrainWatcher : IDisposable
     /// </summary>
     public void ResetNow()
     {
-        _tracked.Clear();
+        _history.Clear();
         _detector.Clear();
         _seenKills.Clear();
         AutoMarkedCount = 0;
@@ -308,101 +269,28 @@ public class TrainWatcher : IDisposable
         LastStatus = "Train tracking reset — ready for a new train.";
     }
 
-    private void Poll()
+    private void ClearHistory()
     {
-        // Apply Hunt Tally kills BEFORE anything that depends on Hunt Helper.
-        // This used to sit further down and was skipped entirely whenever Hunt
-        // Helper wasn't loaded or its list was empty — which is the normal case
-        // once a conductor is working from our own detected list, so kills piled
-        // up in the queue and marks never went dead.
-        ApplyPendingKills();
-
-        var list = _ipc.TryGetTrainList();
-        if (list == null)
-        {
-            LastStatus = $"Hunt Helper not detected. Own: {OwnSummary()}";
-            return;
-        }
-
-        if (list.Count == 0)
-        {
-            // Nothing currently sitting in Hunt Helper's list — but that doesn't
-            // mean clear retained history. A conductor mid-train can briefly empty
-            // Hunt Helper's list this way (e.g. Remove Dead clearing a finished
-            // leg right before the next expansion's marks get detected), and that
-            // shouldn't lose anything already tracked. Tracking only ever clears
-            // via an explicit Reset or a successful End Train Now.
-            var deadCountEmpty = _tracked.Values.Count(m => m.Dead);
-            LastStatus = _tracked.Count > 0
-                ? $"Hunt Helper list empty (retaining {_tracked.Count}, {deadCountEmpty} dead). Own: {OwnSummary()}"
-                : $"Hunt Helper has no active train. Own: {OwnSummary()}";
-            return;
-        }
-
-        var currentKeys = new HashSet<(uint, uint)>();
-
-        foreach (var mob in list)
-        {
-            var key = (mob.MobID, mob.Instance);
-            currentKeys.Add(key);
-
-            if (!_tracked.TryGetValue(key, out var tracked))
-            {
-                tracked = new TrackedMark
-                {
-                    Name = mob.Name,
-                    ModelId = mob.MobID,
-                    Instance = mob.Instance,
-                    Dead = mob.Dead,
-                    LastSeenUtc = mob.LastSeenUTC,
-                    DeathObservedAtUtc = mob.Dead ? mob.LastSeenUTC : null,
-                };
-                _tracked[key] = tracked;
-            }
-            else
-            {
-                tracked.LastSeenUtc = mob.LastSeenUTC;
-                if (mob.Dead && !tracked.Dead)
-                {
-                    tracked.Dead = true;
-                    tracked.DeathObservedAtUtc = DateTime.UtcNow;
-                }
-            }
-        }
-
-        // Only drop marks that vanished from Hunt Helper's list while still alive
-        // (unusual - safe to forget). Marks that vanished while already dead are
-        // kept: that's exactly what happens when a conductor uses Hunt Helper's
-        // own "Remove Dead" to tidy up mid-train, and a tidied-up train shouldn't
-        // under-report marks that genuinely died as part of it.
-        foreach (var key in _tracked.Keys.Where(k => !currentKeys.Contains(k)).ToList())
-        {
-            if (!_tracked[key].Dead)
-                _tracked.Remove(key);
-        }
-
-        var deadCount = _tracked.Values.Count(m => m.Dead);
-        var autoPart = AutoMarkedCount > 0 ? $" ({AutoMarkedCount} auto)" : string.Empty;
-        var ownCount = _detector.Marks.Count;
-        var ownDead = _detector.Marks.Values.Count(m => m.Dead);
-        LastStatus = $"Hunt Helper: {_tracked.Count} marks, {deadCount} dead{autoPart}. Own: {ownCount} marks, {ownDead} dead.";
+        _history.Clear();
+        _config.ReportHistory.Clear();
     }
 
-    /// <summary>
-    /// Applies any kills the tally reported since the last poll. Matching is a
-    /// direct equality check on (nameId, instanceId): Hunt Helper records a mob
-    /// using mob.NameId as what its IPC calls MobID, and the tally reports that
-    /// same BNpcName row id — so the two line up exactly, with no name matching
-    /// (which would break on non-English clients) and no ID mapping.
-    ///
-    /// Most events won't match anything, and that's expected: the tally reports
-    /// every mark you're credited with, whether or not it's part of a tracked
-    /// train. Unmatched kills are simply dropped.
-    ///
-    /// Note this marks the mark dead in OUR records only. Hunt Helper's IPC is
-    /// read-only, so the conductor's own Hunt Helper list still shows it alive
-    /// until they click it there themselves.
-    /// </summary>
+    public void RestoreHistory(IEnumerable<TrackedMark> history) => _history.Restore(history);
+
+    private void CaptureHistory() => _history.Update(_detector.Ordered().Where(mark => !mark.IsCustom)
+        .Select(mark => new TrackedMark { Name = mark.Name, ModelId = mark.NameId,
+            Instance = mark.Instance, WorldId = mark.WorldId, WorldName = mark.WorldName,
+            TerritoryId = mark.TerritoryId, Dead = mark.Dead, LastSeenUtc = mark.LastSeenUtc,
+            DeathObservedAtUtc = mark.DeathObservedAtUtc, SnipedAtUtc = mark.SnipedAtUtc }));
+
+    private void Poll()
+    {
+        ApplyPendingKills();
+        CaptureHistory();
+        LastStatus = $"Train: {OwnSummary()}";
+    }
+
+    /// <summary>Summarizes the active native train.</summary>
     private string OwnSummary()
     {
         var total = _detector.Marks.Count;
@@ -415,27 +303,17 @@ public class TrainWatcher : IDisposable
     {
         while (_pendingKills.TryDequeue(out var kill))
         {
-            var dedupeKey = (kill.NameId, kill.TerritoryId, kill.InstanceId, kill.UnixSeconds);
+            var dedupeKey = (kill.NameId, kill.TerritoryId, kill.InstanceId, kill.WorldId, kill.UnixSeconds);
             if (!_seenKills.Add(dedupeKey)) continue;
 
             var killTime = DateTimeOffset.FromUnixTimeSeconds(kill.UnixSeconds).UtcDateTime;
             var matched = false;
 
-            // Our own detected list. Looked up on the world the player is on,
-            // because that is where the kill happened — the same mark is up on
-            // every other world too, and those are not this one.
-            if (_detector.TryGetCurrentWorldMark(kill.NameId, kill.InstanceId, out var own) && !own.Dead)
+            // Use the world captured by the tally, even when delivery follows travel.
+            if (_detector.Marks.TryGetValue((kill.NameId, kill.InstanceId, kill.WorldId), out var own) && !own.Dead)
             {
                 own.Dead = true;
                 own.DeathObservedAtUtc = killTime;
-                matched = true;
-            }
-
-            // The Hunt Helper-derived list
-            if (_tracked.TryGetValue((kill.NameId, kill.InstanceId), out var mark) && !mark.Dead)
-            {
-                mark.Dead = true;
-                mark.DeathObservedAtUtc = killTime;
                 matched = true;
             }
 
@@ -447,7 +325,7 @@ public class TrainWatcher : IDisposable
                 // waiting for the proximity check to notice it's gone.
                 // The kill happened where the player is.
                 _detector.RemoveSighting(
-                    kill.NameId, kill.InstanceId, _detector.CurrentWorldId());
+                    kill.NameId, kill.InstanceId, kill.WorldId);
             }
         }
     }
