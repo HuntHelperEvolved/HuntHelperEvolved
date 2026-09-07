@@ -34,6 +34,11 @@ public static class ReleaseNotes
 
     public static readonly Release[] All =
     {
+        new("0.4.0.14", "2026-09-07", "Testing: undo is visible wherever you manage the train.",
+        [
+            new("Train", "Undo reset is shown at the top of the Train tab and popout, even for an empty train. Reset and Clear All now save recovery data consistently. Undo restores locally and turns train sharing off.", Kihtli),
+        ]),
+
         new("0.4.0.13", "2026-09-07", "Testing: native train reports and reliable kill evidence.",
         [
             new("Reports", "Reports use HHE's own train history, preserve worlds, and separate live marks and unknown-time deaths from confirmed kills. Removed dead rows remain in report history across reloads.", Kihtli),

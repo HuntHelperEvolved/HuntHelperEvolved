@@ -1396,16 +1396,7 @@ public sealed class Plugin : IDalamudPlugin
         var resetPressed = ImGui.Button("Reset");
         ImGui.PopStyleColor();
 
-        if (resetPressed && armed)
-        {
-            _watcher.ResetNow();
-            _detector.Clear();
-            _currentMark = null;
-            _config.Flags.Clear();
-            _config.Save();
-            ClearSavedTrain();
-            _lastPostResult = "Train reset — nothing was posted.";
-        }
+        if (resetPressed && armed) ResetTrainWithUndo();
 
         if (!armed) ImGui.PopStyleVar();
 
@@ -2005,6 +1996,8 @@ public sealed class Plugin : IDalamudPlugin
 
     private void DrawTrainControls()
     {
+        DrawTrainUndo();
+
         // Row 1: scanning state.
         if (_config.ScanningPaused)
         {
@@ -2951,10 +2944,7 @@ public sealed class Plugin : IDalamudPlugin
             _trainPopoutVisible = true;
         }
         ImGui.SameLine();
-        if (ImGui.Button("Clear All"))
-        {
-            _detector.Clear();
-        }
+        if (ImGui.Button("Clear All")) ResetTrainWithUndo(clearWatches: false);
 
         ImGui.Spacing();
         if (ImGui.Button("Copy Export Code"))
@@ -3414,22 +3404,8 @@ public sealed class Plugin : IDalamudPlugin
         ImGui.TextDisabled("Posts the report, sorted by the order marks actually died, plus any S-rank checks below. Only clears once the post actually succeeds.");
 
         ImGui.Spacing();
-        if (ImGui.Button("Reset train tracking now"))
-        {
-            CaptureResetUndo("You");
-            _ownResetPendingAt = _sync.IsConnected && _config.SyncShareTrain ? DateTime.UtcNow : null;
-            _watcher.ResetNow();
-            _currentMark = null;
-            _config.Flags.Clear();
-            _config.Save();
-            ClearSavedTrain();
-        }
-        if (_config.ResetUndoAt is { } resetAt)
-        {
-            ImGui.SameLine();
-            if (ImGui.Button("Undo reset — keep locally")) UndoTrainReset();
-            if (ImGui.IsItemHovered()) ImGui.SetTooltip($"Recover {_config.ResetUndoMarks.Count} marks and {_config.ResetUndoFlags.Count} watches from {resetAt.ToLocalTime():ddd HH:mm:ss} ({_config.ResetUndoBy}). Turns train sharing off for this client; merges any marks already present without changing the shared train.");
-        }
+        if (ImGui.Button("Reset train tracking now")) ResetTrainWithUndo();
+        DrawTrainUndo();
         ImGui.TextDisabled("Clears tracking and S-rank watches without posting anything — use if you need to abandon a train.");
         if (_config.SyncEnabled && _config.SyncShareTrain)
             ImGui.TextDisabled("Sync is on: this also empties the shared train for everyone.");
@@ -4311,6 +4287,29 @@ public sealed class Plugin : IDalamudPlugin
     private static Vector2? SpawnPosition(float? x, float? y) => x is { } px && y is { } py
         && float.IsFinite(px) && float.IsFinite(py) && px >= 1 && px <= 100 && py >= 1 && py <= 100 ? new Vector2(px,py) : null;
 
+    private void DrawTrainUndo()
+    {
+        if (_config.ResetUndoAt is not { } resetAt) return;
+        if (ImGui.Button("Undo reset")) UndoTrainReset();
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip($"Restore {_config.ResetUndoMarks.Count} marks, {_config.ResetUndoReportHistory.Count} history entries and {_config.ResetUndoFlags.Count} watches from {resetAt.ToLocalTime():ddd HH:mm:ss} ({_config.ResetUndoBy}). No Shift required. Turns train sharing off and restores locally without changing your friends' train.");
+        ImGui.SameLine();
+        ImGui.TextDisabled("Restore locally; turns train sharing off");
+    }
+
+    private void ResetTrainWithUndo(bool clearWatches = true)
+    {
+        CaptureResetUndo("You");
+        _ownResetPendingAt = _sync.IsConnected && _config.SyncShareTrain ? DateTime.UtcNow : null;
+        _watcher.ResetNow();
+        _currentMark = null;
+        if (clearWatches) _config.Flags.Clear();
+        ClearSavedTrain();
+        _lastPostResult = "Train reset — nothing was posted.";
+        if (_config.ResetUndoAt is not null)
+            _chatGui.Print("[Hunt Helper Evolved] Train reset. Use Undo reset at the top of the train window to restore it locally.");
+    }
+
     private DateTime? _ownResetPendingAt;
     private void CaptureResetUndo(string by)
     {
@@ -4369,7 +4368,7 @@ public sealed class Plugin : IDalamudPlugin
         _config.Flags.Clear();
         _config.Save();
         ClearSavedTrain();
-        _chatGui.Print($"[Hunt Helper Evolved] {by} cleared the shared train. Use Undo reset in train settings to recover it locally.");
+        _chatGui.Print($"[Hunt Helper Evolved] {by} cleared the shared train. Use Undo reset at the top of the train window (or on the Conductor tab) to recover it locally.");
     }
 
     /// <summary>
