@@ -34,7 +34,7 @@ public static class ReleaseNotes
 
     public static readonly Release[] All =
     {
-        new("0.5.0.3", "2026-09-07", "Staged: train completion and clearer hunt windows.",
+        new("0.5.0.3", "2026-09-07", "Beta: train completion and clearer hunt windows.",
         [
             new("A ranks", "Sniped marks show the same bounded respawn window as Discord when last-seen-alive evidence is available. Bounds survive server resets/reconnects.", Kihtli),
             new("Train", "End Train resets only after Discord succeeds and the server acknowledges storing the report's kill history. A changed shared train is kept. Requires server 0.3.13; Undo remains available.", Kihtli),
