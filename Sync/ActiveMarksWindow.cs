@@ -15,18 +15,17 @@ public sealed class ActiveMarksWindow(Configuration config, SyncCoordinator sync
     {
         if (!config.ActiveSRankWindowOpen) return;
         var open=true;
-        ImGui.SetNextWindowSize(new Vector2(1150,460),ImGuiCond.FirstUseEver);
-        if (ImGui.Begin("Active Marks",ref open))
+        ImGui.SetNextWindowSize(new Vector2(460,300),ImGuiCond.FirstUseEver);
+        if (ImGui.Begin("Active Marks###ActiveMarksCompact",ref open))
         {
-            if (ImGui.Button("Filters / settings")) openSettings();
-            ImGui.SameLine(); ImGui.TextDisabled("/hhsa or /hhv. Click coordinates to open the map.");
+            ImGui.SetNextItemWidth(Math.Max(80,ImGui.GetContentRegionAvail().X-70));
+            ImGui.InputTextWithHint("##activeSearch","Search marks…",ref _search,100);
+            ImGui.SameLine();
+            if (ImGui.SmallButton("Filters")) openSettings();
             if (!config.SyncEnabled || !sync.IsConnected) ImGui.TextWrapped("Reports unavailable. " + sync.Status);
             else
             {
                 if (!sync.SupportsVisibleMarks) ImGui.TextWrapped("Update the server to 0.3.11 for live A/B/S observations, health and combat state.");
-                ImGui.SetNextItemWidth(320);
-                ImGui.InputTextWithHint("##activeSearch","Search mark, world, DC, zone or scout",ref _search,100);
-                ImGui.TextDisabled("Live observations expire after 3 seconds without updates. Community reports have unknown HP and combat status.");
                 if (!string.IsNullOrEmpty(travel.Status)) ImGui.TextWrapped(travel.Status);
                 if (travel.Busy && ImGui.SmallButton("Cancel travel")) travel.Cancel();
                 if (ImGui.BeginTabBar("activeMarkRanks"))
@@ -66,52 +65,69 @@ public sealed class ActiveMarksWindow(Configuration config, SyncCoordinator sync
           .Where(r => (r.Row.Mark.Name+" "+r.World+" "+r.Zone+" "+r.Dc.Name+" "+string.Join(" ",r.Row.Visible?.Observers??new List<string>())).Contains(_search,StringComparison.OrdinalIgnoreCase))
           .OrderBy(r => r.Row.HealthKnown && r.Row.Mark.HpPercent==0).ThenByDescending(r => r.Row.Mark.InCombat==true)
           .ThenBy(r => r.World).ThenBy(r => r.Zone).ThenBy(r => r.Row.Mark.Name).ThenBy(r => r.Row.Mark.Instance).ToList();
-        ImGui.TextDisabled($"{rows.Count} marks. Right-click headers to show/hide columns. SS events appear under S.");
-        if (!ImGui.BeginTable("activeMarksTable",13,ImGuiTableFlags.RowBg|ImGuiTableFlags.BordersInnerH|ImGuiTableFlags.Resizable|ImGuiTableFlags.Hideable|ImGuiTableFlags.ScrollY)) return;
-        ImGui.TableSetupScrollFreeze(0,1);
-        foreach (var label in new[] {"Mark","Rank","World","DC","Zone","Instance","State","Combat","HP","Coordinates","Active for","Teleport","Source / seen by"})
+        if(rows.Count==0) { ImGui.TextDisabled("No matching marks."); return; }
+        if(ImGui.BeginChild("activeMarkLines",Vector2.Zero,false,ImGuiWindowFlags.HorizontalScrollbar))
         {
-            var flags=label is "Mark" or "Zone" or "Source / seen by" ? ImGuiTableColumnFlags.WidthStretch : ImGuiTableColumnFlags.WidthFixed;
-            if(label is "DC" or "Source / seen by") flags |= ImGuiTableColumnFlags.DefaultHide;
-            if((label=="Instance" && !rows.Any(r=>r.Row.Mark.Instance>0)) || (label=="Teleport" && !travel.Available)) flags |= ImGuiTableColumnFlags.Disabled;
-            ImGui.TableSetupColumn(label,flags);
+            foreach(var r in rows)
+            {
+                var row=r.Row; var m=row.Mark; var dead=row.HealthKnown && m.HpPercent==0;
+                var colour=!row.HealthKnown || m.InCombat is null ? new Vector4(0.75f,0.75f,0.8f,1)
+                    : m.InCombat==true ? new Vector4(1,0.65f,0.15f,1) : new Vector4(0.35f,0.95f,0.4f,1);
+                if(dead) colour=new Vector4(1,0.3f,0.3f,1);
+                var hp=row.HealthKnown ? $"{m.HpPercent:0.#}%" : "?%";
+                var instance=m.Instance>0 ? $" i{m.Instance}" : string.Empty;
+                var label=$"{(tab=="All" ? m.Rank+": " : string.Empty)}{m.Name} - {hp} [{r.World}{instance}]";
+                ImGui.PushID($"{m.WorldId}:{m.Instance}:{m.NameId}");
+                ImGui.PushStyleColor(ImGuiCol.Text,colour);
+                var clicked=ImGui.Selectable(label+"###mark",false,ImGuiSelectableFlags.None,
+                    new Vector2(Math.Max(ImGui.GetContentRegionAvail().X,ImGui.CalcTextSize(label).X),0));
+                ImGui.PopStyleColor();
+                var hovered=ImGui.IsItemHovered();
+                var canTravel=travel.Available && !travel.Busy && !dead && row.HasPosition;
+                if(clicked)
+                {
+                    if(ImGui.GetIO().KeyCtrl) { if(canTravel) travel.Start(m.WorldId,m.TerritoryId,new(m.X,m.Y)); }
+                    else if(row.HasPosition) Flag(m);
+                }
+                if(ImGui.BeginPopupContextItem("markActions"))
+                {
+                    ImGui.TextUnformatted(m.Name+" — "+r.World+instance);
+                    ImGui.BeginDisabled(!row.HasPosition);
+                    if(ImGui.MenuItem("Open map")) Flag(m);
+                    ImGui.EndDisabled();
+                    if(travel.Available)
+                    {
+                        ImGui.BeginDisabled(!canTravel);
+                        if(ImGui.MenuItem("Teleport to mark")) travel.Start(m.WorldId,m.TerritoryId,new(m.X,m.Y));
+                        ImGui.EndDisabled();
+                    }
+                    if(ImGui.MenuItem("Filters / settings")) openSettings();
+                    ImGui.EndPopup();
+                }
+                if(hovered)
+                {
+                    var state=dead ? "Dead" : !row.HealthKnown ? "Community report — health and combat unknown"
+                        : m.InCombat is null ? "Alive — combat unknown" : m.InCombat==true ? "Alive — pulled" : "Alive — not pulled";
+                    var detail=$"{state}\n{r.World}{instance} · {r.Dc.Name??"Unknown DC"}\n{r.Zone}";
+                    if(row.HasPosition) detail+=$" ({m.X:0.0}, {m.Y:0.0})";
+                    if(!dead && row.Status?.SpawnedAt is { } spawned)
+                    {
+                        var age=now-spawned;
+                        detail+=$"\nActive for {(int)Math.Max(0,age.TotalHours):00}:{Math.Max(0,age.Minutes):00}:{Math.Max(0,age.Seconds):00}";
+                    }
+                    detail+="\n"+(row.Visible is { } observation ? "Seen by: "+string.Join(", ",observation.Observers) : "Faloop report");
+                    detail+=row.HasPosition ? "\nClick: map" : "\nLocation not reported";
+                    if(canTravel) detail+=" · Ctrl-click: teleport";
+                    detail+="\nRight-click for actions";
+                    ImGui.SetTooltip(detail);
+                }
+                ImGui.PopID();
+            }
         }
-        ImGui.TableHeadersRow();
-        foreach (var r in rows)
-        {
-            var m=r.Row.Mark; var dead=r.Row.HealthKnown && m.HpPercent==0;
-            ImGui.PushID($"{m.WorldId}:{m.Instance}:{m.NameId}"); ImGui.TableNextRow();
-            Cell(m.Name); Cell(m.Rank); Cell(r.World); Cell(r.Dc.Name??"Unknown"); Cell(r.Zone);
-            Cell(m.Instance==0 ? "" : m.Instance.ToString());
-            ImGui.TableNextColumn(); ImGui.TextColored(dead ? new Vector4(0.7f,0.7f,0.7f,1) : new Vector4(0.4f,1,0.4f,1),dead ? "Dead" : r.Row.HealthKnown ? "Alive" : "Reported active");
-            ImGui.TableNextColumn(); ImGui.TextColored(m.InCombat==true && !dead ? new Vector4(1,0.4f,0.35f,1) : Vector4.One,VisibleMarkFilter.CombatLabel(m));
-            Cell(r.Row.HealthKnown ? $"{m.HpPercent:0.0}%" : "—");
-            ImGui.TableNextColumn();
-            if(r.Row.HasPosition)
-            {
-                if(ImGui.SmallButton($"{m.X:0.0}, {m.Y:0.0}")) MapFlagHelper.FlagPosition(gameGui,m.TerritoryId,m.MapId==0 ? detector.GetMapId(m.TerritoryId) : m.MapId,m.Instance,m.X,m.Y);
-            }
-            else ImGui.TextDisabled("—");
-            ImGui.TableNextColumn();
-            if(!dead && r.Row.Status?.SpawnedAt is { } spawned)
-            {
-                var age=now-spawned; ImGui.TextUnformatted($"{(int)Math.Max(0,age.TotalHours):00}:{Math.Max(0,age.Minutes):00}:{Math.Max(0,age.Seconds):00}");
-            }
-            else ImGui.TextDisabled("—");
-            ImGui.TableNextColumn();
-            if(travel.Available)
-            {
-                ImGui.BeginDisabled(dead || !r.Row.HasPosition || travel.Busy);
-                if(ImGui.SmallButton("Teleport")) travel.Start(m.WorldId,m.TerritoryId,new(m.X,m.Y));
-                ImGui.EndDisabled();
-                if(ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled)) ImGui.SetTooltip(dead ? "This mark is dead." : !r.Row.HasPosition ? "Location not reported yet." : "Travel to this world and nearest eligible aetheryte. Select the instance on arrival.");
-            }
-            Cell(r.Row.Visible is { } observation ? string.Join(", ",observation.Observers) : "Faloop report");
-            ImGui.PopID();
-        }
-        ImGui.EndTable();
+        ImGui.EndChild();
     }
-    private static void Cell(string value) { ImGui.TableNextColumn(); ImGui.TextUnformatted(value); }
+    private void Flag(SyncSighting mark) => MapFlagHelper.FlagPosition(gameGui,mark.TerritoryId,
+        mark.MapId==0 ? detector.GetMapId(mark.TerritoryId) : mark.MapId,mark.Instance,mark.X,mark.Y);
     private void Option(string label,bool value,Action<bool> save)
     { if (ImGui.Checkbox(label,ref value)) { save(value); config.Save(); } }
     private void Select<T>(string label,T value,List<T> selected)
@@ -124,6 +140,10 @@ public sealed class ActiveMarksWindow(Configuration config, SyncCoordinator sync
         if (!ImGui.CollapsingHeader("Active Marks window filters",ImGuiTreeNodeFlags.DefaultOpen)) return;
         ImGui.PushID("visibleSettings");
         if (ImGui.Button("Open Active Marks (/hhsa or /hhv)")) Toggle();
+        ImGui.TextColored(new Vector4(0.35f,0.95f,0.4f,1),"Green: alive, not pulled");
+        ImGui.SameLine(); ImGui.TextColored(new Vector4(1,0.65f,0.15f,1),"Orange: pulled");
+        ImGui.SameLine(); ImGui.TextColored(new Vector4(1,0.3f,0.3f,1),"Red: dead");
+        ImGui.TextDisabled("Grey / ?%: unknown status or health. Hover for details; click for map; Ctrl-click or right-click for travel.");
         var o=config.VisibleMarkFilters;
         Option("Include community S-rank reports",o.IncludeCommunity,v=>o.IncludeCommunity=v);
         Option("Include marks seen only by me",o.IncludeOwn,v=>o.IncludeOwn=v);
