@@ -34,6 +34,10 @@ public static class ReleaseNotes
 
     public static readonly Release[] All =
     {
+        new("0.5.0.7", "2026-09-08", "Show plugin windows only after character login.",
+        [
+            new("Windows", "All plugin windows stay hidden at the title screen and character selection. Automatic update notes are checked after login so they are not consumed before you can see them.", Kihtli),
+        ]),
         new("0.5.0.6", "2026-09-08", "Restore automatic update release notes.",
         [
             new("Updates", "Fixed automatic release notes skipping testing updates because the fourth version number was ignored. Notes now open once when updating, unless disabled in settings.", Kihtli),

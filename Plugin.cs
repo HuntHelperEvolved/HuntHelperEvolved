@@ -167,6 +167,7 @@ public sealed partial class Plugin : IDalamudPlugin
     /// showing it, not selecting a tab behind whatever they had open.
     /// </summary>
     private bool _releaseNotesVisible;
+    private bool _releaseNotesChecked;
 
     /// <summary>
     /// True when the standalone Hunt Tally plugin is also loaded, which the
@@ -268,8 +269,6 @@ public sealed partial class Plugin : IDalamudPlugin
             _config.Save();
             _log.Information("Carried settings over from the Hunt Train Relay config file.");
         }
-
-        ShowReleaseNotesIfUpdated();
 
         _gameGui = gameGui;
         _textureProvider = textureProvider;
@@ -887,6 +886,15 @@ public sealed partial class Plugin : IDalamudPlugin
 
     private void DrawUI()
     {
+        // Keep every window hidden at the title screen and character selection.
+        // Delay acknowledging update notes until the user can actually see them.
+        if (!_clientState.IsLoggedIn) return;
+        if (!_releaseNotesChecked)
+        {
+            _releaseNotesChecked = true;
+            ShowReleaseNotesIfUpdated();
+        }
+
         // Cheap enough to check on a slow tick; counters age out in hours.
         _secondsSinceAutoResetCheck += ImGui.GetIO().DeltaTime;
         if (_secondsSinceAutoResetCheck >= 30)
