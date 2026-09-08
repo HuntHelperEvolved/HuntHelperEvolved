@@ -109,7 +109,7 @@ public sealed class SRankWindow
         DrawExpansionFilter();
         var available = _config.SRankWindowAvailableOnly;
         if (ImGui.Checkbox("Available to spawn only", ref available)) { _config.SRankWindowAvailableOnly = available; _config.Save(); }
-        if (ImGui.IsItemHovered()) ImGui.SetTooltip("Show marks whose known respawn window has opened, excluding unknown and uncertain timers. Active ranks remain visible at the top. Spawn conditions still need to be met.");
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip("Show marks whose known respawn window has opened, excluding unknown and uncertain timers. Active ranks remain visible; automatic order places them first. Spawn conditions still need to be met.");
         ImGui.SameLine();
         var search = _config.SRankWindowSearch;
         ImGui.SetNextItemWidth(220);
@@ -127,12 +127,10 @@ public sealed class SRankWindow
             .ThenBy(r => r.Row.Timer.Name).ThenBy(r => _worldData.NameOf(r.World)).ToList();
         ImGui.TextDisabled($"{rows.Count} marks across {worlds.Count} selected worlds. Server feed: {string.Join(", ", _sync.Faloop.DataCenters)}");
 
-        ImGui.TextDisabled("Right-click headers for columns. Ctrl-click a mark name to travel for a hunt or spawn attempt.");
+        ImGui.TextDisabled("Headers: click to sort, right-click for columns. Ctrl-click a mark name to travel.");
         if (!string.IsNullOrEmpty(_travel.Status)) ImGui.TextWrapped(_travel.Status);
         if (_travel.Busy && ImGui.SmallButton("Cancel travel")) _travel.Cancel();
-        const ImGuiTableFlags flags = ImGuiTableFlags.RowBg | ImGuiTableFlags.BordersInnerH | ImGuiTableFlags.ScrollY
-                                      | ImGuiTableFlags.Resizable | ImGuiTableFlags.Hideable | ImGuiTableFlags.SizingStretchProp;
-        if (!ImGui.BeginTable("sranksConditions", 10, flags)) return;
+        if (!ImGui.BeginTable("sranksConditions", 10, TimerTableUi.Flags)) return;
 
         ImGui.TableSetupScrollFreeze(0, 1);
         ImGui.TableSetupColumn("Mark", ImGuiTableColumnFlags.WidthStretch, 1.6f);
@@ -144,9 +142,10 @@ public sealed class SRankWindow
         ImGui.TableSetupColumn("Ready by", ImGuiTableColumnFlags.WidthStretch, 0.9f);
         ImGui.TableSetupColumn("Killed", ImGuiTableColumnFlags.WidthStretch, 1.5f);
         ImGui.TableSetupColumn("Points", ImGuiTableColumnFlags.WidthStretch, 0.7f);
-        ImGui.TableSetupColumn("Record", ImGuiTableColumnFlags.WidthStretch, 1.6f);
+        ImGui.TableSetupColumn("Record", ImGuiTableColumnFlags.WidthStretch | ImGuiTableColumnFlags.NoSort, 1.6f);
         ImGui.TableHeadersRow();
 
+        rows=TimerTableUi.Sort(rows,(entry,column)=>SortValue(entry.Row,entry.World,column,now));
         foreach (var row in rows)
             DrawRow(row.Row, row.World, now);
 
@@ -298,6 +297,32 @@ public sealed class SRankWindow
         return null;
     }
 
+    private IComparable? SortValue(Row row, uint world, int column, DateTime now)
+    {
+        var w=row.Window;
+        return column switch
+        {
+            0 => row.Timer.Name,
+            1 => _worldData.NameOf(world),
+            2 => row.Timer.Zone,
+            3 => (w.Phase switch { SRankPhase.Up=>0, SRankPhase.Forced=>1, SRankPhase.Window=>2, SRankPhase.Uncertain=>3, SRankPhase.Cooldown=>4, _=>5 },-w.Percent),
+            4 => !SpawnConditionData.HasTimedCondition(row.Timer.Name) ? DateTime.MinValue : ConditionFor(row,now)?.Start,
+            5 => w.OpensAtUtc,
+            6 => w.ForcedAtUtc,
+            7 => row.Status?.KilledAt,
+            8 => RemainingPoints(row,world),
+            _ => null
+        };
+    }
+    private int? RemainingPoints(Row row, uint world)
+    {
+        var zone=_sync.ZoneFor(row.Timer.TerritoryId,world,row.Instance);
+        if(zone is null) return null;
+        var capable=SpawnPointData.For(row.Timer.TerritoryId).Select((p,i)=>(p,i))
+            .Where(p=>p.p.Ranks.HasFlag(SpawnRanks.S)).ToList();
+        return capable.Count==0 ? null : capable.Count(p=>!zone.IsRuledOut(p.i));
+    }
+
     private void DrawRow(Row row, uint worldId, DateTime now)
     {
         var timer = row.Timer;
@@ -419,9 +444,7 @@ public sealed class SRankWindow
                 break;
 
             case SRankPhase.Window:
-                ImGui.PushStyleColor(ImGuiCol.PlotHistogram, WindowColour * new Vector4(1f, 1f, 1f, 0.8f));
-                ImGui.ProgressBar((float)(w.Percent / 100.0), new Vector2(-1, ImGui.GetTextLineHeight()), $"{w.Percent:F0}%");
-                ImGui.PopStyleColor();
+                TimerTableUi.Progress(w.Percent);
                 if (ImGui.IsItemHovered())
                     ImGui.SetTooltip("Elapsed portion of the respawn window. Spawn conditions must still be met; this is not a confirmed spawn probability.");
                 break;
@@ -568,21 +591,6 @@ public sealed class SRankWindow
         return age.TotalMinutes < 1 ? $"Faloop: read just now{dcs}" : $"Faloop: read {Duration(age)} ago{dcs}";
     }
 
-    private static string Local(DateTime utc)
-    {
-        var local = DateTime.SpecifyKind(utc, DateTimeKind.Utc).ToLocalTime();
-        var today = DateTime.Now.Date;
-        if (local.Date == today) return local.ToString("HH:mm");
-        if (local.Date == today.AddDays(1)) return $"tmrw {local:HH:mm}";
-        return local.ToString("ddd HH:mm");
-    }
-
-    private static string Duration(TimeSpan span)
-    {
-        if (span < TimeSpan.Zero) span = -span;
-        if (span.TotalMinutes < 1) return "<1m";
-        if (span.TotalHours < 1) return $"{(int)span.TotalMinutes}m";
-        if (span.TotalDays < 1) return $"{(int)span.TotalHours}h {span.Minutes:D2}m";
-        return $"{(int)span.TotalDays}d {span.Hours}h";
-    }
+    private static string Local(DateTime utc) => TimerTableUi.Local(utc);
+    private static string Duration(TimeSpan span) => TimerTableUi.Duration(span);
 }

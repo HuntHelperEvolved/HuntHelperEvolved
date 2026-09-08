@@ -13,6 +13,8 @@ public sealed class ARankWindow
     private readonly WorldData _worldData;
     private readonly MarkDetector _detector;
     private DateTime _nextCapture;
+    private sealed record Row(uint NameId, uint World, uint Instance, MarkInfo Info, ARankKill? Kill,
+        DateTime? Opens, DateTime? Ends, bool Up, bool AfterMaintenance, int State, double Percent);
     private static readonly string[] Expansions = ExpansionData.ModelIdToMark.Values.OrderBy(m => m.Order).Select(m => m.Expansion).Distinct().ToArray();
     public ARankWindow(Configuration config, SyncCoordinator sync, WorldData worlds, MarkDetector detector)
     { _config = config; _sync = sync; _worldData = worlds; _detector = detector; }
@@ -39,23 +41,24 @@ public sealed class ARankWindow
         }
         if (!_config.ARankWindowOpen) return;
         var open = true;
-        ImGui.SetNextWindowSize(new Vector2(900,520), ImGuiCond.FirstUseEver);
+        ImGui.SetNextWindowSize(new Vector2(880,520), ImGuiCond.FirstUseEver);
+        ImGui.SetNextWindowSizeConstraints(new Vector2(520,240),new Vector2(float.MaxValue,float.MaxValue));
         if (ImGui.Begin("A Ranks", ref open)) DrawContents(now);
         ImGui.End();
         if (!open) { _config.ARankWindowOpen = false; _config.Save(); }
     }
     private void DrawContents(DateTime now)
     {
-        ImGui.TextWrapped("Windows from local kills and server kill history, retrieved automatically on connection. No community A-rank kill feed. Sniped windows use last-seen-alive to found-missing bounds when known; elapsed windows do not confirm a mark is alive.");
+        ImGui.TextDisabled("Respawn windows from local and shared kill history.");
         var worlds = DrawWorldPicker();
         ImGui.SameLine(); DrawExpansionFilter();
         var available = _config.ARankWindowAvailableOnly;
-        if (ImGui.Checkbox("Open windows only", ref available)) { _config.ARankWindowAvailableOnly = available; _config.Save(); }
-        ImGui.SameLine(); var search = _config.ARankWindowSearch; ImGui.SetNextItemWidth(200);
+        if (ImGui.Checkbox("Available to spawn only", ref available)) { _config.ARankWindowAvailableOnly = available; _config.Save(); }
+        ImGui.SameLine(); var search = _config.ARankWindowSearch; ImGui.SetNextItemWidth(220);
         if (ImGui.InputTextWithHint("##asearch", "Search mark or zone", ref search,100)) { _config.ARankWindowSearch = search; _config.Save(); }
-        ImGui.TextWrapped("Each instance has its own kill time. Instance rows are learned from scouting in that zone; a missing kill stays unknown.");
-        ImGui.TextDisabled("Right-click a column header to show/hide columns. Percent is elapsed window, not spawn probability.");
-        var rows = new List<(uint Instance, string[] Values)>();
+        if (ImGui.CollapsingHeader("Timer information"))
+            ImGui.TextWrapped("Each world and instance has its own timer. Sniped ranges run from last seen alive to found missing; missing evidence stays unknown. Elapsed windows do not confirm a spawn. No community A-rank kill feed.");
+        var rows = new List<Row>();
         foreach (var world in worlds)
         foreach (var entry in ExpansionData.ModelIdToMark.OrderBy(e => e.Value.Order).ThenBy(e => e.Value.ZoneOrder))
         {
@@ -83,26 +86,74 @@ public sealed class ARankWindow
                 var (opens, end) = ARankHistory.Window(kill, info.MinHours, info.MaxHours, restart);
                 var known = opens is not null;
                 if (available && (up || opens is null || now < opens)) continue;
-                var text = up ? "UP" : restart is not null && (kill is null || kill.At <= restart) ? "After maintenance / unknown" : kill?.Uncertain == true && !known ? "Sniped / unknown" : opens is null ? "No kill recorded" : now < opens ? "Cooldown" : now >= end ? "Window elapsed" : $"{Math.Clamp((now-opens.Value).TotalHours/(end!.Value-opens.Value).TotalHours*100,0,100):0}% window";
-                if (known && kill!.Uncertain && !up) text += " (sniped range)";
-                rows.Add((instance, new[]{info.Name+ExpansionData.InstanceGlyph(instance),_worldData.NameOf(world),instance == 0 ? "" : $"I{instance}",info.Location,info.Expansion,text,Time(opens),Time(end),known ? (kill!.Uncertain ? Time(kill.LastAliveAt) + " → " + Time(kill.At) : Time(kill.At)) : "—"}));
+                var afterMaintenance=restart is not null && (kill is null || kill.At <= restart || kill.LastAliveAt <= restart);
+                var state=up ? 0 : !known ? 5 : now >= end ? 1 : now >= opens ? 2 : 4;
+                var percent=known ? Math.Clamp((now-opens!.Value).TotalSeconds/(end!.Value-opens.Value).TotalSeconds*100,0,100) : 0;
+                rows.Add(new(entry.Key,world,instance,info,kill,opens,end,up,afterMaintenance,state,percent));
             }
         }
+        rows=rows.OrderBy(r=>r.State).ThenByDescending(r=>r.Percent).ThenBy(r=>r.Opens??DateTime.MaxValue)
+            .ThenBy(r=>r.Info.Name).ThenBy(r=>r.World).ThenBy(r=>r.Instance).ToList();
+        ImGui.TextDisabled($"{rows.Count} marks across {worlds.Count} selected worlds.");
+        ImGui.TextDisabled("Headers: click to sort, right-click for columns. A third click restores automatic order.");
         var showInstances = rows.Any(row => row.Instance > 0);
-        if (!ImGui.BeginTable("aranks",9,ImGuiTableFlags.RowBg | ImGuiTableFlags.ScrollY | ImGuiTableFlags.Resizable | ImGuiTableFlags.Hideable | ImGuiTableFlags.BordersInnerH)) return;
+        if (!ImGui.BeginTable("aranksUnified",9,TimerTableUi.Flags)) return;
         ImGui.TableSetupScrollFreeze(0,1);
-        foreach (var label in new[]{"Mark","World","Instance","Zone","Expansion","Status","Opens","Window end","Killed"})
-            ImGui.TableSetupColumn(label, label == "Instance" && !showInstances ? ImGuiTableColumnFlags.Disabled : ImGuiTableColumnFlags.None);
+        ImGui.TableSetupColumn("Mark",ImGuiTableColumnFlags.WidthStretch,1.6f);
+        ImGui.TableSetupColumn("World",ImGuiTableColumnFlags.WidthStretch,1.1f);
+        ImGui.TableSetupColumn("Instance",ImGuiTableColumnFlags.WidthStretch | (showInstances ? ImGuiTableColumnFlags.None : ImGuiTableColumnFlags.Disabled),0.5f);
+        ImGui.TableSetupColumn("Zone",ImGuiTableColumnFlags.WidthStretch,1.6f);
+        ImGui.TableSetupColumn("Expansion",ImGuiTableColumnFlags.WidthStretch | ImGuiTableColumnFlags.DefaultHide,1f);
+        ImGui.TableSetupColumn("Status",ImGuiTableColumnFlags.WidthStretch,1.4f);
+        ImGui.TableSetupColumn("Opens",ImGuiTableColumnFlags.WidthStretch,0.9f);
+        ImGui.TableSetupColumn("Ready by",ImGuiTableColumnFlags.WidthStretch,0.9f);
+        ImGui.TableSetupColumn("Killed",ImGuiTableColumnFlags.WidthStretch,1.5f);
         ImGui.TableHeadersRow();
-        foreach (var row in rows)
+        rows=TimerTableUi.Sort(rows,(row,column)=>column switch
         {
-            ImGui.TableNextRow();
-            foreach (var value in row.Values)
-                if (ImGui.TableNextColumn()) ImGui.TextUnformatted(value);
-        }
+            0=>row.Info.Name, 1=>_worldData.NameOf(row.World), 2=>row.Instance,
+            3=>row.Info.Location, 4=>row.Info.Order, 5=>(row.State,-row.Percent),
+            6=>row.Opens, 7=>row.Ends, 8=>row.Kill?.At, _=>null
+        });
+        foreach (var row in rows) DrawRow(row,now);
         ImGui.EndTable();
     }
-    private static string Time(DateTime? at) => at?.ToLocalTime().ToString("ddd HH:mm") ?? "—";
+    private void DrawRow(Row row,DateTime now)
+    {
+        ImGui.PushID($"{row.World}_{row.NameId}_{row.Instance}");
+        ImGui.TableNextRow(); // A-rank UP rows intentionally keep the normal alternating background.
+        ImGui.TableNextColumn();
+        ImGui.TextColored(row.Up || row.Opens <= now ? TimerTableUi.Up : TimerTableUi.Cooldown,
+            row.Info.Name+ExpansionData.InstanceGlyph(row.Instance));
+        if(ImGui.IsItemHovered()) ImGui.SetTooltip($"{row.Info.Expansion} · {row.Info.Location}\nRespawn range: {row.Info.MinHours:0.#}–{row.Info.MaxHours:0.#} hours after death.");
+        ImGui.TableNextColumn();ImGui.TextDisabled(_worldData.NameOf(row.World));
+        ImGui.TableNextColumn();ImGui.TextDisabled(row.Instance==0 ? "" : $"I{row.Instance}");
+        ImGui.TableNextColumn();ImGui.TextDisabled(row.Info.Location);
+        ImGui.TableNextColumn();ImGui.TextDisabled(row.Info.Expansion);
+        ImGui.TableNextColumn();
+        if(row.Up) ImGui.TextColored(TimerTableUi.Up,"UP");
+        else if(row.Opens is null) ImGui.TextColored(TimerTableUi.Unknown,
+            row.AfterMaintenance ? "after maintenance / unknown" : row.Kill?.Uncertain==true ? "sniped / unknown" : "no kill recorded");
+        else if(now < row.Opens) ImGui.TextColored(TimerTableUi.Cooldown,"opens in "+TimerTableUi.Duration(row.Opens.Value-now));
+        else if(now >= row.Ends) ImGui.TextColored(TimerTableUi.Up,"READY");
+        else TimerTableUi.Progress(row.Percent);
+        if(ImGui.IsItemHovered()) ImGui.SetTooltip(row.Up ? "Currently reported alive." :
+            (row.Kill?.Uncertain==true ? "Sniped: bounded by last seen alive and found missing. " : "")+
+            "Elapsed portion of the respawn window, not a spawn probability or confirmation that the mark is alive.");
+        ImGui.TableNextColumn();ImGui.TextUnformatted(Time(row.Opens));
+        ImGui.TableNextColumn();ImGui.TextUnformatted(Time(row.Ends));
+        ImGui.TableNextColumn();
+        if(row.Kill is { } kill)
+        {
+            ImGui.TextUnformatted(TimerTableUi.Duration(now-kill.At)+" ago"+(kill.Uncertain ? " ~" : ""));
+            if(ImGui.IsItemHovered()) ImGui.SetTooltip(kill.Uncertain
+                ? $"Sniped: last seen alive {Time(kill.LastAliveAt)}; found missing {Time(kill.At)}."
+                : "Killed "+Time(kill.At));
+        }
+        else ImGui.TextDisabled("—");
+        ImGui.PopID();
+    }
+    private static string Time(DateTime? at) => at is { } time ? TimerTableUi.Local(time) : "—";
     private List<uint> DrawWorldPicker()
     {
         var current = _config.ARankWindowCurrentWorld;
