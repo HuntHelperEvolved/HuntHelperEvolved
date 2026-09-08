@@ -9,11 +9,7 @@ using System.Text;
 
 namespace HuntHelperEvolved;
 
-/// <summary>
-/// Mirrors Hunt Helper's HuntTrainMob JSON shape exactly — same property names,
-/// same set — so codes exported here import cleanly into Hunt Helper and vice
-/// versa. MapLink is [JsonIgnore] on their side, so it's absent here too.
-/// </summary>
+/// <summary>Serialized HHE train entry. Property names are retained for existing export codes.</summary>
 public class ExchangeMob
 {
     public string Name { get; set; } = string.Empty;
@@ -28,11 +24,7 @@ public class ExchangeMob
     public uint MapID { get; set; }
     public uint Instance { get; set; }
 
-    /// <summary>
-    /// Our own extension — conductor-placed flags rather than detected marks.
-    /// Hunt Helper's importer ignores fields it doesn't know, so adding this
-    /// doesn't break compatibility either way.
-    /// </summary>
+    /// <summary>A conductor-placed flag rather than a detected mark.</summary>
     public bool IsCustom { get; set; }
 
     public string ZoneName { get; set; } = string.Empty;
@@ -40,35 +32,15 @@ public class ExchangeMob
     /// <summary>Our own extension — see DetectedMark.Spiced.</summary>
     public bool Spiced { get; set; }
 
-    /// <summary>
-    /// Our own extension — the world the mark was scouted on.
-    ///
-    /// Hunt Helper's shape has no room for this, because Hunt Helper does not
-    /// treat the world as part of a mark's identity. This plugin does: the same
-    /// mark is up on every world at once, and they are different marks. Without
-    /// it every imported code had to be assumed to be for wherever the importer
-    /// happened to be standing, which is wrong the moment two scouts on two
-    /// worlds send their lists to one conductor — exactly the case a train is
-    /// most likely to hit.
-    ///
-    /// Both id and name travel. The id is what identity is keyed on; the name
-    /// is what a conductor reads on the row, and resolving it back from an id
-    /// needs the importer to be able to see that world in its own data.
-    /// </summary>
+    /// <summary>The world is part of a mark’s identity.</summary>
     public uint WorldId { get; set; }
 
     public string WorldName { get; set; } = string.Empty;
 }
 
 /// <summary>
-/// Import/export of train lists using Hunt Helper's own encoding — gzip the
-/// JSON, then base64 it. Adapted from HuntHelper/Utilities/ExportImport.cs
-/// (img02/HuntHelper, MIT licensed).
-///
-/// The extra fields this adds ride along harmlessly in both directions:
-/// Newtonsoft ignores properties it does not know, so a code from here still
-/// imports into Hunt Helper, and one from Hunt Helper still imports here with
-/// the extras simply left at their defaults.
+/// HHE train import/export using gzip-compressed JSON encoded as base64.
+/// Encoding adapted from HuntHelper/Utilities/ExportImport.cs (img02/HuntHelper, MIT).
 /// </summary>
 public static class TrainExchange
 {
@@ -140,7 +112,7 @@ public static class TrainExchange
                 IsCustom = m.IsCustom,
                 ZoneName = m.ZoneName,
                 Spiced = m.Spiced,
-                // Zero for a Hunt Helper code, or one exported before this
+                // Zero for an older code exported before this
                 // field existed. Left as it arrives rather than guessed at
                 // here — MarkDetector.Merge is where a world-less import gets
                 // stamped with the importer's own, and it is the only place

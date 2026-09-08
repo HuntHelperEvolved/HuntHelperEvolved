@@ -1,7 +1,7 @@
 # Development
 
-Hunt Helper Evolved runs independently of Hunt Helper. Existing IPC contracts,
-configuration names and namespaces are retained for compatibility.
+Hunt Helper Evolved runs independently of Hunt Helper. HHE IPC contracts, configuration names and namespaces are retained. It does not
+check for Hunt Helper or register its IPC endpoints.
 
 ## Source layout
 
@@ -13,7 +13,7 @@ configuration names and namespaces are retained for compatibility.
 | `Maps/` | Map overlays, coordinates, flags and aetheryte selection |
 | `Train/` | Local train tracking, progression and completion guards |
 | `Reports/` | Scouting/train reports, report history and Discord delivery |
-| `Interop/` | Compatible IPC records, train exchange and providers |
+| `Interop/` | HHE IPC records, train exchange and providers |
 | `Sync/` | Server client, shared state, timer windows and Lifestream travel |
 | `Tally/` | Per-character lifetime kill tallies |
 | `tests/` | Automated regression tests |

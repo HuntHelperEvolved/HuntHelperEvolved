@@ -7,58 +7,15 @@ using System.Linq;
 
 namespace HuntHelperEvolved;
 
-/// <summary>
-/// Publishes the train over Dalamud IPC, so other plugins can read it and add
-/// to it.
-///
-/// Two sets of gates, for two different readers:
-///
-///   HuntHelperEvolved.*  always. This plugin's own contract, for anything
-///                        written against it deliberately.
-///
-///   HH.*                 only when Hunt Helper is not installed. Everything
-///                        already written to integrate with hunt trains talks
-///                        to Hunt Helper, and asking every one of those authors
-///                        to add a second code path is not a plan. The gates
-///                        answer with the same names, the same signatures and
-///                        the same record shape, so a consumer cannot tell the
-///                        difference and does not have to.
-///
-/// The absence check is the same rule the /hh command aliases follow, and for a
-/// stronger reason. A Dalamud call gate is keyed by name across the whole
-/// process: registering one Hunt Helper already holds does not fail loudly, it
-/// quietly takes it over, and every plugin asking Hunt Helper for its train
-/// would start getting this one's instead. Claiming a gate is only ever safe
-/// when nobody else wants it.
-///
-/// Checked once, at load, exactly as the commands are. Hunt Helper being
-/// installed mid-session is a restart either way.
-/// </summary>
+/// <summary>Publishes HHE's train through its own Dalamud IPC endpoints.</summary>
 public sealed class TrainIpcProvider : IDisposable
 {
-    /// <summary>
-    /// The version of the HH.* contract implemented here. Hunt Helper's own
-    /// GetVersion returns 1, and this answers the same because it is the same
-    /// contract — the number describes the shape of the gates, not which plugin
-    /// happens to be answering them.
-    /// </summary>
-    private const uint HuntHelperApiVersion = 1;
-
-    /// <summary>
-    /// Bumped when one of this plugin's own gates changes signature. Separate
-    /// from the number above, which is not ours to move.
-    /// </summary>
+    /// <summary>Version of the HHE IPC contract.</summary>
     public const int ApiVersion = 2;
 
     private const string OwnApiVersionGate = "HuntHelperEvolved.ApiVersion";
     private const string OwnGetTrainListGate = "HuntHelperEvolved.GetTrainList";
     private const string OwnImportTrainListGate = "HuntHelperEvolved.ImportTrainList";
-
-    // Hunt Helper's own names and signatures, from
-    // HuntHelper/Managers/IpcSystem.cs (img02/HuntHelper, MIT).
-    private const string HhGetVersionGate = "HH.GetVersion";
-    private const string HhGetTrainListGate = "HH.GetTrainList";
-    private const string HhImportTrainListGate = "HH.ImportTrainList";
 
     private bool _disposed;
     private readonly MarkDetector _detector;
@@ -67,15 +24,8 @@ public sealed class TrainIpcProvider : IDisposable
     private ICallGateProvider<List<NativeTrainRecord>>? _nativeGet;
     private ICallGateProvider<List<NativeTrainRecord>, bool>? _nativeImport;
     private ICallGateProvider<int>? _ownApiVersion;
-    private ICallGateProvider<List<HuntHelperMobRecord>>? _ownGetTrainList;
-    private ICallGateProvider<List<HuntHelperMobRecord>, bool>? _ownImportTrainList;
-
-    private ICallGateProvider<uint>? _hhGetVersion;
-    private ICallGateProvider<List<HuntHelperMobRecord>>? _hhGetTrainList;
-    private ICallGateProvider<List<HuntHelperMobRecord>, bool>? _hhImportTrainList;
-
-    /// <summary>Whether the Hunt Helper gate names were claimed.</summary>
-    public bool ClaimedHuntHelperGates { get; }
+    private ICallGateProvider<List<TrainMobRecord>>? _ownGetTrainList;
+    private ICallGateProvider<List<TrainMobRecord>, bool>? _ownImportTrainList;
 
     public TrainIpcProvider(
         IDalamudPluginInterface pluginInterface, MarkDetector detector, IPluginLog log)
@@ -94,47 +44,21 @@ public sealed class TrainIpcProvider : IDisposable
             _nativeImport = pluginInterface.GetIpcProvider<List<NativeTrainRecord>, bool>("HuntHelperEvolved.ImportTrainListV2");
             _nativeImport.RegisterAction(ImportNative);
 
-            _ownGetTrainList = pluginInterface.GetIpcProvider<List<HuntHelperMobRecord>>(OwnGetTrainListGate);
+            _ownGetTrainList = pluginInterface.GetIpcProvider<List<TrainMobRecord>>(OwnGetTrainListGate);
             _ownGetTrainList.RegisterFunc(GetTrainList);
 
             _ownImportTrainList = pluginInterface
-                .GetIpcProvider<List<HuntHelperMobRecord>, bool>(OwnImportTrainListGate);
+                .GetIpcProvider<List<TrainMobRecord>, bool>(OwnImportTrainListGate);
             _ownImportTrainList.RegisterAction(ImportTrainList);
         }
         catch (Exception ex)
         {
             _log.Error(ex, "Could not publish this plugin's own IPC gates.");
         }
-
-        ClaimedHuntHelperGates = !HuntHelperIpc.IsHuntHelperInstalled(pluginInterface);
-        if (!ClaimedHuntHelperGates)
-        {
-            _log.Information("Hunt Helper is installed, so it keeps the HH.* IPC gates.");
-            return;
-        }
-
-        try
-        {
-            _hhGetVersion = pluginInterface.GetIpcProvider<uint>(HhGetVersionGate);
-            _hhGetVersion.RegisterFunc(() => HuntHelperApiVersion);
-
-            _hhGetTrainList = pluginInterface.GetIpcProvider<List<HuntHelperMobRecord>>(HhGetTrainListGate);
-            _hhGetTrainList.RegisterFunc(GetTrainList);
-
-            _hhImportTrainList = pluginInterface
-                .GetIpcProvider<List<HuntHelperMobRecord>, bool>(HhImportTrainListGate);
-            _hhImportTrainList.RegisterAction(ImportTrainList);
-
-            _log.Information("Hunt Helper is absent, so its IPC gates are answered here.");
-        }
-        catch (Exception ex)
-        {
-            _log.Error(ex, "Could not answer Hunt Helper's IPC gates.");
-        }
     }
 
     /// <summary>
-    /// The train, in the record shape Hunt Helper's consumers already parse.
+    /// The train in the original HHE IPC record shape.
     ///
     /// Custom flags are left out. They are rally points a conductor dropped for
     /// people to walk to, not marks, and a consumer reading this expects marks
@@ -143,13 +67,13 @@ public sealed class TrainIpcProvider : IDisposable
     /// Never throws: this runs inside somebody else's plugin's call, and an
     /// exception here would surface there as a fault in their code.
     /// </summary>
-    private List<HuntHelperMobRecord> GetTrainList()
+    private List<TrainMobRecord> GetTrainList()
     {
         try
         {
             return _detector.Ordered()
                 .Where(m => !m.IsCustom)
-                .Select(m => new HuntHelperMobRecord(
+                .Select(m => new TrainMobRecord(
                     m.Name, m.NameId, m.TerritoryId, m.MapId, m.Instance,
                     m.MapPosition, m.Dead, m.LastSeenUtc))
                 .ToList();
@@ -157,7 +81,7 @@ public sealed class TrainIpcProvider : IDisposable
         catch (Exception ex)
         {
             _log.Error(ex, "Could not build the train list for an IPC caller.");
-            return new List<HuntHelperMobRecord>();
+            return new List<TrainMobRecord>();
         }
     }
 
@@ -165,11 +89,11 @@ public sealed class TrainIpcProvider : IDisposable
     /// Folds an incoming list into the train, on the same terms as pasting an
     /// import code: existing marks win, and nothing already here is overwritten.
     ///
-    /// The world is not in this shape — it is not in Hunt Helper's either — so
+    /// The original contract has no world field, so
     /// MarkDetector.Merge stamps these with the world the player is on, which
     /// is the only world an IPC caller could sensibly have meant.
     /// </summary>
-    private void ImportTrainList(List<HuntHelperMobRecord> incoming)
+    private void ImportTrainList(List<TrainMobRecord> incoming)
     {
         try
         {
@@ -222,15 +146,8 @@ public sealed class TrainIpcProvider : IDisposable
         try { _ownGetTrainList?.UnregisterFunc(); } catch { /* already gone */ }
         try { _ownImportTrainList?.UnregisterAction(); } catch { /* already gone */ }
 
-        try { _hhGetVersion?.UnregisterFunc(); } catch { /* already gone */ }
-        try { _hhGetTrainList?.UnregisterFunc(); } catch { /* already gone */ }
-        try { _hhImportTrainList?.UnregisterAction(); } catch { /* already gone */ }
-
         _ownApiVersion = null;
         _ownGetTrainList = null;
         _ownImportTrainList = null;
-        _hhGetVersion = null;
-        _hhGetTrainList = null;
-        _hhImportTrainList = null;
     }
 }

@@ -26,8 +26,8 @@ Used here:
   `Gui/MapUI.cs`. The implementation here is its own, but the behaviour is
   deliberately theirs.
 
-Hunt Helper Evolved retains compatible train export and IPC record shapes for
-other plugins. It manages its own train without requiring Hunt Helper.
+The train export encoding was adapted from Hunt Helper’s
+`Utilities/ExportImport.cs`. HHE manages its own train and IPC endpoints.
 
 ```
 MIT License

@@ -19,6 +19,15 @@ configuration before testing. Build and automated test instructions are in the
   window outside timed conditions, and green when both align. Active S ranks
   retain their highlight. Manual spawn actions are still required.
 
+## Standalone commands and IPC
+
+- Check `/hh`, `/hht`, `/hhn`, `/hhna` and `/hhc` without Hunt Helper installed.
+  Repeat with it installed but disabled; HHE shortcuts should still work.
+- If another plugin holds a shortcut, HHE should leave it alone, including when
+  HHE unloads. The `/htr` commands remain available.
+- IPC consumers should use `HuntHelperEvolved.*`; verify V2 train reads/imports.
+  HHE no longer provides Hunt Helper's `HH.*` endpoints.
+
 ## Shared trains and mapping
 
 - Split scouting between two users; check order, expansion grouping and automatic

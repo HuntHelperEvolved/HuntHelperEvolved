@@ -1,8 +1,5 @@
-using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
-using System.IO;
-using System.IO.Compression;
 using System.Linq;
 using System.Text;
 
@@ -10,27 +7,6 @@ namespace HuntHelperEvolved;
 
 public static class ScoutingReport
 {
-    /// <summary>
-    /// Produces a code string in the exact same format Hunt Helper's own
-    /// train Export/Import feature uses — gzip-compressed JSON, base64-encoded —
-    /// so it can be pasted straight into another player's Hunt Helper import box.
-    /// Mirrors HuntHelper/Utilities/ExportImport.cs (img02/HuntHelper).
-    /// </summary>
-    public static string BuildExportCode(List<HuntHelperMobRecord> marks)
-    {
-        var json = JsonConvert.SerializeObject(marks);
-        var bytes = Encoding.UTF8.GetBytes(json);
-
-        using var input = new MemoryStream(bytes);
-        using var output = new MemoryStream();
-        using (var gzip = new GZipStream(output, CompressionMode.Compress))
-        {
-            input.CopyTo(gzip);
-        }
-
-        return Convert.ToBase64String(output.ToArray());
-    }
-
     /// <summary>
     /// One block per expansion with at least one mark in the current scout (ARR ->
     /// Dawntrail order): a bolded "N marks up" count, a "Down:" line for any
@@ -45,7 +21,7 @@ public static class ScoutingReport
     /// zone splits across extra instances, and a scout-only total reads as
     /// misleadingly "complete."
     /// </summary>
-    public static string BuildSummary(List<HuntHelperMobRecord> marks)
+    public static string BuildSummary(List<TrainMobRecord> marks)
     {
         var withInfo = marks
             .Select(m => (Mark: m, Info: ExpansionData.Lookup(m.MobID)))

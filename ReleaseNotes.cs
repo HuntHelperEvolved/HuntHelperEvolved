@@ -34,8 +34,9 @@ public static class ReleaseNotes
 
     public static readonly Release[] All =
     {
-        new("0.5.0.5", "2026-09-08", "Sortable, consistent hunt timer windows.",
+        new("0.5.0.5", "2026-09-08", "Standalone commands and consistent hunt timer windows.",
         [
+            new("Standalone", "Removed Hunt Helper IPC emulation and installation checks. /hh, /hht, /hhn, /hhna and /hhc are native HHE shortcuts; HHE IPC and train sharing remain available.", Kihtli),
             new("Timers", "Click S- or A-rank table headers to sort ascending, descending, or restore automatic priority. Dates and numbers sort by their values; unknown values stay last. Right-click headers to choose columns.", Kihtli),
             new("A ranks", "The A-rank timer board shares the S-rank layout, progress bars, colours and time formatting, while retaining world/expansion/instance filters and bounded sniped timers. Active A-ranks use normal row backgrounds, without the S-rank red highlight.", Kihtli),
         ]),
