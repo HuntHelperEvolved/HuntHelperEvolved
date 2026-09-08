@@ -8,3 +8,7 @@ obj/
 *.pdb
 .DS_Store
 release-staging/
+
+# Generated test reports and process memory dumps
+**/TestResults/
+*.dmp

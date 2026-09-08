@@ -225,9 +225,11 @@ configuration for explicit upload from the Sync tab. Shared-row edits made while
 offline are replaced by server state. Blank display aliases send Anonymous.
 All password holders can edit, reorder and clear the shared train.
 
-This testing branch uses protocol 4; the complete feature set requires server 0.3.11 or newer. Run
+Sync uses protocol 4; the current feature set requires server 0.3.13 or newer. Run
 `dotnet test tests/HuntHelperEvolved.Sync.Tests -c Release` for transport and
-timer tests. See SYNC-REVIEW.md for the review and testing boundaries.
+timer tests. See [TESTING.md](TESTING.md) for in-game checks and
+[the development guide](docs/DEVELOPMENT.md) for source layout and validation.
+
 ## Talking to other plugins
 
 The train is published over Dalamud IPC, so other plugins can read it and add to
@@ -278,7 +280,7 @@ than both writing it — you'll get a warning saying so.
 `dotnet build -c Release`. The release artifact is
 `bin/Release/HuntHelperEvolved/latest.zip`.
 
-On macOS or Linux run `./build-macos.sh` instead — the Dalamud SDK only finds
+On macOS or Linux run `./scripts/build-macos.sh` instead — the Dalamud SDK only finds
 `Dalamud.dll` by itself on Windows, and the script points `DALAMUD_HOME` at the
 usual XIV on Mac and XIVLauncher.Core locations.
 

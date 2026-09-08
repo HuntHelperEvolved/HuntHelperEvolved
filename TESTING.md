@@ -1,56 +1,70 @@
-# Beta 0.5.0.3 / server 0.3.13
+# Testing checklist
 
-Testing-exclusive beta release; update through the existing main installer feed.
+Use the testing feed in [README.md](README.md#install). Back up the plugin
+configuration before testing. Build and automated test instructions are in the
+[development guide](docs/DEVELOPMENT.md).
 
-- Compare /hha sniped Opens/Window end with Discord for a mark seen alive earlier. Unknown lower bounds must remain unknown; repeat after train reset and reconnect.
-- End Train: successful Discord and server acknowledgement reset the unchanged train with Undo. Failed Discord, old/unavailable server, or a concurrent mark/order/watch edit must retain it. A lost acknowledgement may leave an already-reset train; inspect state and use Undo rather than immediately reposting Discord.
-- Active Marks: verify zone, visible player count within 50 yalms (including self), expiry, unknown counts from older observers, and Faloop elapsed time. Multiple scouts must not inflate the count.
-- Two scouts add live marks; combine and deduplicate their configured sync display names with manual credits. Credits persist across reconnect and clear with the train. Manual credits accumulate until reset.
-- Collapse/reopen the train controls and scouts, including after plugin reload. The train list and End Train footer remain usable.
-- S-rank name colours: grey before the timer/when unknown, red in an open respawn window outside timed conditions, green when timer and timed conditions align. Manual actions are still required; active rows retain their highlight.
+## Timer windows
 
-# 0.5.0-beta.2 hotfix
+- In `/hhs` and `/hha`, sort each visible data column in both directions, then
+  clear sorting to restore automatic order. Check numeric values and dates sort
+  correctly, with unknown values last. Check column visibility after reopening.
+- Compare A-rank sniped window bounds against Discord, including after train reset
+  and reconnect. Unknown lower bounds must remain unknown. Join after a completed
+  train with empty local history and train sharing disabled; history should load.
+- Check multiple world/expansion filters, progress bars and instance separation.
+  Uninstanced cells are blank and an unused instance column disappears. A-rank
+  rows keep their normal background when a mark is up.
+- S-rank names are grey before the timer or when unknown, red in an open respawn
+  window outside timed conditions, and green when both align. Active S ranks
+  retain their highlight. Manual spawn actions are still required.
 
-A-rank cooldowns now load server kill history on connection, including after train resets and server restarts. Requires server 0.3.12. Test joining after a completed/reset train with an empty local history and with train sharing disabled; check each world and instance separately. Kill history cleared before the server upgrade cannot be recovered.
+## Shared trains and mapping
 
-# 0.5.0-beta.1
+- Split scouting between two users; check order, expansion grouping and automatic
+  opening of the next unfinished expansion. Combine automatic scout names with
+  manual credits without duplicates; check reconnect and clearing with the train.
+- Collapse and reopen train controls/scouts, including after plugin reload. The
+  train list and End Train footer should remain usable.
+- End Train should reset an unchanged train after successful Discord submission
+  and server acknowledgement. Failed Discord, an old/unavailable server, or a
+  concurrent train edit must retain it. A lost acknowledgement can leave an
+  already-reset train: inspect state before reposting Discord.
+- Use Undo after reset. It restores locally and disables train sharing for that
+  user, protecting everyone else's train from the restored copy.
+- Scout A/B marks and check mapping excludes their spots in the reliable S-rank
+  kill cycle. Check possible-spot outlines and the final confirmed spot.
+- Compare personal and group kill counts when killing separately and together.
+  Nearby observers must not double-count. Local Reset stays local; Reset shared
+  starts a new group attempt.
 
-This beta runs independently of Hunt Helper. Existing native trains and
-tallies are retained. Back up the plugin configuration before updating.
-The installer URL is in [README.md](README.md#install). This beta uses the main
-repository feed and remains testing-exclusive. Existing users can update normally.
+## Active marks, alerts and travel
 
-## What to test with your group
+- In `/hhsa` or `/hhv`, check All/S/A/B tabs, zone, HP and filters. Green means
+  unpulled, orange pulled, red dead, blue a Faloop report without live feedback.
+  Grey means unknown combat state; unknown HP is shown as `?%`.
+- Check nearby counts (`[number]` or `[?]`) within 50 yalms, including self.
+  Counts use cached nearby-player observations, including players no longer
+  rendered; departed players can remain estimated until context changes. Multiple
+  scouts must not inflate counts. Verify cache resets on zone/world/instance
+  changes and logout, while live mark observations still expire within 3 seconds.
+- Check Faloop elapsed time, FOUND/RELAY chat map links, duplicate suppression for
+  your own detection, and cross-DC alert filters.
+- Check map clicks and Lifestream travel from active marks and Ctrl-clicking timer
+  names, including a spawn attempt without exact coordinates. One action should
+  complete world and aetheryte travel. Instance selection remains manual.
 
-- Split scouting between two users; check train order and expansion grouping.
-  Group headings count marks, and the next unfinished expansion opens automatically.
-- Reset a shared train and use Undo to recover locally. Undo turns off train sharing
-  for the restoring user, so restoring does not overwrite everyone else's train.
-- Compare S-rank windows and spawn-condition countdowns in `/hhs`; scout A/B marks
-  and check that mapping rules out spots in the current reliable kill cycle.
-- Check `/hha` separates instances. Uninstanced cells are blank.
-- Open `/hhsa` or `/hhv`: Active Marks has All/S/A/B tabs, with HP after the name.
-  Green is unpulled, orange pulled, red dead, blue a Faloop report without live
-  feedback. Grey is a live report with unknown combat state; ?% means unknown HP.
-  Hover for details, click for the map, Ctrl-click or right-click for Lifestream.
-  Configure world/DC, expansion and status filters on the main Sync tab.
-- Compare `your count (group count)` while killing trigger mobs separately and
-  together. Only personal kill messages contribute; nearby observers do not
-  double-count. Local Reset stays local; Reset shared starts a new group attempt.
-- Verify FOUND/RELAY chat map links, cross-DC alert filters and one-click world plus
-  aetheryte travel. Instance selection after travelling remains manual.
+## Compatibility and reporting
 
-## Limits to keep in mind
+Sync uses protocol 4. Use server 0.3.13 or newer for acknowledged train completion
+and the current feature set. Server address/password are supplied privately.
+Community reports do not establish live visibility or known HP. First-seen
+corpses do not establish exact kill times. Faloop integration can change upstream.
+Offline shared-row edits are replaced by server state on reconnect. Pending
+counter contributions survive reconnect to a capable server, but a shared reset
+discards contributions for the previous attempt.
 
-A matching private group server is required for sync (0.3.11 or newer). Its address
-and password are supplied separately. The server repository is private.
-Live observations expire within three seconds without updates; community reports
-do not imply live visibility or known HP. First-seen corpses do not establish an
-exact kill time. Faloop integration is experimental and may change upstream.
-Shared-row edits made offline are replaced by server state on reconnect. Pending
-kill-counter contributions are retained after joining a capable server, but a
-shared reset discards contributions belonging to the previous attempt.
-
-When reporting a problem, include plugin/server version, mark, world, instance,
-expected behaviour and actual behaviour. Remove passwords, webhook URLs, character
-names and other private information from logs/screenshots before posting.
+Automated tests use local fixtures and loopback servers; in-game group testing is
+separate. Include versions, mark, world, instance and expected/actual behaviour in
+reports. Remove passwords, webhook URLs, character names and other private data
+from logs and screenshots before posting.

@@ -14,11 +14,11 @@ licence requires.
 
 Used here:
 
-- `Data/SpawnPointData.json` is a verbatim copy of Hunt Helper's file of the
-  same name. `SpawnPointData.cs` is that data converted to source.
-- Territory ids in `SRankZoneReminder.cs` and elsewhere are taken from Hunt
+- `GameData/SpawnPointData.cs` contains Hunt Helper's `Data/SpawnPointData.json`
+  converted to source.
+- Territory ids in `Detection/SRankZoneReminder.cs` and elsewhere are taken from Hunt
   Helper's `Enums.cs`.
-- Mark names and ids in `SRankData.cs` and `OtherRankData.cs` are taken from
+- Mark names and ids in `GameData/SRankData.cs` and `GameData/OtherRankData.cs` are taken from
   Hunt Helper's bundled `Data/*-A.json`, `*-B.json` and `*-S.json`.
 - The map overlay's design — the detection circle at two map coordinates, the
   projected path drawn at the circle's diameter, the heading line and the
@@ -26,8 +26,8 @@ Used here:
   `Gui/MapUI.cs`. The implementation here is its own, but the behaviour is
   deliberately theirs.
 
-Hunt Helper Evolved also reads Hunt Helper's train over its IPC at runtime, and
-Hunt Helper remains a separate plugin worth having.
+Hunt Helper Evolved retains compatible train export and IPC record shapes for
+other plugins. It manages its own train without requiring Hunt Helper.
 
 ```
 MIT License
@@ -60,8 +60,8 @@ SOFTWARE.
 <https://github.com/MidoriKami/KamiToolKit>
 
 Referenced as a NuGet package and **redistributed** — `KamiToolKit.dll` ships
-inside the release archive. Used by `HuntMapOverlay.cs` and
-`WorldSizedMarker.cs` to draw markers over the game's own map.
+inside the release archive. Used by `Maps/HuntMapOverlay.cs` and
+`Maps/WorldSizedMarker.cs` to draw markers over the game's own map.
 
 Its licence is MIT. The package's own copy of that licence travels with it; see
 the project above for the authoritative text.
@@ -72,7 +72,7 @@ the project above for the authoritative text.
 
 <https://faloop.app/>
 
-The SS event coordinates in `SsMinionSpawns.cs` — four minion spots and one
+The SS event coordinates in `GameData/SsMinionSpawns.cs` — four minion spots and one
 mark spawn for each of the eighteen ShB, EW and DT hunt zones — were taken from
 Faloop's published hunt data. Facts about the game rather than code, recorded
 here so their source is not lost.
