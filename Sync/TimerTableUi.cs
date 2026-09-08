@@ -24,6 +24,12 @@ public static class TimerTableUi
         specs.SpecsDirty=false;
         return TimerTableSort.Apply(rows, row=>key(row,column),descending);
     }
+    public static void StrikeLastItem()
+    {
+        var min = ImGui.GetItemRectMin(); var max = ImGui.GetItemRectMax();
+        var y = (min.Y + max.Y) / 2;
+        ImGui.GetWindowDrawList().AddLine(new Vector2(min.X, y), new Vector2(max.X, y), ImGui.ColorConvertFloat4ToU32(Cooldown));
+    }
     public static void Progress(double percent)
     {
         ImGui.PushStyleColor(ImGuiCol.PlotHistogram,Window * new Vector4(1f,1f,1f,0.8f));

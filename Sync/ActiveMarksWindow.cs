@@ -61,7 +61,8 @@ public sealed class ActiveMarksWindow(Configuration config, SyncCoordinator sync
             var dc=worlds.LocateWorld(row.Mark.WorldId) is { } loc ? worlds.DataCenters[loc.DcIndex] : default;
             var expansion=SRankTimerData.ForTerritory(row.Mark.TerritoryId)?.Expansion ?? "Unknown";
             return (Row:row,Dc:dc,Expansion:expansion,World:worlds.NameOf(row.Mark.WorldId),Zone:detector.GetZoneName(row.Mark.TerritoryId));
-        }).Where(r => ActiveMarkRows.MatchesTab(r.Row.Mark.Rank,tab) && ActiveMarkRows.Matches(r.Row,config.VisibleMarkFilters,sync.ClientId,now,r.Dc.Id,r.Expansion))
+        }).Where(r => !sync.Faloop.IsOffline(r.World) && sync.Faloop.CurrentInstances(r.Row.Mark.TerritoryId, new[] { r.Row.Mark.Instance }).Contains(r.Row.Mark.Instance))
+          .Where(r => ActiveMarkRows.MatchesTab(r.Row.Mark.Rank,tab) && ActiveMarkRows.Matches(r.Row,config.VisibleMarkFilters,sync.ClientId,now,r.Dc.Id,r.Expansion))
           .Where(r => (r.Row.Mark.Name+" "+r.World+" "+r.Zone+" "+r.Dc.Name+" "+string.Join(" ",r.Row.Visible?.Observers??new List<string>())).Contains(_search,StringComparison.OrdinalIgnoreCase))
           .OrderBy(r => r.Row.HealthKnown && r.Row.Mark.HpPercent==0).ThenByDescending(r => r.Row.Mark.InCombat==true)
           .ThenBy(r => r.World).ThenBy(r => r.Zone).ThenBy(r => r.Row.Mark.Name).ThenBy(r => r.Row.Mark.Instance).ToList();
