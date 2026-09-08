@@ -34,6 +34,12 @@ public static class ReleaseNotes
 
     public static readonly Release[] All =
     {
+        new("0.5.0.5", "2026-09-08", "Sortable, consistent hunt timer windows.",
+        [
+            new("Timers", "Click S- or A-rank table headers to sort ascending, descending, or restore automatic priority. Dates and numbers sort by their values; unknown values stay last. Right-click headers to choose columns.", Kihtli),
+            new("A ranks", "The A-rank timer board shares the S-rank layout, progress bars, colours and time formatting, while retaining world/expansion/instance filters and bounded sniped timers. Active A-ranks use normal row backgrounds, without the S-rank red highlight.", Kihtli),
+        ]),
+
         new("0.5.0.4", "2026-09-07", "Nearby-player estimates through character culling.",
         [
             new("Active Marks", "Nearby-player estimates use native character-manager positions and retain them for the zone session, like Sonar. Culled characters remain counted; estimates reset on world/zone/instance changes or logout. Counts appear in brackets; departed players may remain counted until their position updates or the cache resets.", Kihtli),
