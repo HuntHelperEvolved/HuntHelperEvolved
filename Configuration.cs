@@ -163,8 +163,8 @@ public class Configuration : IPluginConfiguration
     /// The last version whose notes were shown. Compared against the running
     /// build to decide whether What's new is worth opening on its own.
     ///
-    /// Empty on a fresh install, which counts as "not seen" and shows the notes
-    /// once — a reasonable introduction to a plugin you have just added.
+    /// Empty on a fresh install, which records the current version without
+    /// opening update notes.
     /// </summary>
     public string LastSeenReleaseVersion { get; set; } = string.Empty;
 

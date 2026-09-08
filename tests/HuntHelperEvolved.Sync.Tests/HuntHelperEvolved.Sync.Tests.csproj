@@ -14,6 +14,7 @@
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.1" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <Compile Include="../../ReleaseNotes.cs" Link="ReleaseNotes.cs" />
     <Compile Include="../../Sync/SharedCounter.cs" Link="SharedCounter.cs" />
     <Compile Include="../../Sync/SpawnConditionData.cs" Link="SpawnConditionData.cs" />
     <Compile Include="../../Sync/ARankHistory.cs" Link="ARankHistory.cs" />

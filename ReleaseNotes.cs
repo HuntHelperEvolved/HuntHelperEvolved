@@ -34,6 +34,10 @@ public static class ReleaseNotes
 
     public static readonly Release[] All =
     {
+        new("0.5.0.6", "2026-09-08", "Restore automatic update release notes.",
+        [
+            new("Updates", "Fixed automatic release notes skipping testing updates because the fourth version number was ignored. Notes now open once when updating, unless disabled in settings.", Kihtli),
+        ]),
         new("0.5.0.5", "2026-09-08", "Maintenance-aware instances, standalone commands and consistent hunt timer windows.",
         [
             new("Maintenance", "Timer boards now show offline worlds and follow Faloop zone instance counts, including newly created instances. Restart clocks use the actual restart time; retired instances remain in history and are hidden from current boards.", Kihtli),
@@ -220,7 +224,7 @@ public static class ReleaseNotes
         var a = Parts(left);
         var b = Parts(right);
 
-        for (var i = 0; i < 3; i++)
+        for (var i = 0; i < 4; i++)
         {
             if (a[i] != b[i]) return a[i].CompareTo(b[i]);
         }
@@ -230,10 +234,10 @@ public static class ReleaseNotes
 
     private static int[] Parts(string version)
     {
-        var parts = new int[3];
+        var parts = new int[4];
         var split = version.Split('.');
 
-        for (var i = 0; i < 3 && i < split.Length; i++)
+        for (var i = 0; i < 4 && i < split.Length; i++)
             _ = int.TryParse(split[i], out parts[i]);
 
         return parts;
