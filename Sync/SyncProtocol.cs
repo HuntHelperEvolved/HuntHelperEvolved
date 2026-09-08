@@ -2,6 +2,7 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Newtonsoft.Json.Serialization;
 using System;
+using System.Linq;
 using System.Collections.Generic;
 
 namespace HuntHelperEvolved.Sync;
@@ -197,6 +198,17 @@ public sealed class SyncWorld
 
 public sealed class SyncFaloopStatus
 {
+    public DateTime? MetadataAt { get; set; }
+    public List<string> OfflineWorlds { get; set; } = new();
+    public Dictionary<uint, int> ZoneInstances { get; set; } = new();
+    public bool IsOffline(string world) => MetadataAt is not null && OfflineWorlds.Contains(world.ToLowerInvariant().Replace(' ', '_'));
+    public List<uint> CurrentInstances(uint territory, IEnumerable<uint> observed)
+    {
+        if (MetadataAt is not null && ZoneInstances.TryGetValue(territory, out var count) && count >= 1 && count <= 9)
+            return count == 1 ? new() { 0 } : Enumerable.Range(1, count).Select(i => (uint)i).ToList();
+        return observed.Distinct().OrderBy(i => i).ToList();
+    }
+
     public DateTime? LastLiveMessageAt { get; set; }
     public DateTime? LastAlertAt { get; set; }
     public bool LiveConnected { get; set; }

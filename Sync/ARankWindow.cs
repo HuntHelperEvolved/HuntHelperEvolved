@@ -78,6 +78,8 @@ public sealed class ARankWindow
             if (world == _detector.CurrentWorldId() && zoneTerritories.Contains(_detector.CurrentTerritoryId))
                 zoneInstances = zoneInstances.Append(MarkDetector.GetCurrentInstance());
             var instances = ARankInstances.Resolve(zoneInstances, kills.Select(k => k.Instance));
+            var territory = zoneTerritories.FirstOrDefault();
+            instances = _sync.Faloop.CurrentInstances(territory, instances);
             foreach (var instance in instances)
             {
                 var kill = kills.FirstOrDefault(k => k.Instance == instance);
@@ -85,7 +87,7 @@ public sealed class ARankWindow
                 var restart = _sync.SRankStatuses.Values.Where(s => s.WorldId == world && s.Maintenance).Select(s => s.KilledAt).Max();
                 var (opens, end) = ARankHistory.Window(kill, info.MinHours, info.MaxHours, restart);
                 var known = opens is not null;
-                if (available && (up || opens is null || now < opens)) continue;
+                if (available && (_sync.Faloop.IsOffline(_worldData.NameOf(world)) || up || opens is null || now < opens)) continue;
                 var afterMaintenance=restart is not null && (kill is null || kill.At <= restart || kill.LastAliveAt <= restart);
                 var state=up ? 0 : !known ? 5 : now >= end ? 1 : now >= opens ? 2 : 4;
                 var percent=known ? Math.Clamp((now-opens!.Value).TotalSeconds/(end!.Value-opens.Value).TotalSeconds*100,0,100) : 0;
@@ -123,15 +125,18 @@ public sealed class ARankWindow
         ImGui.PushID($"{row.World}_{row.NameId}_{row.Instance}");
         ImGui.TableNextRow(); // A-rank UP rows intentionally keep the normal alternating background.
         ImGui.TableNextColumn();
-        ImGui.TextColored(row.Up || row.Opens <= now ? TimerTableUi.Up : TimerTableUi.Cooldown,
+        var offline = _sync.Faloop.IsOffline(_worldData.NameOf(row.World));
+        ImGui.TextColored(!offline && (row.Up || row.Opens <= now) ? TimerTableUi.Up : TimerTableUi.Cooldown,
             row.Info.Name+ExpansionData.InstanceGlyph(row.Instance));
+        if (offline) TimerTableUi.StrikeLastItem();
         if(ImGui.IsItemHovered()) ImGui.SetTooltip($"{row.Info.Expansion} · {row.Info.Location}\nRespawn range: {row.Info.MinHours:0.#}–{row.Info.MaxHours:0.#} hours after death.");
         ImGui.TableNextColumn();ImGui.TextDisabled(_worldData.NameOf(row.World));
         ImGui.TableNextColumn();ImGui.TextDisabled(row.Instance==0 ? "" : $"I{row.Instance}");
         ImGui.TableNextColumn();ImGui.TextDisabled(row.Info.Location);
         ImGui.TableNextColumn();ImGui.TextDisabled(row.Info.Expansion);
         ImGui.TableNextColumn();
-        if(row.Up) ImGui.TextColored(TimerTableUi.Up,"UP");
+        if(offline) ImGui.TextDisabled("OFFLINE / MAINTENANCE");
+        else if(row.Up) ImGui.TextColored(TimerTableUi.Up,"UP");
         else if(row.Opens is null) ImGui.TextColored(TimerTableUi.Unknown,
             row.AfterMaintenance ? "after maintenance / unknown" : row.Kill?.Uncertain==true ? "sniped / unknown" : "no kill recorded");
         else if(now < row.Opens) ImGui.TextColored(TimerTableUi.Cooldown,"opens in "+TimerTableUi.Duration(row.Opens.Value-now));

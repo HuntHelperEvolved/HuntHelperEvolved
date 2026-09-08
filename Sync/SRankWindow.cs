@@ -107,6 +107,9 @@ public sealed class SRankWindow
         var worlds = DrawWorldPicker();
         ImGui.SameLine();
         DrawExpansionFilter();
+        if (worlds.Any(w => _sync.Faloop.IsOffline(_worldData.NameOf(w))))
+            ImGui.TextDisabled("Offline worlds are crossed out. Restart clocks continue while access is closed.");
+
         var available = _config.SRankWindowAvailableOnly;
         if (ImGui.Checkbox("Available to spawn only", ref available)) { _config.SRankWindowAvailableOnly = available; _config.Save(); }
 
@@ -254,6 +257,7 @@ public sealed class SRankWindow
             if (worldId == _detector.CurrentWorldId() && timer.TerritoryId == _detector.CurrentTerritoryId
                 && !instances.Contains(MarkDetector.GetCurrentInstance()))
                 instances.Add(MarkDetector.GetCurrentInstance());
+            instances = _sync.Faloop.CurrentInstances(timer.TerritoryId, instances);
             if (instances.Count == 0) instances.Add(0);
 
             foreach (var instance in instances)
@@ -262,7 +266,7 @@ public sealed class SRankWindow
                 var seenUp = _sync.IsSeenUp(timer.NameId, worldId, instance);
                 seenUp |= status is not null && ActiveSRankFilter.Status(status,seenUp,now) is not null;
                 var cycle = SRankTimerData.Compute(timer, status, now, seenUp);
-                if (_config.SRankWindowAvailableOnly && !seenUp && !SRankBoardFilter.Available(cycle.Phase)) continue;
+                if (_config.SRankWindowAvailableOnly && (_sync.Faloop.IsOffline(_worldData.NameOf(worldId)) || !seenUp && !SRankBoardFilter.Available(cycle.Phase))) continue;
                 rows.Add(new Row(timer, instance, status, cycle, seenUp));
             }
         }
@@ -329,14 +333,16 @@ public sealed class SRankWindow
         var window = row.Window;
         ImGui.PushID($"{worldId}_{timer.NameId}_{row.Instance}");
         ImGui.TableNextRow();
-        if (row.SeenUp)
+        var offline = _sync.Faloop.IsOffline(_worldData.NameOf(worldId));
+        if (row.SeenUp && !offline)
             ImGui.TableSetBgColor(ImGuiTableBgTarget.RowBg0, ImGui.ColorConvertFloat4ToU32(new Vector4(0.65f,0.08f,0.08f,0.65f)));
 
         ImGui.TableNextColumn();
         var nameState=SRankBoardFilter.NameState(window.Phase, SpawnConditionData.HasTimedCondition(timer.Name), ConditionFor(row,now),now);
         var nameColour=nameState switch { SRankNameState.Ready => new Vector4(0.35f,0.95f,0.4f,1),
             SRankNameState.ConditionsUnmet => new Vector4(1f,0.3f,0.3f,1), _ => new Vector4(0.65f,0.65f,0.65f,1) };
-        ImGui.TextColored(nameColour,$"{timer.Name}{ExpansionData.InstanceGlyph(row.Instance)}");
+        ImGui.TextColored(offline ? new Vector4(0.55f,0.55f,0.55f,1) : nameColour,$"{timer.Name}{ExpansionData.InstanceGlyph(row.Instance)}");
+        if (offline) TimerTableUi.StrikeLastItem();
         if (ImGui.IsItemHovered())
         {
             var exact = TravelPosition(row, worldId);
@@ -347,7 +353,7 @@ public sealed class SRankWindow
             var destination = TeleportHelper.NearestTo(timer.TerritoryId, position);
             ImGui.SetTooltip(SpawnConditionData.Description(timer.Name));
             if (ImGui.GetIO().KeyCtrl && ImGui.IsMouseClicked(ImGuiMouseButton.Left)
-                && destination is not null && _travel.Available)
+                && destination is not null && _travel.Available && !offline)
                 _travel.Start(worldId, timer.TerritoryId, position);
         }
 
@@ -360,7 +366,7 @@ public sealed class SRankWindow
         DrawStatusCell(row, worldId, now);
 
         ImGui.TableNextColumn();
-        DrawConditionCell(row, now);
+        DrawConditionCell(row, now, worldId);
 
         ImGui.TableNextColumn();
         ImGui.Text(window.OpensAtUtc is { } opens ? Local(opens) : "—");
@@ -392,8 +398,9 @@ public sealed class SRankWindow
         }
         return window;
     }
-    private void DrawConditionCell(Row row, DateTime now)
+    private void DrawConditionCell(Row row, DateTime now, uint worldId)
     {
+        if (_sync.Faloop.IsOffline(_worldData.NameOf(worldId))) { ImGui.TextDisabled("Offline"); return; }
         var gate=row.Window.OpensAtUtc;
         var reliable=row.Status?.KilledAt is not null && !row.Status.Uncertain;
         if(row.Window.Phase==SRankPhase.Up) { ImGui.TextDisabled("Already reported up"); return; }
@@ -417,6 +424,8 @@ public sealed class SRankWindow
 
     private void DrawStatusCell(Row row, uint worldId, DateTime now)
     {
+        if (_sync.Faloop.IsOffline(_worldData.NameOf(worldId)))
+        { ImGui.TextDisabled("OFFLINE / MAINTENANCE"); return; }
         var w = row.Window;
         switch (w.Phase)
         {
