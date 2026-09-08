@@ -46,15 +46,9 @@ why.
 | `/hhs` or `/htrs` | the S-rank board — windows, kill times and spawn points, shared through sync |
 | `/hunttally` | the kill tally. `/hunttally config` for its settings |
 
-If **Hunt Helper is not installed**, this plugin also answers to its commands,
-so you can carry the muscle memory over: `/hh` opens the main window, `/hht` the
-train list, `/hhn` moves to the next live mark and flags it, `/hhna` names the
-closest aetheryte to it, and `/hhc` opens the counter. They are only claimed
-when Hunt Helper is absent — if you still have it installed, it keeps them.
-
-`/hh1`, `/hh2`, `/hh1save`, `/hh2save` and `/hhr` are left alone: they save and
-apply Hunt Helper's map-window presets and open its spawn point recorder, and
-there is nothing here that does either.
+HHE also provides `/hh` for the main window, `/hht` for the train list,
+`/hhn` to flag the next live mark, `/hhna` for its nearest aetheryte, and `/hhc`
+for the counter. A shortcut already held by another plugin is left alone.
 
 ## Release notes
 
@@ -161,7 +155,7 @@ only reaches as far as the fight. One the group brought down while you were
 still running in used to stay lit as though it were up, and the report is built
 from this list.
 
-The **Scout** tab posts a report with a Hunt Helper import code and a per-
+The **Scout** tab posts a report with an HHE import code and a per-
 expansion count of what's up, including what was found already dead.
 
 ## The tally
@@ -232,16 +226,11 @@ timer tests. See [TESTING.md](TESTING.md) for in-game checks and
 
 ## Talking to other plugins
 
-The train is published over Dalamud IPC, so other plugins can read it and add to
-it. When **Hunt Helper is not installed** its own gates are answered here —
-`HH.GetVersion`, `HH.GetTrainList` and `HH.ImportTrainList`, with the same
-signatures and the same record shape — so anything already written to integrate
-with Hunt Helper works unchanged. They are left alone if it is installed, since
-a call gate is claimed process-wide and taking one it holds would quietly
-redirect every plugin asking it for its train.
-
-`HuntHelperEvolved.ApiVersion`, `.GetTrainList` and `.ImportTrainList` are
-published either way. **Settings → About** says which state you're in.
+HHE publishes its own Dalamud IPC endpoints: `HuntHelperEvolved.ApiVersion`,
+`.GetTrainListV2` and `.ImportTrainListV2`. The V2 records include world identity
+and observed death/sniped timestamps. The original HHE `.GetTrainList` and
+`.ImportTrainList` endpoints remain available for existing HHE consumers.
+Hunt Helper's `HH.*` endpoints are no longer registered.
 
 ## Where this came from
 
@@ -257,7 +246,7 @@ closely on a third:
 - **[Hunt Helper](https://github.com/img02/HuntHelper)** by img02 (MIT) — the
   spawn point data, the territory ids, and the map's design, which the range
   circle, projected path, heading line and position dot follow deliberately.
-  Hunt Helper is still a fine plugin and this one reads its train over IPC.
+  Its data and design contributions are credited in the third-party notices.
 
 SS minion and mark spawn coordinates are from [Faloop](https://faloop.app/).
 

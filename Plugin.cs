@@ -32,24 +32,14 @@ public sealed class Plugin : IDalamudPlugin
     private const string MapCommand = "/htrm";
     private const string SRankCommand = "/htrs";
 
-    /// <summary>
-    /// Hunt Helper's own commands, taken over only when Hunt Helper itself is
-    /// not installed, so this plugin is a drop-in for someone who has replaced
-    /// it and still has the muscle memory.
-    ///
-    /// Its /hh1, /hh2, /hh1save and /hh2save save and apply map-window presets,
-    /// and /hhr opens a spawn point recorder. There is nothing here that does
-    /// either, so those are left unclaimed rather than answered with an
-    /// apology — typing one gets the game's ordinary unknown-command reply, and
-    /// the names stay free if those features ever arrive.
-    /// </summary>
-    private static readonly (string Command, string Help)[] HuntHelperAliases =
+    /// <summary>Short commands for HHE windows and train actions.</summary>
+    private static readonly (string Command, string Help)[] ShortCommands =
     {
-        ("/hh", "Open the main window. Hunt Helper's own command, taken over because it isn't installed."),
-        ("/hht", "Open the train list popout. Hunt Helper's /hht."),
-        ("/hhn", "Move to the next live mark in the train and flag it. Hunt Helper's /hhn."),
-        ("/hhna", "Name the closest aetheryte to the next mark. Hunt Helper's /hhna."),
-        ("/hhc", "Open the trigger-mob counter popout. Hunt Helper's /hhc."),
+        ("/hh", "Open the main window."),
+        ("/hht", "Open the train list popout."),
+        ("/hhn", "Move to the next live mark in the train and flag it."),
+        ("/hhna", "Name the closest aetheryte to the next mark."),
+        ("/hhc", "Open the trigger-mob counter popout."),
     };
 
     /// <summary>Which aliases were actually claimed, so Dispose gives back exactly those.</summary>
@@ -433,7 +423,7 @@ public sealed class Plugin : IDalamudPlugin
         _commandManager.AddHandler("/hhs", new CommandInfo(OnSRankCommand)
         { HelpMessage = "Open the S-rank board with world, expansion and availability filters." });
         _commandManager.AddHandler("/hha", new CommandInfo((_, _) => _arankWindow.Toggle()) { HelpMessage = "Open the A-rank respawn window board." });
-        RegisterHuntHelperAliases();
+        RegisterShortCommands();
 
         _commandManager.AddHandler(TallyCommand, new CommandInfo(OnTallyCommand)
         {
@@ -647,7 +637,7 @@ public sealed class Plugin : IDalamudPlugin
             if (ImGui.Checkbox("S##flyrank", ref fS)) { _config.FlyTextSRanks = fS; _config.Save(); }
             ImGui.SameLine();
             ImGui.TextDisabled("which ranks");
-            ImGui.TextDisabled("The rank and the name are drawn in Hunt Helper's own two colours; there is nothing to set.");
+            ImGui.TextDisabled("The rank and name use fixed chat colours.");
             ImGui.Unindent();
         }
 
@@ -713,7 +703,7 @@ public sealed class Plugin : IDalamudPlugin
         ImGui.TextDisabled("<notoriousmonster> <exclamationrectangle> <priorityworld>");
         ImGui.TextDisabled("<elementallevel> <fanfestival> <controllerbutton0> <controllerbutton1>");
         ImGui.Spacing();
-        ImGui.TextDisabled("Same names Hunt Helper uses, so a message pasted from it reads the same.");
+        ImGui.TextDisabled("Use these placeholders in your notification messages.");
 
         ImGui.TreePop();
     }
@@ -811,7 +801,7 @@ public sealed class Plugin : IDalamudPlugin
 
     private async Task SendScoutingReportAsync()
     {
-        var list = _detector.Ordered().Where(d => !d.IsCustom).Select(d => new HuntHelperMobRecord(
+        var list = _detector.Ordered().Where(d => !d.IsCustom).Select(d => new TrainMobRecord(
             d.Name, d.NameId, d.TerritoryId, d.MapId, d.Instance,
             d.MapPosition, d.Dead, d.LastSeenUtc)).ToList();
 
@@ -1157,26 +1147,10 @@ public sealed class Plugin : IDalamudPlugin
         SetCurrentMark(next, announce: _config.EchoOnAdvance);
     }
 
-    /// <summary>
-    /// Claims Hunt Helper's commands, but only when Hunt Helper is not
-    /// installed — two plugins cannot hold the same command, and the one that
-    /// owns it should be the one it belongs to.
-    ///
-    /// Each is registered on its own rather than as a batch. Dalamud refuses a
-    /// command that is already taken, and some other plugin may well have
-    /// claimed one of these in Hunt Helper's absence; losing /hh to that is no
-    /// reason to also lose /hhc.
-    /// </summary>
-    private void RegisterHuntHelperAliases()
+    /// <summary>Registers each shortcut independently, leaving occupied commands alone.</summary>
+    private void RegisterShortCommands()
     {
-        if (HuntHelperIpc.IsHuntHelperInstalled(_pluginInterface))
-        {
-            _log.Information(
-                "Hunt Helper is installed, so its /hh commands are left alone.");
-            return;
-        }
-
-        foreach (var (command, help) in HuntHelperAliases)
+        foreach (var (command, help) in ShortCommands)
         {
             try
             {
@@ -1184,7 +1158,7 @@ public sealed class Plugin : IDalamudPlugin
                 {
                     "/hh" => new IReadOnlyCommandInfo.HandlerDelegate(OnCommand),
                     "/hht" => OnTrainCommand,
-                    "/hhn" => OnHuntHelperNextCommand,
+                    "/hhn" => OnNextMarkCommand,
                     "/hhna" => OnNextAetheryteCommand,
                     "/hhc" => OnCounterCommand,
                     _ => null,
@@ -1192,31 +1166,34 @@ public sealed class Plugin : IDalamudPlugin
 
                 if (handler == null) continue;
 
-                _commandManager.AddHandler(command, new CommandInfo(handler) { HelpMessage = help });
+                if (!_commandManager.AddHandler(command, new CommandInfo(handler) { HelpMessage = help }))
+                {
+                    _log.Warning($"Could not register {command}; another plugin holds it.");
+                    continue;
+                }
                 _claimedAliases.Add(command);
             }
             catch (Exception ex)
             {
-                _log.Warning(ex, $"Could not take over {command}; something else holds it.");
+                _log.Warning(ex, $"Could not register {command}; something else holds it.");
             }
         }
 
         if (_claimedAliases.Count > 0)
         {
             _log.Information(
-                $"Hunt Helper is not installed; answering to {string.Join(", ", _claimedAliases)}.");
+                $"Registered HHE shortcuts: {string.Join(", ", _claimedAliases)}.");
         }
     }
 
     /// <summary>
-    /// Hunt Helper's /hhn: move to the next live mark and flag it.
+    /// Move to the next live mark and flag it.
     ///
-    /// Its own version also ticks the current mark dead on the way past. This
-    /// one does not, deliberately. Marks are marked dead here by watching the
+    /// Marks are marked dead by watching the
     /// kill happen, and those timings are what the train report is built from —
     /// a mistyped /hhn should not be able to write a kill that never occurred.
     /// </summary>
-    private void OnHuntHelperNextCommand(string command, string args)
+    private void OnNextMarkCommand(string command, string args)
     {
         var next = NextLiveMark();
         if (next == null)
@@ -1588,7 +1565,7 @@ public sealed class Plugin : IDalamudPlugin
             _config.ShowPlayerCircleOnMap = circle;
             _config.Save();
         }
-        ImGui.TextDisabled("How far marks are actually picked up — two map coordinates, the same radius Hunt Helper draws. Fixed, because the number is the point.");
+        ImGui.TextDisabled("How far marks are actually picked up — two map coordinates. Fixed, because the number is the point.");
 
         if (_config.ShowPlayerCircleOnMap)
         {
@@ -1615,7 +1592,7 @@ public sealed class Plugin : IDalamudPlugin
                 _config.PlayerCircleThickness = Math.Clamp(thickness, 1f, 40f);
                 _config.Save();
             }
-            ImGui.TextDisabled("Drawn into the ring, so it thickens with the map's zoom rather than staying a flat number of pixels. 8 matches Hunt Helper.");
+            ImGui.TextDisabled("Drawn into the ring, so it thickens with the map's zoom rather than staying a flat number of pixels. The default is 8.");
         }
 
         ImGui.Spacing();
@@ -2992,7 +2969,7 @@ public sealed class Plugin : IDalamudPlugin
                 _lastPostResult = $"Exported {_detector.Marks.Count} marks to clipboard.";
             }
         }
-        ImGui.TextDisabled("Uses Hunt Helper's own format — the code pastes into Hunt Helper too.");
+        ImGui.TextDisabled("Share this code with another Hunt Helper Evolved user.");
 
         ImGui.Spacing();
         ImGui.SetNextItemWidth(260);
@@ -3605,7 +3582,7 @@ public sealed class Plugin : IDalamudPlugin
         ImGui.Spacing();
         ImGui.TextWrapped(
             "Additional scouts — credit anyone else whose scouting you folded into this report " +
-            "(e.g. they sent you their Hunt Helper export code privately and you imported it)."
+            "(e.g. they sent you their train export code privately and you imported it)."
         );
         ImGui.Spacing();
 
@@ -4067,12 +4044,7 @@ public sealed class Plugin : IDalamudPlugin
             ImGui.TextDisabled("Changes in this and previous versions, and who to thank.");
             ImGui.Spacing();
 
-            // Worth stating rather than leaving to the log. Whether the HH.*
-            // gates are answered here decides whether somebody's other plugin
-            // can see this train at all, and it is not otherwise visible.
-            ImGui.TextDisabled(_trainIpc.ClaimedHuntHelperGates
-                ? "IPC: other plugins can read this train through Hunt Helper's own gates."
-                : "IPC: Hunt Helper is installed and keeps its gates. Other plugins see its train, not this one.");
+            ImGui.TextDisabled("IPC: this train is available through HuntHelperEvolved endpoints.");
             ImGui.Spacing();
         }
 

@@ -609,7 +609,7 @@ public class Configuration : IPluginConfiguration
     /// <summary>
     /// Extra names credited alongside the submitting character on a scouting
     /// report — e.g. a friend who scouted one expansion and sent you their
-    /// Hunt Helper export code privately to fold into the combined report.
+    /// train export code privately to fold into the combined report.
     /// Capped at 3 in the UI.
     /// </summary>
     public List<string> AdditionalScouts { get; set; } = new() { string.Empty };
