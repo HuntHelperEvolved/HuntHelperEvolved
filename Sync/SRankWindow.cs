@@ -109,7 +109,7 @@ public sealed class SRankWindow
         DrawExpansionFilter();
         var available = _config.SRankWindowAvailableOnly;
         if (ImGui.Checkbox("Available to spawn only", ref available)) { _config.SRankWindowAvailableOnly = available; _config.Save(); }
-        if (ImGui.IsItemHovered()) ImGui.SetTooltip("Show marks whose known respawn window has opened, excluding unknown and uncertain timers. Active ranks remain visible; automatic order places them first. Spawn conditions still need to be met.");
+
         ImGui.SameLine();
         var search = _config.SRankWindowSearch;
         ImGui.SetNextItemWidth(220);
@@ -345,12 +345,7 @@ public sealed class SRankWindow
                 _sync.ZoneFor(timer.TerritoryId, worldId, row.Instance),
                 row.Status?.KilledAt is not null && !row.Status.Uncertain);
             var destination = TeleportHelper.NearestTo(timer.TerritoryId, position);
-            ImGui.SetTooltip(SpawnConditionData.Description(timer.Name) + "\nName: green = timer/timed conditions open; red = timed conditions unmet; grey = not ready or unknown. Required player actions still apply.\n" +
-                (!_travel.Available ? "Lifestream is not available."
-                    : destination is not { } target ? "No allowed aetheryte is available for this zone."
-                    : $"Ctrl-click to travel to {target.Name} on {_worldData.NameOf(worldId)}. " +
-                      (exact is null ? "Suggested for a spawn attempt; exact location unknown. " : "Nearest to the reported location. ") +
-                      "Select the instance on arrival."));
+            ImGui.SetTooltip(SpawnConditionData.Description(timer.Name));
             if (ImGui.GetIO().KeyCtrl && ImGui.IsMouseClicked(ImGuiMouseButton.Left)
                 && destination is not null && _travel.Available)
                 _travel.Start(worldId, timer.TerritoryId, position);
@@ -439,14 +434,12 @@ public sealed class SRankWindow
 
             case SRankPhase.Forced:
                 ImGui.TextColored(ForcedColour, "READY");
-                if (ImGui.IsItemHovered())
-                    ImGui.SetTooltip("The respawn timer is ready. The mark still needs its spawn conditions to be met.");
+
                 break;
 
             case SRankPhase.Window:
                 TimerTableUi.Progress(w.Percent);
-                if (ImGui.IsItemHovered())
-                    ImGui.SetTooltip("Elapsed portion of the respawn window. Spawn conditions must still be met; this is not a confirmed spawn probability.");
+
                 break;
 
             case SRankPhase.Cooldown:
@@ -460,8 +453,7 @@ public sealed class SRankWindow
             {
                 var opens = w.OpensAtUtc ?? now;
                 ImGui.TextColored(WindowColour, opens > now ? $"sniped; not before {Duration(opens - now)}" : "sniped; may be open");
-                if (ImGui.IsItemHovered())
-                    ImGui.SetTooltip("Faloop recorded it killed without a report, so the kill time is only the earliest it could have been. The window can start any time after it.");
+
                 break;
             }
 

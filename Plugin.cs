@@ -21,7 +21,7 @@ using HuntHelperEvolved.Sync;
 
 namespace HuntHelperEvolved;
 
-public sealed class Plugin : IDalamudPlugin
+public sealed partial class Plugin : IDalamudPlugin
 {
     public string Name => "Hunt Helper Evolved";
 
@@ -579,7 +579,7 @@ public sealed class Plugin : IDalamudPlugin
     /// </summary>
     private void DrawDetectionNotificationSettings()
     {
-        ImGui.TextWrapped("What happens the moment a mark is first spotted. All of it is local — nothing here is sent to anyone else.");
+        DrawSettingsHeading("Local detection");
         ImGui.Spacing();
 
         // ---- Chat ----
@@ -605,11 +605,14 @@ public sealed class Plugin : IDalamudPlugin
             ImGui.SameLine();
             ImGui.TextDisabled("which ranks");
 
-            DrawMessageBox("B message##chat", _config.DetectionChatMessageB, v => _config.DetectionChatMessageB = v);
-            DrawMessageBox("A message##chat", _config.DetectionChatMessageA, v => _config.DetectionChatMessageA = v);
-            DrawMessageBox("S message##chat", _config.DetectionChatMessageS, v => _config.DetectionChatMessageS = v);
+            if (ImGui.TreeNode("Chat message templates"))
+            {
+                DrawMessageBox("B message##chat", _config.DetectionChatMessageB, v => _config.DetectionChatMessageB = v);
+                DrawMessageBox("A message##chat", _config.DetectionChatMessageA, v => _config.DetectionChatMessageA = v);
+                DrawMessageBox("S message##chat", _config.DetectionChatMessageS, v => _config.DetectionChatMessageS = v);
 
-            DrawPlaceholderHelp();
+                ImGui.TreePop();
+            }
             ImGui.Unindent();
         }
 
@@ -617,12 +620,11 @@ public sealed class Plugin : IDalamudPlugin
 
         // ---- Fly text ----
         var fly = _config.DetectionFlyTextEnabled;
-        if (ImGui.Checkbox("Throw it up as fly text", ref fly))
+        if (ImGui.Checkbox("Show fly text", ref fly))
         {
             _config.DetectionFlyTextEnabled = fly;
             _config.Save();
         }
-        ImGui.TextDisabled("On your own character, in the channel a crit lands in — the one thing here you can't miss while running.");
 
         if (_config.DetectionFlyTextEnabled)
         {
@@ -645,7 +647,7 @@ public sealed class Plugin : IDalamudPlugin
 
         // ---- Speech ----
         var tts = _config.DetectionTtsEnabled;
-        if (ImGui.Checkbox("Say it out loud", ref tts))
+        if (ImGui.Checkbox("Speak detections", ref tts))
         {
             _config.DetectionTtsEnabled = tts;
             _config.Save();
@@ -666,12 +668,14 @@ public sealed class Plugin : IDalamudPlugin
             ImGui.SameLine();
             ImGui.TextDisabled("which ranks");
 
-            DrawMessageBox("B message##tts", _config.DetectionTtsMessageB, v => _config.DetectionTtsMessageB = v);
-            DrawMessageBox("A message##tts", _config.DetectionTtsMessageA, v => _config.DetectionTtsMessageA = v);
-            DrawMessageBox("S message##tts", _config.DetectionTtsMessageS, v => _config.DetectionTtsMessageS = v);
+            if (ImGui.TreeNode("Spoken message templates"))
+            {
+                DrawMessageBox("B message##tts", _config.DetectionTtsMessageB, v => _config.DetectionTtsMessageB = v);
+                DrawMessageBox("A message##tts", _config.DetectionTtsMessageA, v => _config.DetectionTtsMessageA = v);
+                DrawMessageBox("S message##tts", _config.DetectionTtsMessageS, v => _config.DetectionTtsMessageS = v);
 
-            ImGui.TextDisabled("<name>, <rank> and <hpp> are spoken. Everything else — flags and icons — is dropped rather than read out.");
-
+                ImGui.TreePop();
+            }
             DrawVoicePicker();
             ImGui.Unindent();
         }
@@ -689,30 +693,6 @@ public sealed class Plugin : IDalamudPlugin
             _config.Save();
     }
 
-    private static void DrawPlaceholderHelp()
-    {
-        if (!ImGui.TreeNode("What can go in a message"))
-            return;
-
-        ImGui.TextDisabled("<name>   the mark, coloured by rank");
-        ImGui.TextDisabled("<rank>   A-Rank / B-Rank / S-Rank");
-        ImGui.TextDisabled("<hpp>    health, green above 99% down to red below 70%");
-        ImGui.TextDisabled("<flag>   a clickable map link to where it was found");
-        ImGui.Spacing();
-        ImGui.TextDisabled("Icons: <goldstar> <silverstar> <warning> <nocircle> <alarm>");
-        ImGui.TextDisabled("<notoriousmonster> <exclamationrectangle> <priorityworld>");
-        ImGui.TextDisabled("<elementallevel> <fanfestival> <controllerbutton0> <controllerbutton1>");
-        ImGui.Spacing();
-        ImGui.TextDisabled("Use these placeholders in your notification messages.");
-
-        ImGui.TreePop();
-    }
-
-    /// <summary>
-    /// Voice and volume, plus a way to hear it. The voice list is asked for
-    /// once and kept: enumerating them builds a synthesiser, which is not
-    /// something to do every frame the settings window is open.
-    /// </summary>
     private void DrawVoicePicker()
     {
         _voices ??= _notifier.InstalledVoices();
@@ -962,30 +942,19 @@ public sealed class Plugin : IDalamudPlugin
                     ImGui.EndTabItem();
                 }
 
-                if (ImGui.BeginTabItem("Settings"))
+                var settingsRequested = _selectSyncTab || _selectTallyTab;
+                if (_selectSyncTab) _settingsPage = SettingsPage.Sharing;
+                if (_selectTallyTab) _settingsPage = SettingsPage.Tally;
+                if (ImGui.BeginTabItem("Settings", settingsRequested ? ImGuiTabItemFlags.SetSelected : ImGuiTabItemFlags.None))
                 {
+                    _selectSyncTab = false;
+                    _selectTallyTab = false;
                     DrawSettingsTab();
                     ImGui.EndTabItem();
                 }
-
-                if (ImGui.BeginTabItem("Sync", _selectSyncTab ? ImGuiTabItemFlags.SetSelected : ImGuiTabItemFlags.None))
+                if (ImGui.BeginTabItem("Help"))
                 {
-                    _selectSyncTab = false;
-                    DrawSyncTab();
-                    ImGui.EndTabItem();
-                }
-
-                // The tally's settings, which were their own window until the
-                // two plugins merged. Flagged for selection only when something
-                // asked for it by name, so it does not steal focus otherwise.
-                var tallyFlags = _selectTallyTab
-                    ? ImGuiTabItemFlags.SetSelected
-                    : ImGuiTabItemFlags.None;
-                _selectTallyTab = false;
-
-                if (ImGui.BeginTabItem("Tally", tallyFlags))
-                {
-                    DrawTallyTab();
+                    DrawHelpPage();
                     ImGui.EndTabItem();
                 }
 
@@ -1002,19 +971,13 @@ public sealed class Plugin : IDalamudPlugin
         ImGui.End();
     }
 
-
     /// <summary>
     /// Our own detected train list, with per-row teleport and map-flag actions.
     /// Drawn in both the Train tab and the standalone popout.
     /// </summary>
 
     /// <summary>
-    /// The tally's settings, scrolled in their own region.
-    ///
-    /// The panel was written for a 500x600 window of its own and is taller than
-    /// the tab area, so it gets a child to scroll in rather than being
-    /// redesigned — the controls and their explanations are unchanged from the
-    /// standalone plugin.
+    /// The tally settings, hosted in the shared settings content region.
     /// </summary>
     private void DrawTallyTab()
     {
@@ -1041,11 +1004,7 @@ public sealed class Plugin : IDalamudPlugin
         ImGui.Separator();
         ImGui.Spacing();
 
-        if (ImGui.BeginChild("##tallysettings", new Vector2(0, 0), false))
-        {
-            _tallySettings.Draw();
-        }
-        ImGui.EndChild();
+        _tallySettings.Draw();
     }
 
     /// <summary>The mark the pointer is on, or null if it's been cleared/removed.</summary>
@@ -1244,7 +1203,6 @@ public sealed class Plugin : IDalamudPlugin
     /// has everything they need mid-train.
     /// </summary>
 
-
     /// <summary>
     /// Surfaces a problem everywhere it might be looked for: the status line in
     /// the main window, the local chat log, and /xllog. Teleport errors were
@@ -1417,7 +1375,6 @@ public sealed class Plugin : IDalamudPlugin
         }
     }
 
-
     private const int MaxBlacklistedAetherytes = 15;
 
     private static readonly (string Name, uint Min, uint Max)[] ExpansionRanges =
@@ -1565,7 +1522,6 @@ public sealed class Plugin : IDalamudPlugin
             _config.ShowPlayerCircleOnMap = circle;
             _config.Save();
         }
-        ImGui.TextDisabled("How far marks are actually picked up — two map coordinates. Fixed, because the number is the point.");
 
         if (_config.ShowPlayerCircleOnMap)
         {
@@ -1583,7 +1539,6 @@ public sealed class Plugin : IDalamudPlugin
                 _config.PlayerCircleRadiusScale = Math.Clamp(scale, 0.25f, 4f);
                 _config.Save();
             }
-            ImGui.TextDisabled("1.00 is the real detection range. Anything else is a circle you like the size of, not a range — and the path widens with it.");
 
             var thickness = _config.PlayerCircleThickness;
             ImGui.SetNextItemWidth(140);
@@ -1592,7 +1547,7 @@ public sealed class Plugin : IDalamudPlugin
                 _config.PlayerCircleThickness = Math.Clamp(thickness, 1f, 40f);
                 _config.Save();
             }
-            ImGui.TextDisabled("Drawn into the ring, so it thickens with the map's zoom rather than staying a flat number of pixels. The default is 8.");
+
         }
 
         ImGui.Spacing();
@@ -1662,7 +1617,6 @@ public sealed class Plugin : IDalamudPlugin
             _config.ShowPlayerFacingOnMap = facing;
             _config.Save();
         }
-        ImGui.TextDisabled("The swathe ahead of you that your detection range will sweep. As wide as the circle, and runs off the edge of the map. Keep it translucent — it covers everything under it.");
 
         if (_config.ShowPlayerFacingOnMap)
         {
@@ -1880,8 +1834,6 @@ public sealed class Plugin : IDalamudPlugin
             _config.ShowMarksOnMap = marks;
             _config.Save();
         }
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("Marks that are actually up, drawn where they stand. Separate from the spawn points.");
 
         ImGui.SameLine();
         using (ImRaii.Disabled(!_config.ShowMarksOnMap))
@@ -1916,8 +1868,7 @@ public sealed class Plugin : IDalamudPlugin
                 _config.ShowMarkLabelsOnMap = labels;
                 _config.Save();
             }
-            if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("Each live mark's name and remaining health, written beside its dot.");
+
         }
 
         // Not a spawn point, so not behind that toggle.
@@ -1931,8 +1882,7 @@ public sealed class Plugin : IDalamudPlugin
             _config.ShowSsEventOnMap = ssEvent;
             _config.Save();
         }
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("The four minion spots and where the mark will spawn, while an event is running.");
+
     }
 
     /// <summary>
@@ -1947,8 +1897,6 @@ public sealed class Plugin : IDalamudPlugin
             _config.ShowPlayerGuides = guides;
             _config.Save();
         }
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("Everything drawn around your character. The four keep their settings while this is off.");
 
         // Scoped rather than disposed by hand: the status below has to sit
         // outside it, and a block says where it ends without depending on
@@ -1972,8 +1920,6 @@ public sealed class Plugin : IDalamudPlugin
                 _config.ShowPlayerFacingOnMap = facing;
                 _config.Save();
             }
-            if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("The projected path: the swathe ahead that your range will sweep.");
 
             ImGui.SameLine();
             var dirLine = _config.ShowPlayerDirectionLine;
@@ -2065,8 +2011,6 @@ public sealed class Plugin : IDalamudPlugin
         {
             OnNextAetheryteCommand(NextAetheryteCommand, string.Empty);
         }
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("Names the aetheryte nearest the next mark, and copies a line to your clipboard. No flag — see /htra");
 
         // Its own row on purpose. This is the one control here that rewrites
         // the whole list, and it should not sit a mis-click away from Remove
@@ -2077,10 +2021,6 @@ public sealed class Plugin : IDalamudPlugin
         {
             ImportFromClipboard();
         }
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip(
-                "Reads an export code straight off the clipboard and folds it into this train.\n"
-                + "Marks already here are kept — nothing is overwritten.");
 
         // Row 3
         var tracking = _config.TrackingEnabled;
@@ -2097,8 +2037,6 @@ public sealed class Plugin : IDalamudPlugin
             _config.HideDeadMarks = hideDead;
             _config.Save();
         }
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("Only hides them from this list — they stay in the train and in reports.");
 
         ImGui.SameLine();
         var grouped = _config.GroupTrainByExpansion;
@@ -2108,10 +2046,6 @@ public sealed class Plugin : IDalamudPlugin
             if (grouped) _detector.ApplyOrder(GroupByExpansion(_detector.Ordered()));
             _config.Save();
         }
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip(
-                "Sorts the train into expansion blocks, keeping scout order inside each one.\n"
-                + "Drag a block heading to move a whole expansion.");
 
         // Only offered while the train is in blocks, since there is no next
         // block to open without them. Hidden rather than greyed out, for the
@@ -2126,11 +2060,7 @@ public sealed class Plugin : IDalamudPlugin
                 _config.AutoExpandNextExpansion = autoExpand;
                 _config.Save();
             }
-            if (ImGui.IsItemHovered())
-                ImGui.SetTooltip(
-                    "When the last mark in an expansion goes down, unfolds the next block\n"
-                    + "that still has something up. Never folds one away — a finished leg\n"
-                    + "stays open if you left it open.");
+
         }
 
         // Row 5 — same setting as the one on the Settings tab, so the two
@@ -3050,7 +2980,6 @@ public sealed class Plugin : IDalamudPlugin
         ImGui.End();
     }
 
-
     /// <summary>
     /// Counter rows for one world. Counts are kept per world, so the same mark
     /// tracked on Mateus and on Zalera are genuinely separate tallies.
@@ -3501,10 +3430,6 @@ public sealed class Plugin : IDalamudPlugin
             _config.ShowSRankWatchesInTrainList = watchesInList;
             _config.Save();
         }
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip(
-                "Puts the Spawned / Didn't Spawn boxes under the train itself, so they can be\n"
-                + "ticked from the popout without coming back to this tab.");
 
         ImGui.Spacing();
 
@@ -3762,301 +3687,6 @@ public sealed class Plugin : IDalamudPlugin
     /// Grouped into collapsible sections — there are enough toggles now that a
     /// single flat list is hard to scan.
     /// </summary>
-    private void DrawSettingsTab()
-    {
-        ImGui.Spacing();
-        if (ImGui.Button("Send test message"))
-        {
-            _ = SendTestAsync();
-        }
-        ImGui.TextDisabled("Posts to every ENABLED webhook below.");
-
-        if (ImGui.CollapsingHeader("Discord webhooks", ImGuiTreeNodeFlags.DefaultOpen))
-        {
-            ImGui.TextWrapped(
-                "One per Discord server (or channel) to post to. Untick Enabled to keep a " +
-                "testing channel around without deleting it. Create a webhook in Discord via " +
-                "Channel Settings > Integrations > Webhooks > New Webhook > Copy Webhook URL."
-            );
-            ImGui.Spacing();
-            DrawWebhookList();
-            ImGui.Spacing();
-        }
-
-        if (ImGui.CollapsingHeader("Train list"))
-        {
-            var echoClick = _config.EchoOnMarkClick;
-            if (ImGui.Checkbox("Echo a mark to chat when its row is clicked", ref echoClick))
-            {
-                _config.EchoOnMarkClick = echoClick;
-                _config.Save();
-            }
-            ImGui.TextDisabled("Off still flags the mark on your map — it just doesn't post the chat line.");
-
-            ImGui.TextDisabled("Announcing marks as they're detected has its own section below.");
-
-            var observedDeaths = _config.MarkDeadOnObservedDefeat;
-            if (ImGui.Checkbox("Tick a mark dead when the battle log says it died", ref observedDeaths))
-            {
-                _config.MarkDeadOnObservedDefeat = observedDeaths;
-                _config.Save();
-            }
-            ImGui.TextDisabled("Whoever killed it — either seeing its health hit zero, or the battle log saying so. Marking dead from the tally only covers kills you were credited with, so a mark the group brought down while you ran in used to stay lit.");
-
-            var teleFlags = _config.TeleportAlsoFlags;
-            if (ImGui.Checkbox("Teleport also drops the map flag", ref teleFlags))
-            {
-                _config.TeleportAlsoFlags = teleFlags;
-                _config.Save();
-            }
-
-            var showAge = _config.ShowMarkAge;
-            if (ImGui.Checkbox("Show how long ago each mark was last seen", ref showAge))
-            {
-                _config.ShowMarkAge = showAge;
-                _config.Save();
-            }
-
-            var hideDeadSetting = _config.HideDeadMarks;
-            if (ImGui.Checkbox("Hide dead marks in the train list", ref hideDeadSetting))
-            {
-                _config.HideDeadMarks = hideDeadSetting;
-                _config.Save();
-            }
-            ImGui.TextDisabled("Display only — dead marks stay in the train and in reports.");
-
-            var hideZones = _config.HideZonesInPopout;
-            if (ImGui.Checkbox("Hide zone names in the train popout", ref hideZones))
-            {
-                _config.HideZonesInPopout = hideZones;
-                _config.Save();
-            }
-
-            var spicing = _config.ShowSpicing;
-            if (ImGui.Checkbox("Show spicing markers", ref spicing))
-            {
-                _config.ShowSpicing = spicing;
-                _config.Save();
-            }
-            ImGui.TextDisabled("A scout flagging a mark they'll prep before the train arrives.");
-
-            var autoAdv = _config.AutoAdvance;
-            if (ImGui.Checkbox("Auto-advance to the next mark when the current one dies", ref autoAdv))
-            {
-                _config.AutoAdvance = autoAdv;
-                _config.Save();
-            }
-
-            if (_config.AutoAdvance)
-            {
-                var echoAdv = _config.EchoOnAdvance;
-                if (ImGui.Checkbox("Echo and flag the mark it advances to", ref echoAdv))
-                {
-                    _config.EchoOnAdvance = echoAdv;
-                    _config.Save();
-                }
-            }
-
-            var rowH = _config.TrainRowHeight;
-            ImGui.SetNextItemWidth(120);
-            if (ImGui.InputInt("Row height (pixels)", ref rowH))
-            {
-                _config.TrainRowHeight = Math.Clamp(rowH, 14, 48);
-                _config.Save();
-            }
-
-            var pollInterval = _config.PollIntervalSeconds;
-            ImGui.SetNextItemWidth(120);
-            if (ImGui.InputInt("Detection interval (seconds)", ref pollInterval))
-            {
-                _config.PollIntervalSeconds = Math.Clamp(pollInterval, 1, 30);
-                _config.Save();
-            }
-            ImGui.TextDisabled("How often marks are scanned for. Lower catches more while flying fast.");
-            ImGui.Spacing();
-        }
-
-        if (ImGui.CollapsingHeader("Scout & counter"))
-        {
-            var myKills = _config.CountOnlyMyKills;
-            if (ImGui.Checkbox("Count only kills I land", ref myKills))
-            {
-                _config.CountOnlyMyKills = myKills;
-                _config.Save();
-            }
-            ImGui.TextDisabled("Off counts every trigger mob killed nearby — total progress toward the spawn rather than your own share.");
-            ImGui.Spacing();
-        }
-
-        if (ImGui.CollapsingHeader("Map spawn points"))
-        {
-            var mapPoints = _config.ShowSpawnPointsOnMap;
-            if (ImGui.Checkbox("Show spawn points on the in-game map", ref mapPoints))
-            {
-                _config.ShowSpawnPointsOnMap = mapPoints;
-                _config.Save();
-            }
-            ImGui.TextDisabled("Where a mark could be. A zone's B-rank points alone can run to sixty dots.");
-
-            var mapMarks = _config.ShowMarksOnMap;
-            if (ImGui.Checkbox("Show live marks on the in-game map", ref mapMarks))
-            {
-                _config.ShowMarksOnMap = mapMarks;
-                _config.Save();
-            }
-            ImGui.TextDisabled("What is actually there, drawn where it stands. Separate from the points above, so you can have one without the other.");
-
-            ImGui.TextDisabled(_mapOverlay.Status);
-
-            var bar = _config.ShowMapControlBar;
-            if (ImGui.Checkbox("Show a control bar above the map", ref bar))
-            {
-                _config.ShowMapControlBar = bar;
-                _config.Save();
-            }
-            ImGui.TextDisabled("These same toggles, pinned to the top of the game's map and shown with it. Also /htrm.");
-
-            if (_config.ShowSpawnPointsOnMap || _config.ShowMarksOnMap)
-            {
-                if (_config.ShowSpawnPointsOnMap)
-                {
-                    var showA = _config.ShowARankPoints;
-                    if (ImGui.Checkbox("A-rank points", ref showA))
-                    {
-                        _config.ShowARankPoints = showA;
-                        _config.Save();
-                    }
-                    ImGui.SameLine();
-                    var showB = _config.ShowBRankPoints;
-                    if (ImGui.Checkbox("B-rank##points", ref showB))
-                    {
-                        _config.ShowBRankPoints = showB;
-                        _config.Save();
-                    }
-                    ImGui.SameLine();
-                    var showS = _config.ShowSRankPoints;
-                    if (ImGui.Checkbox("S-rank##points", ref showS))
-                    {
-                        _config.ShowSRankPoints = showS;
-                        _config.Save();
-                    }
-                }
-
-                if (_config.ShowMarksOnMap)
-                {
-                    var markA = _config.ShowARankMarks;
-                    if (ImGui.Checkbox("A-rank marks", ref markA))
-                    {
-                        _config.ShowARankMarks = markA;
-                        _config.Save();
-                    }
-                    ImGui.SameLine();
-                    var markB = _config.ShowBRankMarks;
-                    if (ImGui.Checkbox("B-rank##marks", ref markB))
-                    {
-                        _config.ShowBRankMarks = markB;
-                        _config.Save();
-                    }
-                    ImGui.SameLine();
-                    var markS = _config.ShowSRankMarks;
-                    if (ImGui.Checkbox("S-rank##marks", ref markS))
-                    {
-                        _config.ShowSRankMarks = markS;
-                        _config.Save();
-                    }
-                }
-
-                ImGui.TextDisabled("Hover a dot on the map for what's there. Marks are drawn a little larger than a spawn point, at the position they are actually standing on.");
-
-                var clickFlag = _config.ClickSpawnPointToFlag;
-                if (ImGui.Checkbox("Click a spawn point on the map to flag it", ref clickFlag))
-                {
-                    _config.ClickSpawnPointToFlag = clickFlag;
-                    _config.Save();
-                }
-                ImGui.TextDisabled("For sending people to a spot before anything is on it. Marks themselves aren't clickable — one that's up is already drawn where it is.");
-
-                var ssEvent = _config.ShowSsEventOnMap;
-                if (ImGui.Checkbox("Mark SS event minion locations", ref ssEvent))
-                {
-                    _config.ShowSsEventOnMap = ssEvent;
-                    _config.Save();
-                }
-                ImGui.TextDisabled("From the \"minions of an extraordinarily powerful mark\" announcement until the mark spawns or you leave the zone. The spot is learned from the minions themselves — nothing in the game's data holds it.");
-                ImGui.TextDisabled(_ssEvent.Status);
-
-                var labels = _config.ShowMarkLabelsOnMap;
-                if (ImGui.Checkbox("Write mark names and health on the map", ref labels))
-                {
-                    _config.ShowMarkLabelsOnMap = labels;
-                    _config.Save();
-                }
-                ImGui.TextDisabled("Only marks that are actually up get one, so this follows the rank filters above. Health updates as the mark is pulled.");
-
-                if (_config.ShowMarkLabelsOnMap)
-                {
-                    var fontSize = _config.MarkLabelFontSize;
-                    ImGui.SetNextItemWidth(90);
-                    if (ImGui.InputFloat("Name text size", ref fontSize, 1f))
-                    {
-                        _config.MarkLabelFontSize = Math.Clamp(fontSize, 6f, 48f);
-                        _config.Save();
-                    }
-                }
-
-                ImGui.Spacing();
-                DrawDotColours();
-                ImGui.Spacing();
-
-                var dotSize = _config.SpawnDotSize;
-                ImGui.SetNextItemWidth(90);
-                if (ImGui.InputFloat("Dot size", ref dotSize, 2f))
-                {
-                    _config.SpawnDotSize = Math.Clamp(dotSize, 6f, 48f);
-                    _config.Save();
-                }
-
-            }
-
-            ImGui.Spacing();
-            ImGui.Separator();
-            ImGui.Spacing();
-            DrawPlayerGuideSettings();
-            ImGui.Spacing();
-        }
-
-        if (ImGui.CollapsingHeader("Detection notifications"))
-        {
-            DrawDetectionNotificationSettings();
-        }
-
-        if (ImGui.CollapsingHeader("About"))
-        {
-            ImGui.TextDisabled($"Hunt Helper Evolved {ReleaseNotes.CurrentVersion}");
-            ImGui.Spacing();
-
-            // The notes are a window of their own and turn up on their own
-            // after an update, so this is the way back to them afterwards.
-            if (ImGui.Button("What's new"))
-                _releaseNotesVisible = true;
-
-            ImGui.SameLine();
-            ImGui.TextDisabled("Changes in this and previous versions, and who to thank.");
-            ImGui.Spacing();
-
-            ImGui.TextDisabled("IPC: this train is available through HuntHelperEvolved endpoints.");
-            ImGui.Spacing();
-        }
-
-        if (ImGui.CollapsingHeader("Teleport"))
-        {
-            ImGui.TextWrapped("Aetheryte blacklist — never route to these.");
-            ImGui.TextDisabled("Affects the teleport button and Next Aetheryte alike.");
-            ImGui.Spacing();
-            DrawBlacklistPicker();
-            ImGui.Spacing();
-        }
-    }
 
     private void DrawWebhookList()
     {
@@ -4453,203 +4083,4 @@ public sealed class Plugin : IDalamudPlugin
 
     private bool _showSyncPassword;
 
-    private void DrawSyncTab()
-    {
-        ImGui.Spacing();
-        ImGui.TextWrapped(
-            "Share the hunt with a group through a server one of you runs. Everyone with its URL " +
-            "and password sees the same train, each other's marks on the map, and the same S-rank " +
-            "clocks. Nothing goes anywhere else, and without the password the URL alone gets nobody in.");
-        ImGui.Spacing();
-
-        var enabled = _config.SyncEnabled;
-        if (ImGui.Checkbox("Enabled", ref enabled))
-        {
-            _config.SyncEnabled = enabled;
-            _config.Save();
-            _sync.ApplySettings();
-        }
-
-        ImGui.SetNextItemWidth(360);
-        var url = _config.SyncServerUrl;
-        if (ImGui.InputTextWithHint("Server URL", "wss://hunts.example.com/ws", ref url, 512))
-            _config.SyncServerUrl = url;
-        if (ImGui.IsItemDeactivatedAfterEdit())
-        {
-            _config.Save();
-            _sync.ApplySettings();
-        }
-
-        ImGui.SetNextItemWidth(360);
-        var password = _config.SyncPassword;
-        var passwordFlags = _showSyncPassword ? ImGuiInputTextFlags.None : ImGuiInputTextFlags.Password;
-        if (ImGui.InputText("Password", ref password, 256, passwordFlags))
-            _config.SyncPassword = password;
-        if (ImGui.IsItemDeactivatedAfterEdit())
-        {
-            _config.Save();
-            _sync.ApplySettings();
-        }
-        ImGui.SameLine();
-        ImGui.Checkbox("show", ref _showSyncPassword);
-
-        ImGui.SetNextItemWidth(360);
-        var name = _config.SyncDisplayName;
-        if (ImGui.InputTextWithHint("Display name", "Anonymous", ref name, 40))
-            _config.SyncDisplayName = name;
-        if (ImGui.IsItemDeactivatedAfterEdit())
-            _config.Save();
-        if (ImGui.IsItemDeactivatedAfterEdit()) _sync.ApplySettings();
-        ImGui.TextDisabled("Your chosen alias is shared. Blank uses Anonymous.");
-
-        ImGui.Spacing();
-        if (_config.SyncEnabled && !_sync.IsConnected && !string.IsNullOrEmpty(_sync.LastError))
-            ImGui.TextColored(new Vector4(1f, 0.4f, 0.4f, 1f), _sync.Status);
-        else
-            ImGui.TextWrapped($"Status: {_sync.Status}");
-
-        if (_sync.IsConnected && !string.IsNullOrEmpty(_sync.LastError))
-            ImGui.TextColored(new Vector4(1f, 0.6f, 0.3f, 1f), $"Server said: {_sync.LastError}");
-
-        if (_sync.IsConnected)
-        {
-            if (_sync.LocalBackupCount > 0 && _config.SyncShareTrain
-                && ImGui.Button($"Upload saved local marks ({_sync.LocalBackupCount})"))
-                _sync.UploadLocalBackup();
-            if (_sync.LocalWatchBackupCount > 0 && _config.SyncShareTrain
-                && ImGui.Button($"Upload saved local watches ({_sync.LocalWatchBackupCount})"))
-                _sync.UploadWatchBackup();
-            ImGui.TextDisabled("Joining uses the server train. Upload saved local marks explicitly if needed.");
-            ImGui.SameLine();
-            if (ImGui.SmallButton("Reconnect"))
-            {
-                _sync.ApplySettings(force: true);
-            }
-
-            ImGui.Spacing();
-            ImGui.TextWrapped("Online now:");
-            foreach (var client in _sync.Clients)
-            {
-                var where = client.TerritoryId != 0
-                    ? $" — {_detector.GetZoneName(client.TerritoryId)}{ExpansionData.InstanceGlyph(client.Instance)}"
-                    : string.Empty;
-                var world = client.WorldId != 0 ? $" [{_worldData.NameOf(client.WorldId)}]" : string.Empty;
-                ImGui.BulletText($"{client.Name}{world}{where}");
-            }
-
-            var faloop = _sync.Faloop;
-            if (faloop.Enabled)
-                ImGui.TextDisabled($"Faloop on the server: {faloop.Status} Live feed: {(faloop.LiveConnected ? "connected" : "disconnected")}");
-        }
-
-        ImGui.Spacing();
-        if (ImGui.CollapsingHeader("Community S-rank spawn alerts", ImGuiTreeNodeFlags.DefaultOpen))
-        {
-            var alerts = _config.SyncSpawnAlerts;
-            if (ImGui.Checkbox("Chat alerts for group S sightings and Faloop spawns/releases", ref alerts)) { _config.SyncSpawnAlerts = alerts; _config.Save(); }
-            var sound = _config.SyncSpawnSound;
-            if (ImGui.Checkbox("Play an alert sound", ref sound)) { _config.SyncSpawnSound = sound; _config.Save(); }
-            var currentDc = _config.SyncSpawnCurrentDc;
-            if (ImGui.Checkbox("Only my current data centre", ref currentDc)) { _config.SyncSpawnCurrentDc = currentDc; _config.Save(); }
-            if (!currentDc)
-                foreach (var dc in _worldData.DataCenters)
-                {
-                    var selected = _config.SyncSpawnDataCenters.Contains(dc.Id);
-                    if (ImGui.Checkbox(dc.Name + "##spawnDc", ref selected))
-                    {
-                        if (selected) _config.SyncSpawnDataCenters.Add(dc.Id); else _config.SyncSpawnDataCenters.Remove(dc.Id);
-                        _config.Save();
-                    }
-                }
-            ImGui.TextWrapped("Alerts arrive for the first group S-rank sighting and for public Faloop spawns/releases. Your server must follow the selected data centres. Historical snapshots do not trigger alerts.");
-            ImGui.TextWrapped("Server coverage: " + string.Join(", ", _sync.Faloop.DataCenters));
-            if (ImGui.Button("Test S-rank chat alert"))
-                ShowSpawnAlert(new Sync.SRankSpawnBroadcast { NameId = Sync.SRankTimerData.All[0].NameId,
-                    WorldId = _detector.CurrentWorldId(), SpawnedAt = DateTime.UtcNow, X = 21.5f, Y = 21.5f, Source = "Local test" }, test: true);
-            if (ImGui.IsItemHovered()) ImGui.SetTooltip("Local chat/sound/map-link test with example coordinates using your current world and alert settings. No report is sent to the server.");
-            ImGui.TextWrapped(_lastCommunityAlert);
-            ImGui.TextDisabled($"Last server feed message: {_sync.Faloop.LastLiveMessageAt?.ToLocalTime().ToString("HH:mm:ss") ?? "none"}; last broadcast alert: {_sync.Faloop.LastAlertAt?.ToLocalTime().ToString("HH:mm:ss") ?? "none"}");
-        }
-
-        _activeMarksWindow.DrawSettings();
-        ImGui.Separator();
-        if (ImGui.Button("Active Marks (/hhsa)")) _activeMarksWindow.Toggle();
-        if (ImGui.Button("Open the S-rank board"))
-            _srankWindow.Toggle();
-        ImGui.SameLine();
-        ImGui.TextDisabled("Windows, kill times and spawn points for every S rank. Also /hhs or /htrs.");
-
-        ImGui.Spacing();
-        ImGui.Separator();
-        ImGui.Spacing();
-
-        if (ImGui.CollapsingHeader("What to share", ImGuiTreeNodeFlags.DefaultOpen))
-        {
-            var train = _config.SyncShareTrain;
-            if (ImGui.Checkbox("The train", ref train))
-            {
-                _config.SyncShareTrain = train;
-                _config.Save();
-                _sync.ApplySettings();
-            }
-            ImGui.TextDisabled("Marks scouted, their order, what is dead, custom flags and spicing. Everyone edits one list. Reset and Clear All empty it for everyone.");
-
-            var sightings = _config.SyncShareSightings;
-            if (ImGui.Checkbox("What I can see", ref sightings))
-            {
-                _config.SyncShareSightings = sightings;
-                _config.Save();
-            }
-            ImGui.TextDisabled("Each mark's position and health while it is in your range, refreshed as it changes. Also what rules spawn points out for the S.");
-
-            var kills = _config.SyncReportSRankKills;
-            if (ImGui.Checkbox("S-rank kills I witness", ref kills))
-            {
-                _config.SyncReportSRankKills = kills;
-                _config.Save();
-            }
-            ImGui.TextDisabled("The exact moment an S dies in front of you starts the group's clock for it.");
-            if (_standaloneTallyPresent)
-                ImGui.TextDisabled("Deaths are watched by the built-in tally, which is standing down while the standalone Hunt Tally is installed — so nothing is reported.");
-        }
-
-        if (ImGui.CollapsingHeader("What to show", ImGuiTreeNodeFlags.DefaultOpen))
-        {
-            var remote = _config.SyncShowRemoteMarksOnMap;
-            if (ImGui.Checkbox("Marks other members can see, on my map", ref remote))
-            {
-                _config.SyncShowRemoteMarksOnMap = remote;
-                _config.Save();
-            }
-            ImGui.TextDisabled("Drawn like your own, with who saw it and how long ago in the tooltip. Removed when nobody sees it; missing heartbeats expire after three seconds.");
-
-            var candidates = _config.ShowSRankCandidatesOnMap;
-            if (ImGui.Checkbox("Which spawn points the S can still use", ref candidates))
-            {
-                _config.ShowSRankCandidatesOnMap = candidates;
-                _config.Save();
-            }
-            ImGui.TextDisabled("An S cannot spawn where an A or B has spawned since it last died, nor twice running where it died. Possible points have a gold outline. A confirmed point is filled gold; ruled-out points keep their normal fill.");
-
-            const ImGuiColorEditFlags flags = ImGuiColorEditFlags.AlphaBar | ImGuiColorEditFlags.AlphaPreviewHalf;
-            var outlineWidth = _config.SpawnCandidateOutlineWidth;
-            if (ImGui.SliderInt("S candidate outline width", ref outlineWidth, 1, 12, "%d / 32"))
-            {
-                _config.SpawnCandidateOutlineWidth = outlineWidth;
-                _config.Save();
-            }
-            if (ImGui.IsItemHovered()) ImGui.SetTooltip("Outline thickness relative to the 32-pixel spot texture. Scales with spot size and map zoom.");
-            var candidate = _config.SpawnDotColourSCandidate;
-            if (ImGui.ColorEdit4("S candidate outline / confirmed fill", ref candidate, flags))
-            {
-                _config.SpawnDotColourSCandidate = candidate;
-                _config.Save();
-            }
-
-
-        }
-
-        ImGui.Spacing();
-        ImGui.TextDisabled("Running the server: github.com/HuntHelperEvolved/HuntHelperEvolvedServer");
-    }
 }

@@ -119,7 +119,7 @@ public sealed class ActiveMarksWindow(Configuration config, SyncCoordinator sync
                         var age=now-spawned;
                         detail+=$"\nActive for {(int)Math.Max(0,age.TotalHours):00}:{Math.Max(0,age.Minutes):00}:{Math.Max(0,age.Seconds):00}";
                     }
-                    detail+="\nNearby players: estimate within 50 yalms, including the scout. Last-known positions are retained for the zone session, like Sonar; players who leave unseen can remain counted. Counts are not added across scouts.";
+
                     detail+="\n"+(row.Visible is { } observation ? "Seen by: "+string.Join(", ",observation.Observers) : "Faloop report");
                     detail+=row.HasPosition ? "\nClick: map" : "\nLocation not reported";
                     if(canTravel) detail+=" · Ctrl-click: teleport";

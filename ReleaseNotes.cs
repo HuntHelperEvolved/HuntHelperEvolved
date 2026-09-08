@@ -36,6 +36,7 @@ public static class ReleaseNotes
     {
         new("0.5.0.5", "2026-09-08", "Standalone commands and consistent hunt timer windows.",
         [
+            new("Settings", "Grouped preferences into task-based categories with a compact layout for narrow windows. Sync and tally preferences now live under Settings. Added searchable Help and moved lengthy tutorial tooltips there, keeping mark-specific details and short action labels.", Kihtli),
             new("Standalone", "Removed Hunt Helper IPC emulation and installation checks. /hh, /hht, /hhn, /hhna and /hhc are native HHE shortcuts; HHE IPC and train sharing remain available.", Kihtli),
             new("Timers", "Click S- or A-rank table headers to sort ascending, descending, or restore automatic priority. Dates and numbers sort by their values; unknown values stay last. Right-click headers to choose columns.", Kihtli),
             new("A ranks", "The A-rank timer board shares the S-rank layout, progress bars, colours and time formatting, while retaining world/expansion/instance filters and bounded sniped timers. Active A-ranks use normal row backgrounds, without the S-rank red highlight.", Kihtli),

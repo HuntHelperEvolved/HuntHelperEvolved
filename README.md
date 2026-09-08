@@ -38,7 +38,7 @@ why.
 
 | | |
 |---|---|
-| `/htr` | the main window — Conductor, Train, Scout, Marks Slain, Settings, Tally |
+| `/htr` | the main window — Conductor, Train, Scout, Marks Slain, Settings, Help |
 | `/htrt` | the train list, as a popout |
 | `/htrc` | the trigger-mob counter popout — also Narrow-rift's Wee Ea headcount in Ultima Thule and Nunyunuwi's no-FATE-failed clock in Southern Thanalan |
 | `/htra` | name the closest aetheryte to the next mark |
@@ -49,6 +49,13 @@ why.
 HHE also provides `/hh` for the main window, `/hht` for the train list,
 `/hhn` to flag the next live mark, `/hhna` for its nearest aetheryte, and `/hhc`
 for the counter. A shortcut already held by another plugin is left alone.
+
+## Settings and help
+
+Settings uses a category sidebar, or a dropdown in narrow windows: Train, Map,
+Notifications, Travel, Sharing, Discord, Tally and About. The **Help** tab has
+searchable explanations of the controls, timer colours, mapping, sharing and
+kill credit. Hover details focus on live information and short action labels.
 
 ## Release notes
 
@@ -169,13 +176,12 @@ counted once the game confirms it rewarded you.
 The **Marks Slain** list filters by name and by B/A/S rank, and is ordered by
 kills — so picking a rank puts your most-killed mark of that rank at the top.
 
-`/hunttally` opens it. Its settings live on the **Tally** tab of the main window.
+`/hunttally` opens it. Its settings live under **Settings → Tally**.
 
 ## Sharing with a group
 
 Everything above works alone. With a **sync server** it works together: one
-of you runs the server, everyone puts its URL and password into the **Sync**
-tab, and from then on you are hunting as one. The URL is a setting, not a
+of you runs the server, everyone puts its URL and password into **Settings → Sharing**, and from then on you are hunting as one. The URL is a setting, not a
 constant, so a group shares with itself and nobody else — and having the URL
 is not enough, because the server has a password.
 
@@ -215,7 +221,7 @@ board handles from an explicit maintenance report or Faloop restart timeline.
 The percentage measures elapsed window time, not a confirmed spawn probability.
 
 Joining or reconnecting uses the server train. Local-only rows are saved in
-configuration for explicit upload from the Sync tab. Shared-row edits made while
+configuration for explicit upload from Settings → Sharing. Shared-row edits made while
 offline are replaced by server state. Blank display aliases send Anonymous.
 All password holders can edit, reorder and clear the shared train.
 
