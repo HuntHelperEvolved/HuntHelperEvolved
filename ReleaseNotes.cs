@@ -34,6 +34,10 @@ public static class ReleaseNotes
 
     public static readonly Release[] All =
     {
+        new("0.5.0.8", "2026-09-08", "Suppress repeated detection alerts at the edge of range.",
+        [
+            new("Detection", "Finding the same mark at the same spawn no longer repeats chat, speech or fly-text alerts when it drops in and out of range. Notification memory resets on zone/world/instance changes, observed kills or a different spawn location. Live map visibility still expires normally.", Kihtli),
+        ]),
         new("0.5.0.7", "2026-09-08", "Show plugin windows only after character login.",
         [
             new("Windows", "All plugin windows stay hidden at the title screen and character selection. Automatic update notes are checked after login so they are not consumed before you can see them.", Kihtli),

@@ -75,6 +75,14 @@ configuration before testing. Build and automated test instructions are in the
   Nearby observers must not double-count. Local Reset stays local; Reset shared
   starts a new group attempt.
 
+## Detection debounce
+
+- Cross render range repeatedly around the same mark: chat, speech and fly text
+  should announce only once, while map icons still disappear immediately.
+- Change zone/world/instance and return, observe a kill then respawn, or find the
+  mark at a different spawn: the next detection should announce again.
+- A pulled mark moving away from its spawn must not trigger a repeated find.
+
 ## Active marks, alerts and travel
 
 - In `/hhsa` or `/hhv`, check All/S/A/B tabs, zone, HP and filters. Green means
