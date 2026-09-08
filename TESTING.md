@@ -4,6 +4,17 @@ Use the testing feed in [README.md](README.md#install). Back up the plugin
 configuration before testing. Build and automated test instructions are in the
 [development guide](docs/DEVELOPMENT.md).
 
+## Settings and help
+
+- Visit each settings category at normal and narrow window sizes, with UI scaling.
+  Check scrolling, category selection, template editors and saving after reload.
+- Verify Active Marks > Filters/settings opens Sharing, and `/hunttally config`
+  opens Tally. Connection controls, notification tests and Discord tests should
+  remain reachable in their respective categories.
+- Search Help for colours, mapping, reset, travel and tally. Clear the search and
+  check topic expansion. Mark-specific spawn conditions and live details should
+  remain available on hover without the former tutorial paragraphs.
+
 ## Timer windows
 
 - In `/hhs` and `/hha`, sort each visible data column in both directions, then

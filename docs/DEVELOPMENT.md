@@ -7,7 +7,8 @@ check for Hunt Helper or register its IPC endpoints.
 
 | Location | Purpose |
 | --- | --- |
-| `Plugin.cs`, `Configuration.cs`, `ReleaseNotes.cs` | Entry point, settings and in-game release notes |
+| `Plugin.cs`, `Configuration.cs`, `ReleaseNotes.cs` | Entry point, settings data and in-game release notes |
+| `UI/` | Settings navigation and searchable in-game help |
 | `Detection/` | Mark observations, nearby-player estimates, alerts and counters |
 | `GameData/` | Mark, world, expansion and spawn-point reference tables |
 | `Maps/` | Map overlays, coordinates, flags and aetheryte selection |
