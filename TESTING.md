@@ -6,6 +6,8 @@ configuration before testing. Build and automated test instructions are in the
 
 ## Settings and help
 
+- Check Scout contains report/credit controls and S Counters contains world selection,
+  spawn watches, local resets and shared counts. Verify `/hhc` still opens the popout.
 - Visit each settings category at normal and narrow window sizes, with UI scaling.
   Check scrolling, category selection, template editors and saving after reload.
 - Verify Active Marks > Filters/settings opens Sharing, and `/hunttally config`

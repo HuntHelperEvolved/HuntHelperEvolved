@@ -38,7 +38,7 @@ why.
 
 | | |
 |---|---|
-| `/htr` | the main window — Conductor, Train, Scout, Marks Slain, Settings, Help |
+| `/htr` | the main window — Conductor, Train, Scout, S Counters, Marks Slain, Settings, Help |
 | `/htrt` | the train list, as a popout |
 | `/htrc` | the trigger-mob counter popout — also Narrow-rift's Wee Ea headcount in Ultima Thule and Nunyunuwi's no-FATE-failed clock in Southern Thanalan |
 | `/htra` | name the closest aetheryte to the next mark |
@@ -52,7 +52,7 @@ for the counter. A shortcut already held by another plugin is left alone.
 
 ## Settings and help
 
-Settings uses a category sidebar, or a dropdown in narrow windows: Train, Map,
+Settings uses a category sidebar, or a dropdown in narrow windows: Train, Counters, Map,
 Notifications, Travel, Sharing, Discord, Tally and About. The **Help** tab has
 searchable explanations of the controls, timer colours, mapping, sharing and
 kill credit. Hover details focus on live information and short action labels.

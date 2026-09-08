@@ -23,7 +23,7 @@ namespace HuntHelperEvolved;
 
 public sealed partial class Plugin
 {
-    private enum SettingsPage { Train, Map, Notifications, Travel, Sharing, Discord, Tally, About }
+    private enum SettingsPage { Train, Counters, Map, Notifications, Travel, Sharing, Discord, Tally, About }
     private SettingsPage _settingsPage;
 
     private static void DrawSettingsHeading(string title)
@@ -67,8 +67,10 @@ public sealed partial class Plugin
             {
                 case SettingsPage.Train:
                     DrawTrainPreferences();
-                    DrawSettingsHeading("Trigger counters");
+                    break;
+                case SettingsPage.Counters:
                     DrawCounterPreferences();
+                    if (ImGui.Button("Open counter popout")) _counterPopoutVisible = true;
                     break;
                 case SettingsPage.Map:
                     DrawMapPreferences();

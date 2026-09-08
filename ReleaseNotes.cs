@@ -36,6 +36,7 @@ public static class ReleaseNotes
     {
         new("0.5.0.5", "2026-09-08", "Standalone commands and consistent hunt timer windows.",
         [
+            new("Counters", "Moved S-rank trigger counters and spawn watches out of Scout into their own S Counters tab, with counting preferences under Settings > Counters. Scout now focuses on train reports and scout credits.", Kihtli),
             new("Settings", "Grouped preferences into task-based categories with a compact layout for narrow windows. Sync and tally preferences now live under Settings. Added searchable Help and moved lengthy tutorial tooltips there, keeping mark-specific details and short action labels.", Kihtli),
             new("Standalone", "Removed Hunt Helper IPC emulation and installation checks. /hh, /hht, /hhn, /hhna and /hhc are native HHE shortcuts; HHE IPC and train sharing remain available.", Kihtli),
             new("Timers", "Click S- or A-rank table headers to sort ascending, descending, or restore automatic priority. Dates and numbers sort by their values; unknown values stay last. Right-click headers to choose columns.", Kihtli),
