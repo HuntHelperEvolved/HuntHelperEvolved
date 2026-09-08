@@ -4,6 +4,13 @@ Use the testing feed in [README.md](README.md#install). Back up the plugin
 configuration before testing. Build and automated test instructions are in the
 [development guide](docs/DEVELOPMENT.md).
 
+## Window visibility
+
+- Load the plugin at the title screen: no HHE windows should appear. Log into a
+  character: enabled update notes should open once for a newer version.
+- Logout with windows open: they should hide until login. Reloading the same
+  version should not reopen automatic update notes.
+
 ## Settings and help
 
 - Check Scout contains report/credit controls and S Counters contains world selection,
