@@ -29,18 +29,18 @@
     <Compile Include="../../Sync/SRankTimerData.cs" Link="SRankTimerData.cs" />
     <Compile Include="../../Sync/SpawnMapping.cs" Link="SpawnMapping.cs" />
     <Compile Include="../../Sync/SRankBoardFilter.cs" Link="SRankBoardFilter.cs" />
-    <Compile Include="../../NearbyPlayerCache.cs" Link="NearbyPlayerCache.cs" />
-    <Compile Include="../../DetectedMark.cs" Link="DetectedMark.cs" />
-    <Compile Include="../../TrainExchange.cs" Link="TrainExchange.cs" />
-    <Compile Include="../../TrainReportHistory.cs" Link="TrainReportHistory.cs" />
-    <Compile Include="../../TrackedMark.cs" Link="TrackedMark.cs" />
-    <Compile Include="../../TrainReport.cs" Link="TrainReport.cs" />
-    <Compile Include="../../ExpansionData.cs" Link="ExpansionData.cs" />
-    <Compile Include="../../MarkDeathEvidence.cs" Link="MarkDeathEvidence.cs" />
-    <Compile Include="../../TrainCompletionGuard.cs" Link="TrainCompletionGuard.cs" />
-    <Compile Include="../../NativeTrainRecord.cs" Link="NativeTrainRecord.cs" />
-    <Compile Include="../../TrainExpansionProgress.cs" Link="TrainExpansionProgress.cs" />
-    <Compile Include="../../SpawnPointData.cs" Link="SpawnPointData.cs" />
+    <Compile Include="../../Detection/NearbyPlayerCache.cs" Link="NearbyPlayerCache.cs" />
+    <Compile Include="../../Detection/DetectedMark.cs" Link="DetectedMark.cs" />
+    <Compile Include="../../Interop/TrainExchange.cs" Link="TrainExchange.cs" />
+    <Compile Include="../../Reports/TrainReportHistory.cs" Link="TrainReportHistory.cs" />
+    <Compile Include="../../Train/TrackedMark.cs" Link="TrackedMark.cs" />
+    <Compile Include="../../Reports/TrainReport.cs" Link="TrainReport.cs" />
+    <Compile Include="../../GameData/ExpansionData.cs" Link="ExpansionData.cs" />
+    <Compile Include="../../Detection/MarkDeathEvidence.cs" Link="MarkDeathEvidence.cs" />
+    <Compile Include="../../Train/TrainCompletionGuard.cs" Link="TrainCompletionGuard.cs" />
+    <Compile Include="../../Interop/NativeTrainRecord.cs" Link="NativeTrainRecord.cs" />
+    <Compile Include="../../Train/TrainExpansionProgress.cs" Link="TrainExpansionProgress.cs" />
+    <Compile Include="../../GameData/SpawnPointData.cs" Link="SpawnPointData.cs" />
     <Compile Include="../../Sync/TrainResetRecovery.cs" Link="TrainResetRecovery.cs" />
   </ItemGroup>
 </Project>

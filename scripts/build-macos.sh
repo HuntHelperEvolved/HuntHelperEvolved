@@ -6,6 +6,8 @@
 
 set -euo pipefail
 
+repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+
 if [[ -z "${DALAMUD_HOME:-}" ]]; then
   echo "DALAMUD_HOME not set, searching for a Dalamud install..."
 
@@ -27,7 +29,7 @@ if [[ -z "${DALAMUD_HOME:-}" ]]; then
   echo "Found: $DALAMUD_HOME"
 fi
 
-dotnet build -c Release
+dotnet build "$repo_root/HuntHelperEvolved.csproj" -c Release
 
 echo
-echo "Built to: $(pwd)/bin/Release/HuntHelperEvolved/"
+echo "Built to: $repo_root/bin/Release/HuntHelperEvolved/"
