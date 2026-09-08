@@ -71,6 +71,13 @@ public sealed class MarkDetector
     private bool _nearbyPlayersAvailable;
     private int? CountPlayers(Vector3 position) => _nearbyPlayersAvailable ? _nearbyPlayers.CountNear(position) : null;
 
+    private readonly MarkAnnouncementDebounce _announcements = new();
+    public void ResetAnnouncementOnKill(uint name, uint instance, uint world) => _announcements.Killed(name, instance, world);
+    public void ResetAnnouncements(uint territory) => _announcements.Clear();
+    public bool ShouldAnnounce(OtherRankSighting sighting) => _announcements.ShouldAnnounce(
+        sighting.NameId, sighting.Instance, sighting.WorldId, sighting.SpawnPointIndex,
+        sighting.MapPosition, sighting.InCombat == true);
+
     public void ClearNearbyPlayers() { _nearbyPlayers.Clear(); _nearbyPlayersAvailable = false; }
 
     // Like Sonar's PlayerCounterService: native character slots, refreshed each
@@ -248,7 +255,7 @@ public sealed class MarkDetector
     public void Scan(bool recordNew = true)
     {
         var territoryId = _clientState.TerritoryType;
-        if (territoryId == 0) { _deathEvidence.Clear(); _otherRanks.Clear(); _visibleCorpses.Clear(); Scanned?.Invoke(); return; }
+        if (territoryId == 0) { _announcements.Clear(); _deathEvidence.Clear(); _otherRanks.Clear(); _visibleCorpses.Clear(); Scanned?.Invoke(); return; }
 
         var mapId = GetMapId(territoryId);
         var instance = GetCurrentInstance();
@@ -258,7 +265,7 @@ public sealed class MarkDetector
 
         // Live sightings belong only to the current world, instance and scan.
         var scope = (territoryId, instance, worldId);
-        if (scope != _lastScannedScope) { _otherRanks.Clear(); _visibleCorpses.Clear(); _deathEvidence.Clear(); }
+        if (scope != _lastScannedScope) { _announcements.Clear(); _otherRanks.Clear(); _visibleCorpses.Clear(); _deathEvidence.Clear(); }
         _lastScannedScope = scope;
 
         var visibleObjects = new HashSet<ulong>();
@@ -393,6 +400,7 @@ public sealed class MarkDetector
         // body lingers.
         if (IsDead(mob))
         {
+            _announcements.Killed(mob.NameId, instance, worldId);
             if (_otherRanks.TryGetValue(key, out var dying))
                 SightingObservedDead?.Invoke(dying, now);
             _otherRanks.Remove(key);

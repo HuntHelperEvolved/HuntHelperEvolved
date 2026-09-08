@@ -385,6 +385,7 @@ public sealed partial class Plugin : IDalamudPlugin
         _ssEvent = new SsEventWatcher(chatGui, clientState, _log, _detector);
         _mapOverlay = new HuntMapOverlay(framework, clientState, objectTable, dataManager, addonLifecycle, gameGui, _log, _config, _detector, _ssEvent, _pluginInterface, _sync);
         _detector.OtherRankDetected += OnSightingDetected;
+        _clientState.TerritoryChanged += _detector.ResetAnnouncements;
         _watcher.PersistRequested += PersistTrain;
         RestoreSavedTrain();
 
@@ -740,7 +741,7 @@ public sealed partial class Plugin : IDalamudPlugin
     {
         if (sighting.Rank == HuntRank.S && !sighting.IsRemote)
             _spawnAlertFilter.RecordLocal(sighting.NameId,sighting.WorldId,sighting.Instance,DateTime.UtcNow);
-        _notifier.Announce(sighting);
+        if (_detector.ShouldAnnounce(sighting)) _notifier.Announce(sighting);
     }
 
     /// <summary>Compact "how long ago was this last seen" label, e.g. 5m / 1h 12m.</summary>
@@ -3820,6 +3821,7 @@ public sealed partial class Plugin : IDalamudPlugin
             _log.Warning(ex, "KamiToolKit did not shut down cleanly.");
         }
         _detector.OtherRankDetected -= OnSightingDetected;
+        _clientState.TerritoryChanged -= _detector.ResetAnnouncements;
         _watcher.PersistRequested -= PersistTrain;
 
         // One last write, so anything since the last periodic save survives a
@@ -4006,6 +4008,7 @@ public sealed partial class Plugin : IDalamudPlugin
     /// </summary>
     private void OnAnyMarkDeath(KillDetail kill)
     {
+        _detector.ResetAnnouncementOnKill(kill.Mark.NameId, kill.InstanceId, _detector.CurrentWorldId());
         try
         {
             _sync.ReportMarkDeath(
