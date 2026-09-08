@@ -34,7 +34,7 @@ public static class ReleaseNotes
 
     public static readonly Release[] All =
     {
-        new("0.5.0.5", "2026-09-08", "Standalone commands and consistent hunt timer windows.",
+        new("0.5.0.5", "2026-09-08", "Maintenance-aware instances, standalone commands and consistent hunt timer windows.",
         [
             new("Maintenance", "Timer boards now show offline worlds and follow Faloop zone instance counts, including newly created instances. Restart clocks use the actual restart time; retired instances remain in history and are hidden from current boards.", Kihtli),
             new("Counters", "Moved S-rank trigger counters and spawn watches out of Scout into their own S Counters tab, with counting preferences under Settings > Counters. Scout now focuses on train reports and scout credits.", Kihtli),

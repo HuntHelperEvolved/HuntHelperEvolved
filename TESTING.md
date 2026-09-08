@@ -17,6 +17,14 @@ configuration before testing. Build and automated test instructions are in the
   check topic expansion. Mark-specific spawn conditions and live details should
   remain available on hover without the former tutorial paragraphs.
 
+## Maintenance and instances
+
+- With server 0.3.15+, check offline worlds are grey and crossed out and excluded
+  from Available only and Active Marks. Restart clocks continue while offline.
+- Verify Central Shroud shows I1/I2 without the old uninstanced row. Future count
+  changes should follow server metadata without another plugin update.
+- Check world reopening clears the offline display after metadata refresh.
+
 ## Timer windows
 
 - In `/hhs` and `/hha`, sort each visible data column in both directions, then
