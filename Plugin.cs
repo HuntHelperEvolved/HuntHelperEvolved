@@ -814,15 +814,8 @@ public sealed partial class Plugin : IDalamudPlugin
     });
 
     /// <summary>
-    /// Whether a report may cover part of the train and leave the rest of it
-    /// standing.
-    ///
-    /// Locally that is always possible. On a SHARED train it needs a server
-    /// that can clear part of its own copy: against an older one, reporting
-    /// wipes the shared train for everybody regardless, and keeping legs back
-    /// would mean not reporting marks that are about to vanish anyway. So an
-    /// old server gets the whole train reported and the whole train cleared,
-    /// exactly as before.
+    /// Whether partial-report support is available. Shared submission is refused
+    /// before posting Discord when the server lacks durable completion support.
     /// </summary>
     private bool CanReportPartially =>
         !_config.SyncEnabled || !_config.SyncShareTrain || _sync.SupportsPartialFinish;
@@ -830,6 +823,12 @@ public sealed partial class Plugin : IDalamudPlugin
     private async Task EndTrainNowAsync()
     {
         if (_completion.IsBusy) { _lastPostResult = "A train report is already being sent."; return; }
+        if (_config.SyncEnabled && _config.SyncShareTrain && (!_sync.IsConnected || !_sync.SupportsPartialFinish))
+        {
+            _lastPostResult = "Shared report not sent: connect to a server with persistent partial-report support first. The train has been kept.";
+            _chatGui.PrintError("[Hunt Helper Evolved] " + _lastPostResult);
+            return;
+        }
         var marks = BuildCurrentMarks();
         if (marks.Count == 0) { _lastPostResult = "Nothing to post — the train is empty."; return; }
 
@@ -4099,8 +4098,10 @@ public sealed partial class Plugin : IDalamudPlugin
     /// The watches are deliberately not touched here: the server sends its own
     /// watch state alongside the removal, and that is what settles them.
     /// </summary>
-    private void OnReportedRemoval(List<(uint NameId, uint Instance, uint WorldId)> keys)
+    private void OnReportedRemoval(List<ReportedMark> reported)
     {
+        var keys = ReportedHistory.CompletedKeys(BuildCurrentMarks(), reported);
+        if (keys.Count == 0) return;
         var ownEcho = _ownResetPendingAt is { } at && DateTime.UtcNow - at < TimeSpan.FromSeconds(30);
         if (!ownEcho) CaptureResetUndo("Report completed");
         _ownResetPendingAt = null;
