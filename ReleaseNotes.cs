@@ -34,6 +34,10 @@ public static class ReleaseNotes
 
     public static readonly Release[] All =
     {
+        new("0.5.0.10", "2026-09-09", "Stabilise Active Marks during brief reporting gaps.",
+        [
+            new("Active Marks", "Holds mark rows and observer names for up to five seconds after the last received report to reduce flicker with latency or brief visibility gaps. Fresh HP/death reports replace the display immediately. Your own observer alias appears once as You. Map visibility is unchanged.", Kihtli),
+        ]),
         new("0.5.0.9", "2026-09-09", "Remove unwanted shared scout credits and inspect their source.",
         [
             new("Scouts", "Shared scout credits now show their first supplier and whether they were automatic or manual. Remove or restore credits in train controls; removed names stay suppressed on the server across reconnects and train resets. Requires server 0.3.16. Older credits have an unknown source.", Kihtli),

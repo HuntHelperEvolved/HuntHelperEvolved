@@ -22,6 +22,7 @@
     <Compile Include="../../Sync/TimerTableSort.cs" Link="TimerTableSort.cs" />
     <Compile Include="../../Sync/ARankInstances.cs" Link="ARankInstances.cs" />
     <Compile Include="../../Sync/SharedRouteGrouping.cs" Link="SharedRouteGrouping.cs" />
+    <Compile Include="../../Sync/ActiveMarkGrace.cs" Link="ActiveMarkGrace.cs" />
     <Compile Include="../../Sync/VisibleMarkFilter.cs" Link="VisibleMarkFilter.cs" />
     <Compile Include="../../Sync/ActiveSRankFilter.cs" Link="ActiveSRankFilter.cs" />
     <Compile Include="../../Sync/TravelHandoff.cs" Link="TravelHandoff.cs" />
