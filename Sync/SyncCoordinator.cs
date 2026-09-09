@@ -381,7 +381,8 @@ public sealed partial class SyncCoordinator : IDisposable
                 break;
             }
             case "train.scouts":
-                _trainScouts=SyncProtocol.Deserialize<TrainScoutsBroadcast>(payload)!.Names;
+                var scouts=SyncProtocol.Deserialize<TrainScoutsBroadcast>(payload)!;
+                _trainScouts=scouts.Names; ApplyScoutCredits(scouts.Credits);
                 if (_trainScouts.Count==0) _manualScoutsSent=null;
                 break;
             case ServerMessageTypes.Welcome:
@@ -467,6 +468,7 @@ public sealed partial class SyncCoordinator : IDisposable
     {
         ResetCompletionConnection();
         SupportsTrainFinish=welcome.SupportsTrainFinish; _trainScouts=welcome.TrainScouts;
+        SupportsScoutRemoval=welcome.SupportsScoutRemoval; ApplyScoutCredits(welcome.ScoutCredits);
         _watchSent = null;
         if (ARankHistory.Merge(_config.ARankKills, welcome.ARankKills.Concat(ARankHistory.FromMarks(welcome.Marks)), DateTime.UtcNow)) _config.Save();
         ClientId = welcome.ClientId;

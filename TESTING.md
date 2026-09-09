@@ -56,6 +56,15 @@ configuration before testing. Build and automated test instructions are in the
 - IPC consumers should use `HuntHelperEvolved.*`; verify V2 train reads/imports.
   HHE no longer provides Hunt Helper's `HH.*` endpoints.
 
+## Scout credits
+
+- Add a manual credit from one client and check its first supplier and source
+  in train controls and Admin > Scout credits. Remove it from another client.
+- Reconnect, restart the server, and reset the train: a removed name must remain
+  suppressed. Restore explicitly to allow it again. Older clients must not be
+  able to re-add it through their saved manual lists.
+- Existing migrated credits should say Legacy / unknown.
+
 ## Shared trains and mapping
 
 - Split scouting between two users; check order, expansion grouping and automatic

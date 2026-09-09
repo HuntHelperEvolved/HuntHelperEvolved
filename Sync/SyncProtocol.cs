@@ -287,6 +287,8 @@ public sealed class WelcomeMessage
 {
     public bool SupportsTrainFinish { get; set; }
     public List<string> TrainScouts { get; set; } = new();
+    public bool SupportsScoutRemoval { get; set; }
+    public List<ScoutCreditDto> ScoutCredits { get; set; } = new();
     public List<ARankKill> ARankKills { get; set; } = new();
     public bool SupportsVisibleMarks { get; set; }
     public List<VisibleMark> VisibleMarks { get; set; } = new();
@@ -383,13 +385,25 @@ public sealed class TrainFinishResult
     public bool Accepted { get; set; }
     public string Message { get; set; } = string.Empty;
 }
+public sealed class ScoutCreditDto
+{
+    public string Name { get; set; } = "";
+    public string AddedBy { get; set; } = "";
+    public string Source { get; set; } = "Legacy / unknown";
+    public DateTime? AddedAt { get; set; }
+    public bool Removed { get; set; }
+    public string? RemovedBy { get; set; }
+}
 public sealed class TrainScoutsMessage
 {
+    public List<string> Remove { get; set; } = new();
+    public List<string> Restore { get; set; } = new();
     public string Type => "train.scouts";
     public List<string> Names { get; set; } = new();
 }
 public sealed class TrainScoutsBroadcast
 {
+    public List<ScoutCreditDto> Credits { get; set; } = new();
 
     public List<string> Names { get; set; } = new();
 }

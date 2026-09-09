@@ -6,6 +6,20 @@ using System.Threading.Tasks;
 namespace HuntHelperEvolved.Sync;
 public sealed partial class SyncCoordinator
 {
+    public bool SupportsScoutRemoval { get; private set; }
+    public IReadOnlyList<ScoutCreditDto> ScoutCredits => _scoutCredits;
+    private List<ScoutCreditDto> _scoutCredits = new();
+    public void ChangeScoutCredit(string name, bool restore)
+    {
+        if (!IsConnected || !SupportsScoutRemoval || !_config.SyncShareTrain) return;
+        _client.Send(restore ? new TrainScoutsMessage { Restore=new() { name } } : new TrainScoutsMessage { Remove=new() { name } });
+    }
+    private void ApplyScoutCredits(List<ScoutCreditDto> credits)
+    {
+        _scoutCredits=credits;
+        var removed=credits.Where(c => c.Removed).Select(c => c.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (_config.SyncShareTrain && _config.AdditionalScouts.RemoveAll(n => removed.Contains(n.Trim())) > 0) _config.Save();
+    }
     public bool SupportsTrainFinish { get; private set; }
     public IReadOnlyList<string> TrainScouts => _trainScouts;
     private List<string> _trainScouts = new();
@@ -34,7 +48,7 @@ public sealed partial class SyncCoordinator
     {
         foreach (var request in _finishRequests.Values)
             request.TrySetResult(new TrainFinishResult { Message="Disconnected before acknowledgement; check the shared train before retrying." });
-        _finishRequests.Clear(); SupportsTrainFinish=false; _trainScouts.Clear(); _manualScoutsSent=null;
+        _finishRequests.Clear(); SupportsScoutRemoval=false; _scoutCredits.Clear(); SupportsTrainFinish=false; _trainScouts.Clear(); _manualScoutsSent=null;
     }
     private void SendManualScouts()
     {
@@ -42,7 +56,9 @@ public sealed partial class SyncCoordinator
         var names=_config.AdditionalScouts.Where(n=>!string.IsNullOrWhiteSpace(n)).Select(n=>n.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         var serialized=SyncProtocol.Serialize(names);
         if (serialized==_manualScoutsSent) return;
+        var previous = _manualScoutsSent is null ? new List<string>() : Newtonsoft.Json.JsonConvert.DeserializeObject<List<string>>(_manualScoutsSent) ?? new();
         _manualScoutsSent=serialized;
-        if (names.Count>0) _client.Send(new TrainScoutsMessage { Names=names });
+        var removed = SupportsScoutRemoval ? previous.Except(names, StringComparer.OrdinalIgnoreCase).ToList() : new();
+        if (names.Count>0 || removed.Count>0) _client.Send(new TrainScoutsMessage { Names=names, Remove=removed });
     }
 }
