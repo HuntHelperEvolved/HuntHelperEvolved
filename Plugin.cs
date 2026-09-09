@@ -362,6 +362,7 @@ public sealed partial class Plugin : IDalamudPlugin
             typeof(Plugin).Assembly.GetName().Version?.ToString(4) ?? "0.0.0");
         _counter.PersonalKill += _sync.RecordCounterKill;
         _sync.RemoteTrainCleared += OnRemoteTrainCleared;
+        _sync.ReportedRemoval += OnReportedRemoval;
         _sync.SRankSpawned += OnRemoteSRankSpawn;
         _srankTravel = new LifestreamTravel(_pluginInterface, framework, _detector, _chatGui, _log);
         _activeMarksWindow = new ActiveMarksWindow(_config, _sync, _worldData, _detector, _gameGui, _srankTravel, () => { _configWindowVisible=true; _selectSyncTab=true; });
@@ -812,24 +813,54 @@ public sealed partial class Plugin : IDalamudPlugin
         Shared = _config.SyncEnabled && _config.SyncShareTrain
     });
 
+    /// <summary>
+    /// Whether a report may cover part of the train and leave the rest of it
+    /// standing.
+    ///
+    /// Locally that is always possible. On a SHARED train it needs a server
+    /// that can clear part of its own copy: against an older one, reporting
+    /// wipes the shared train for everybody regardless, and keeping legs back
+    /// would mean not reporting marks that are about to vanish anyway. So an
+    /// old server gets the whole train reported and the whole train cleared,
+    /// exactly as before.
+    /// </summary>
+    private bool CanReportPartially =>
+        !_config.SyncEnabled || !_config.SyncShareTrain || _sync.SupportsPartialFinish;
+
     private async Task EndTrainNowAsync()
     {
         if (_completion.IsBusy) { _lastPostResult = "A train report is already being sent."; return; }
         var marks = BuildCurrentMarks();
         if (marks.Count == 0) { _lastPostResult = "Nothing to post — the train is empty."; return; }
+
+        // A report covers only the expansions the train actually killed
+        // something in, and only those come off the train when it posts. The
+        // legs that were scouted but not run stay put for a later train.
+        var partial = CanReportPartially;
+        var reportMarks = partial ? TrainReport.ForReport(marks) : marks;
+        if (reportMarks.Count == 0)
+        { _lastPostResult = "Nothing to post — no marks were killed on this train."; return; }
+
+        var (reportedWatches, keptWatches) = partial
+            ? TrainReport.SplitWatches(_config.Flags, TrainReport.ReportedExpansions(marks))
+            : (CloneWatches(_config.Flags), new List<FlagEntry>());
+        var submitted = partial ? TrainReport.SubmittedMarks(marks) : marks.Where(m => m.Dead).ToList();
+
         var snapshot = CompletionSnapshot();
         if (!_completion.TryBegin(snapshot)) return;
         var endedBy = _objectTable.LocalPlayer?.Name?.TextValue;
         var requiresServer = _config.SyncEnabled;
         var connectionId = _sync.ClientId;
-        var serverSubmission = requiresServer ? _sync.PrepareFinish(marks) : null;
+        var serverSubmission = requiresServer
+            ? _sync.PrepareFinish(marks, partial ? submitted.Select(m => m.Key) : null, keptWatches)
+            : null;
         try
         {
             var flags = Newtonsoft.Json.JsonConvert.DeserializeObject<List<FlagEntry>>(
-                Newtonsoft.Json.JsonConvert.SerializeObject(_config.Flags))!;
+                Newtonsoft.Json.JsonConvert.SerializeObject(reportedWatches))!;
             var webhooks = Newtonsoft.Json.JsonConvert.DeserializeObject<List<WebhookEntry>>(
                 Newtonsoft.Json.JsonConvert.SerializeObject(_config.Webhooks))!;
-            var (success, message) = await DiscordRelay.PostTrainCompleteAsync(webhooks, marks, endedBy, flags);
+            var (success, message) = await DiscordRelay.PostTrainCompleteAsync(webhooks, reportMarks, endedBy, flags);
             Task<TrainFinishResult>? serverTask = null;
             await HuntTally.Service.Framework.RunOnFrameworkThread(() =>
             {
@@ -846,9 +877,11 @@ public sealed partial class Plugin : IDalamudPlugin
                 }
                 else if (_completion.CanClear(CompletionSnapshot(), false))
                 {
-                    CaptureResetUndo("Report completed"); _watcher.ResetNow();
-                    _currentMark=null; _config.Flags.Clear(); ClearSavedTrain();
-                    _chatGui.Print("[Hunt Helper Evolved] Report posted; local train reset. Undo is available.");
+                    CaptureResetUndo("Report completed");
+                    ClearReportedMarks(submitted, keptWatches, partial);
+                    _chatGui.Print(partial
+                        ? $"[Hunt Helper Evolved] Report posted; {DescribeKept(marks, submitted)} Undo is available."
+                        : "[Hunt Helper Evolved] Report posted; local train reset. Undo is available.");
                 }
             });
             if (serverTask is not null)
@@ -861,7 +894,7 @@ public sealed partial class Plugin : IDalamudPlugin
                     _sync.ForgetFinish(serverSubmission!.RequestId);
                     if (_disposal.IsCancellationRequested) return;
                     if (result.Accepted && !serverSubmission.ClearShared && CompletionSnapshot()==snapshot)
-                    { _watcher.ResetNow(); _currentMark=null; _config.Flags.Clear(); ClearSavedTrain(); }
+                        ClearReportedMarks(submitted, keptWatches, partial);
                     _lastPostResult = "Discord posted. " + result.Message;
                     _chatGui.Print("[Hunt Helper Evolved] " + _lastPostResult);
                 });
@@ -3573,6 +3606,16 @@ public sealed partial class Plugin : IDalamudPlugin
             return;
         }
 
+        // Exactly what would be posted, which is only the expansions this train
+        // actually killed something in. Previewing the unfiltered train would
+        // show legs that the report is going to leave out.
+        if (CanReportPartially) marks = TrainReport.ForReport(marks);
+        if (marks.Count == 0)
+        {
+            ImGui.TextDisabled("Nothing killed yet — a report covers only the expansions the train has killed in.");
+            return;
+        }
+
         var entries = TrainReport.BuildEntries(marks);
 
         DrawReportEntries(entries.Where(e => !e.Sniped).ToList());
@@ -3825,6 +3868,7 @@ public sealed partial class Plugin : IDalamudPlugin
         _mapOverlay.Dispose();
         _ssEvent.Dispose();
         _sync.RemoteTrainCleared -= OnRemoteTrainCleared;
+        _sync.ReportedRemoval -= OnReportedRemoval;
         _srankTravel.Dispose();
         _sync.SRankSpawned -= OnRemoteSRankSpawn;
         _sync.Dispose();
@@ -4004,6 +4048,67 @@ public sealed partial class Plugin : IDalamudPlugin
         _config.ResetUndoMarks.Clear(); _config.ResetUndoFlags.Clear(); _config.ResetUndoAt=null;
         _config.Save(); PersistTrain();
         _chatGui.Print("[Hunt Helper Evolved] Train reset undone locally. Train sharing is off; the group's current train is unchanged.");
+    }
+
+    /// <summary>
+    /// Clears what a posted report consumed and leaves the rest of the train
+    /// standing.
+    ///
+    /// What goes: the dead marks in the expansions the report covered, out of
+    /// both the list and the retained report history that would otherwise put
+    /// them in the next report. What stays: every leg the train did not run,
+    /// which is the whole point - a conductor who scouts five expansions and
+    /// runs three keeps the other two, already scouted, for later. Live marks
+    /// on a reported leg stay too: still standing is not reported as anything.
+    ///
+    /// <paramref name="partial"/> false means the report covered the whole
+    /// train, so this is the old wholesale reset. That happens against a sync
+    /// server that cannot clear part of its shared train.
+    /// </summary>
+    private void ClearReportedMarks(List<TrackedMark> submitted, List<FlagEntry> keptWatches, bool partial)
+    {
+        if (!partial)
+        {
+            _watcher.ResetNow();
+            _currentMark = null; _config.Flags.Clear(); ClearSavedTrain();
+            return;
+        }
+
+        _watcher.ForgetReported(submitted.Select(m => m.Key));
+        _config.Flags = keptWatches;
+        if (_currentMark is { } current && submitted.Any(m => m.Key == current)) _currentMark = null;
+        _config.Save();
+        PersistTrain();
+    }
+
+    /// <summary>Says what a partial report left behind, so it is never a surprise.</summary>
+    private static string DescribeKept(List<TrackedMark> before, List<TrackedMark> submitted)
+    {
+        var kept = before.Count - submitted.Count;
+        return kept == 0
+            ? "the whole train was reported and cleared."
+            : $"{submitted.Count} reported mark(s) cleared, {kept} kept for a later train.";
+    }
+
+    /// <summary>
+    /// The shared train dropped rows because somebody posted a report covering
+    /// them. Mirrors <see cref="ClearReportedMarks"/> for everyone who was not
+    /// the one posting, and keeps their report history from carrying the same
+    /// kills into the next report.
+    ///
+    /// The watches are deliberately not touched here: the server sends its own
+    /// watch state alongside the removal, and that is what settles them.
+    /// </summary>
+    private void OnReportedRemoval(List<(uint NameId, uint Instance, uint WorldId)> keys)
+    {
+        var ownEcho = _ownResetPendingAt is { } at && DateTime.UtcNow - at < TimeSpan.FromSeconds(30);
+        if (!ownEcho) CaptureResetUndo("Report completed");
+        _ownResetPendingAt = null;
+
+        _watcher.ForgetReported(keys);
+        if (_currentMark is { } current && keys.Contains(current)) _currentMark = null;
+        _config.Save();
+        PersistTrain();
     }
 
     private void OnRemoteTrainCleared(string by)

@@ -9,33 +9,12 @@ using System.Numerics;
 
 namespace HuntHelperEvolved;
 
-public enum SpawnStatus { Unknown, Spawned, NotSpawned }
-
 [Serializable]
 public class WebhookEntry
 {
     public bool Enabled { get; set; } = true;
     public string Label { get; set; } = string.Empty;
     public string Url { get; set; } = string.Empty;
-}
-
-/// <summary>
-/// An S-rank watch for the current train. Label is the display text (mark
-/// name, or mark name + which known spawn spot for Narrow-rift specifically).
-/// </summary>
-[Serializable]
-public class FlagEntry
-{
-    public string Label { get; set; } = string.Empty;
-    public SpawnStatus SpawnStatus { get; set; } = SpawnStatus.Unknown;
-
-    /// <summary>Zone this watch belongs to, so the zone-entry reminder can match it.</summary>
-    public uint TerritoryId { get; set; }
-
-    /// <summary>Map coordinates of the chosen spawn spot, if one was picked.</summary>
-    public bool HasLocation { get; set; }
-    public float X { get; set; }
-    public float Y { get; set; }
 }
 
 /// <summary>
