@@ -160,6 +160,13 @@ public sealed partial class SyncCoordinator : IDisposable
     /// echo the clear straight back to the server.
     /// </summary>
     public event Action<string>? RemoteTrainCleared;
+
+    /// <summary>
+    /// Rows the shared train dropped because a report went out for them. The
+    /// plugin handles these rather than this class, because forgetting them
+    /// means reaching into report history, which the plugin owns.
+    /// </summary>
+    public event Action<List<(uint NameId, uint Instance, uint WorldId)>>? ReportedRemoval;
     public event Action<SRankSpawnBroadcast>? SRankSpawned;
 
     public SyncCoordinator(
@@ -409,7 +416,10 @@ public sealed partial class SyncCoordinator : IDisposable
 
             case ServerMessageTypes.TrainRemove:
                 if (_config.SyncShareTrain)
-                    ApplyRemoves(SyncProtocol.Deserialize<TrainRemoveBroadcast>(payload)!.Keys);
+                {
+                    var removal = SyncProtocol.Deserialize<TrainRemoveBroadcast>(payload)!;
+                    ApplyRemoves(removal.Keys, removal.Reported);
+                }
                 break;
 
             case ServerMessageTypes.TrainClear:
@@ -469,7 +479,8 @@ public sealed partial class SyncCoordinator : IDisposable
     private void ApplyWelcome(WelcomeMessage welcome)
     {
         ResetCompletionConnection();
-        SupportsTrainFinish=welcome.SupportsTrainFinish; _trainScouts=welcome.TrainScouts;
+        SupportsTrainFinish=welcome.SupportsTrainFinish; SupportsPartialFinish=welcome.SupportsPartialFinish;
+        _trainScouts=welcome.TrainScouts;
         SupportsScoutRemoval=welcome.SupportsScoutRemoval; ApplyScoutCredits(welcome.ScoutCredits);
         _watchSent = null;
         if (ARankHistory.Merge(_config.ARankKills, welcome.ARankKills.Concat(ARankHistory.FromMarks(welcome.Marks)), DateTime.UtcNow)) _config.Save();
@@ -605,17 +616,29 @@ public sealed partial class SyncCoordinator : IDisposable
         Bump();
     }
 
-    private void ApplyRemoves(List<SyncKey> keys)
+    /// <summary>
+    /// Takes rows off this client's train because they went off the shared one.
+    ///
+    /// <paramref name="reported"/> says a train report has just been posted for
+    /// them. That matters because report history retains removed dead marks on
+    /// purpose - it is what stops "Remove Dead" losing kills from the next
+    /// report - and retaining these would instead publish them twice, once now
+    /// and again when whoever is still running the train finishes its remaining
+    /// legs. So a reported removal forgets rather than retains.
+    /// </summary>
+    private void ApplyRemoves(List<SyncKey> keys, bool reported = false)
     {
         _applying = true;
         try
         {
-            foreach (var k in keys)
-            {
-                var key = k.ToTuple();
-                _detector.Remove(key);
-                _known.Remove(key);
-            }
+            var removed = keys.Select(k => k.ToTuple()).ToList();
+            foreach (var key in removed) _known.Remove(key);
+
+            // A reported removal has report history to settle as well as the
+            // row itself, and that history belongs to the plugin rather than
+            // here; an ordinary one only has to take the row off the list.
+            if (reported) ReportedRemoval?.Invoke(removed);
+            else foreach (var key in removed) _detector.Remove(key);
         }
         finally
         {

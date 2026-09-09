@@ -270,6 +270,25 @@ public class TrainWatcher : IDisposable
         LastStatus = "Train tracking reset — ready for a new train.";
     }
 
+    /// <summary>
+    /// Takes reported rows off the train for good.
+    ///
+    /// Both halves are needed. Removing from the detector takes the rows off
+    /// the list; forgetting them in history stops them coming back, because
+    /// history retains dead marks after removal on purpose so that "Remove
+    /// Dead" cannot lose kills from the next report. A report has already
+    /// carried these, so retaining them would post them twice.
+    ///
+    /// Order matters: the detector goes first, since removal captures history
+    /// on the way out and forgetting before that would simply re-record them.
+    /// </summary>
+    public void ForgetReported(IEnumerable<(uint ModelId, uint Instance, uint WorldId)> keys)
+    {
+        var list = keys.ToList();
+        foreach (var key in list) _detector.Remove(key);
+        _history.Forget(list);
+    }
+
     private void ClearHistory()
     {
         _history.Clear();
