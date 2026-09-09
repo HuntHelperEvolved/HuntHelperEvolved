@@ -76,8 +76,23 @@ public static class DiscordRelay
         return SendToAllAsync(webhooks, payload);
     }
 
+    /// <summary>
+    /// Posts the train report over exactly the marks and watches it is handed.
+    ///
+    /// Deciding WHICH marks those are is the caller's job, not this one's: a
+    /// report normally covers only the expansions the train killed something
+    /// in, but against a sync server too old to clear part of a shared train it
+    /// has to cover all of them, because the whole train is about to be wiped
+    /// either way. That choice needs the server's capabilities, which belong to
+    /// the plugin. Both callers narrow the list through TrainReport, which the
+    /// in-game preview reads from as well, so the preview and the post cannot
+    /// disagree about what went out.
+    /// </summary>
     public static Task<(bool Success, string Message)> PostTrainCompleteAsync(List<WebhookEntry> webhooks, List<TrackedMark> marks, string? endedBy, List<FlagEntry>? flags = null)
     {
+        if (marks.Count == 0)
+            return Task.FromResult((false, "Nothing to report — no marks were killed on this train."));
+
         var nowUnix = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         var endedByLine = string.IsNullOrWhiteSpace(endedBy) ? "" : $"\nEnded by {endedBy}";
         var body = BuildChronologicalBody(marks);
@@ -91,7 +106,7 @@ public static class DiscordRelay
             {
                 title = i == 0 ? "🚂 Train Complete" : "🚂 Train Complete (continued)",
                 description = i == 0
-                    ? $"Finished <t:{nowUnix}:F> — {marks.Count(m => m.Dead && m.DeathObservedAtUtc != null && m.SnipedAtUtc == null)} observed kills{endedByLine}\n\n{chunks[i]}"
+                    ? $"Finished <t:{nowUnix}:F> — {marks.Count(TrainReport.IsObservedKill)} observed kills{endedByLine}\n\n{chunks[i]}"
                     : chunks[i],
                 color = EmbedColor,
             });

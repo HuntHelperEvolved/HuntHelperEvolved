@@ -52,6 +52,99 @@ public record TrainReportEntry(
 /// </summary>
 public static class TrainReport
 {
+    /// <summary>
+    /// The expansion label used for a mark this table has never heard of.
+    /// Matches the text such an entry reports, so the two cannot drift.
+    /// </summary>
+    public const string UnknownExpansion = "No fixed timer";
+
+    /// <summary>
+    /// A kill the train actually landed, as opposed to a mark it merely found
+    /// gone. This is the same test the posted report's kill count uses, so the
+    /// count in the header and the legs in the body always agree about what
+    /// counts as a kill.
+    /// </summary>
+    public static bool IsObservedKill(TrackedMark mark) =>
+        mark.Dead && mark.DeathObservedAtUtc != null && mark.SnipedAtUtc == null;
+
+    private static string ExpansionOf(TrackedMark mark) =>
+        ExpansionData.Lookup(mark.ModelId)?.Expansion ?? UnknownExpansion;
+
+    /// <summary>
+    /// The expansions a report covers: the ones the train genuinely killed
+    /// something in.
+    ///
+    /// A conductor scouting five expansions and running three is ordinary, and
+    /// the two they skipped have no business in the report - their marks are
+    /// still alive, and listing them as unfinished says only that a train that
+    /// was never going there did not go there. Deriving this from the kills
+    /// rather than asking means there is nothing to tick before posting and
+    /// nothing to forget to tick.
+    ///
+    /// Being found already dead deliberately does NOT qualify. A leg the train
+    /// walked and found stripped is one it did not run, and the marks stay put
+    /// for a later train rather than being reported and cleared here.
+    /// </summary>
+    public static HashSet<string> ReportedExpansions(List<TrackedMark> marks) =>
+        marks.Where(IsObservedKill).Select(ExpansionOf).ToHashSet();
+
+    /// <summary>
+    /// The subset of the train a report covers - every mark, dead or alive,
+    /// belonging to an expansion with a kill in it.
+    ///
+    /// Alive marks are kept rather than dropped because the report's own
+    /// "Unfinished / still alive" section is worth having for a leg that WAS
+    /// run: it says which of that leg's marks the train did not get to. The
+    /// filter is per expansion, never per mark.
+    /// </summary>
+    public static List<TrackedMark> ForReport(List<TrackedMark> marks)
+    {
+        var reported = ReportedExpansions(marks);
+        return marks.Where(m => reported.Contains(ExpansionOf(m))).ToList();
+    }
+
+    /// <summary>
+    /// The rows a posted report consumes, and so the rows that come off the
+    /// train once it is sent: the dead ones in the expansions it covered.
+    ///
+    /// Everything else stays - the live marks of a reported leg included,
+    /// since a mark still standing has not been reported as anything and a
+    /// later train can still take it.
+    /// </summary>
+    public static List<TrackedMark> SubmittedMarks(List<TrackedMark> marks) =>
+        ForReport(marks).Where(m => m.Dead).ToList();
+
+    /// <summary>
+    /// Splits the S-rank watches into the ones this report carries and the
+    /// ones that outlive it.
+    ///
+    /// A watch belongs to the leg its mark is on, so reporting Dawntrail
+    /// publishes and consumes the Dawntrail watch while a Shadowbringers watch
+    /// stays up for the train that will eventually run Shadowbringers. The
+    /// alternative - clearing the lot - throws away a check somebody is still
+    /// actively sitting on.
+    ///
+    /// A label that resolves to no known S rank is treated as belonging to
+    /// this report. It is reported and cleared, which is what every watch did
+    /// before this split existed; the alternative would strand a watch that no
+    /// report could ever clear.
+    /// </summary>
+    public static (List<FlagEntry> Reported, List<FlagEntry> Kept) SplitWatches(
+        IEnumerable<FlagEntry>? watches, HashSet<string> reportedExpansions)
+    {
+        var reported = new List<FlagEntry>();
+        var kept = new List<FlagEntry>();
+
+        foreach (var watch in watches ?? Enumerable.Empty<FlagEntry>())
+        {
+            var expansion = SRankData.ExpansionOfWatch(watch.Label);
+            if (expansion == null || reportedExpansions.Contains(expansion)) reported.Add(watch);
+            else kept.Add(watch);
+        }
+
+        return (reported, kept);
+    }
+
     public static List<TrainReportEntry> BuildEntries(List<TrackedMark> marks)
     {
         return marks
@@ -66,7 +159,7 @@ public static class TrainReport
                 var killTime = EnsureUtc(m.SnipedAtUtc ?? m.DeathObservedAtUtc!.Value);
                 return new TrainReportEntry(
                     killTime,
-                    info?.Expansion ?? "No fixed timer",
+                    info?.Expansion ?? UnknownExpansion,
                     info?.Location,
                     m.Name,
                     m.Instance,

@@ -286,6 +286,16 @@ public static class ServerMessageTypes
 public sealed class WelcomeMessage
 {
     public bool SupportsTrainFinish { get; set; }
+
+    /// <summary>
+    /// Whether the server honours ClearKeys/RemainingWatches on train.finish.
+    /// False - including against a server too old to send the field - means
+    /// reporting clears the whole shared train, so the client reports the
+    /// whole train rather than silently dropping the legs it kept.
+    /// </summary>
+    public bool SupportsPartialFinish { get; set; }
+    public bool SupportsReportedHistory { get; set; }
+    public List<ReportedMark> ReportedMarks { get; set; } = new();
     public List<string> TrainScouts { get; set; } = new();
     public bool SupportsScoutRemoval { get; set; }
     public List<ScoutCreditDto> ScoutCredits { get; set; } = new();
@@ -311,7 +321,28 @@ public sealed class WelcomeMessage
 
 public sealed class ErrorMessage { public string Code { get; set; } = string.Empty; public string Message { get; set; } = string.Empty; }
 public sealed class TrainUpsertBroadcast { public List<SyncMark> Marks { get; set; } = new(); public string By { get; set; } = string.Empty; }
-public sealed class TrainRemoveBroadcast { public List<SyncKey> Keys { get; set; } = new(); public string By { get; set; } = string.Empty; }
+public sealed class ReportedMark
+{
+    public uint NameId { get; set; }
+    public uint Instance { get; set; }
+    public uint WorldId { get; set; }
+    public DateTime Through { get; set; }
+    public (uint, uint, uint) Key => (NameId, Instance, WorldId);
+}
+public sealed class TrainRemoveBroadcast
+{
+    public List<ReportedMark> ReportedMarks { get; set; } = new();
+    public List<SyncKey> Keys { get; set; } = new();
+    public string By { get; set; } = string.Empty;
+
+    /// <summary>
+    /// True when a train report has just gone out for these rows, rather than
+    /// someone tidying them off the list. Report history retains removed dead
+    /// marks on purpose; these have already been published and must be
+    /// forgotten instead, or the next report carries them a second time.
+    /// </summary>
+    public bool Reported { get; set; }
+}
 public sealed class TrainClearBroadcast { public string By { get; set; } = string.Empty; }
 public sealed class TrainOrderBroadcast { public List<SyncKey> Keys { get; set; } = new(); public string By { get; set; } = string.Empty; }
 public sealed class SightingsBroadcast { public List<SyncSighting> Sightings { get; set; } = new(); }
@@ -379,6 +410,21 @@ public sealed class TrainFinishMessage
     public long WatchRevision { get; set; }
     public List<SyncMark> ExpectedMarks { get; set; } = new();
     public List<SyncMark> History { get; set; } = new();
+
+    /// <summary>
+    /// The rows this report covered, when it covered only part of the train.
+    /// Null means the whole train was reported and the shared train is cleared
+    /// outright, which is what every report did before partial finishes and
+    /// what is still sent to a server that does not support them.
+    /// </summary>
+    public List<SyncKey>? ClearKeys { get; set; }
+
+    /// <summary>
+    /// The S-rank watches belonging to legs this report did not cover, so the
+    /// server can keep them instead of resetting the lot. Only read alongside
+    /// <see cref="ClearKeys"/>.
+    /// </summary>
+    public List<SyncWatch>? RemainingWatches { get; set; }
 }
 public sealed class TrainFinishResult
 {

@@ -49,4 +49,32 @@ public static class SRankData
         new("Atticus the Primogenitor", "Dawntrail", 5), new("the Forecaster", "Dawntrail", 5),
         new("arch aethereater", "Dawntrail", 5), new("crystal incarnation", "Dawntrail", 5),
     };
+
+    /// <summary>
+    /// The expansion an S-rank watch belongs to, worked out from the label the
+    /// watch was created with. Null when the label matches no known S rank.
+    ///
+    /// Matched as a prefix rather than an exact name because a watch label can
+    /// carry a suffix - "Narrow-rift - Spawn 3 (13.3, 10.4)" names the spawn
+    /// point being sat on. The LONGEST matching name wins, which is the part
+    /// that matters: "Ker" is a prefix of "Ker Shroud", and taking the first
+    /// match would file a Ker Shroud watch under the wrong mark.
+    ///
+    /// The expansion names here are the same strings ExpansionData uses for
+    /// A ranks, so the answer can be compared directly against a report's
+    /// expansions with no translation in between.
+    /// </summary>
+    public static string? ExpansionOfWatch(string? label)
+    {
+        if (string.IsNullOrWhiteSpace(label)) return null;
+
+        SRankInfo? best = null;
+        foreach (var mark in All)
+        {
+            if (!label.StartsWith(mark.Name, System.StringComparison.OrdinalIgnoreCase)) continue;
+            if (best == null || mark.Name.Length > best.Name.Length) best = mark;
+        }
+
+        return best?.Expansion;
+    }
 }

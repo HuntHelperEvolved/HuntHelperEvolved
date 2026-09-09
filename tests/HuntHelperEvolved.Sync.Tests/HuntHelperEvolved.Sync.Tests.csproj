@@ -35,9 +35,12 @@
     <Compile Include="../../Detection/NearbyPlayerCache.cs" Link="NearbyPlayerCache.cs" />
     <Compile Include="../../Detection/DetectedMark.cs" Link="DetectedMark.cs" />
     <Compile Include="../../Interop/TrainExchange.cs" Link="TrainExchange.cs" />
+    <Compile Include="../../Reports/ReportedHistory.cs" Link="ReportedHistory.cs" />
     <Compile Include="../../Reports/TrainReportHistory.cs" Link="TrainReportHistory.cs" />
     <Compile Include="../../Train/TrackedMark.cs" Link="TrackedMark.cs" />
     <Compile Include="../../Reports/TrainReport.cs" Link="TrainReport.cs" />
+    <Compile Include="../../Train/FlagEntry.cs" Link="FlagEntry.cs" />
+    <Compile Include="../../GameData/SRankData.cs" Link="SRankData.cs" />
     <Compile Include="../../GameData/ExpansionData.cs" Link="ExpansionData.cs" />
     <Compile Include="../../Detection/MarkDeathEvidence.cs" Link="MarkDeathEvidence.cs" />
     <Compile Include="../../Train/TrainCompletionGuard.cs" Link="TrainCompletionGuard.cs" />
