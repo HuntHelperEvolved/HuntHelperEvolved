@@ -34,6 +34,10 @@ public static class ReleaseNotes
 
     public static readonly Release[] All =
     {
+        new("0.5.0.11", "2026-09-09", "Submit completed train legs while keeping the rest scouted.",
+        [
+            new("Trains", "End Train reports expansions with observed kills and clears their dead marks, keeping unrun legs, live marks, watches and scout credits. Completed history is reconciled after reconnect without losing later spawn cycles. Requires server 0.3.18; shared reporting is refused on older servers. Update all conductors before partial reports.", Kihtli),
+        ]),
         new("0.5.0.10", "2026-09-09", "Stabilise Active Marks during brief reporting gaps.",
         [
             new("Active Marks", "Holds mark rows and observer names for up to five seconds after the last received report to reduce flicker with latency or brief visibility gaps. Fresh HP/death reports replace the display immediately. Your own observer alias appears once as You. Map visibility is unchanged.", Kihtli),
