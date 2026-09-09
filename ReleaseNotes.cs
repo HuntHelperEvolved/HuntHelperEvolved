@@ -34,6 +34,10 @@ public static class ReleaseNotes
 
     public static readonly Release[] All =
     {
+        new("0.5.0.9", "2026-09-09", "Remove unwanted shared scout credits and inspect their source.",
+        [
+            new("Scouts", "Shared scout credits now show their first supplier and whether they were automatic or manual. Remove or restore credits in train controls; removed names stay suppressed on the server across reconnects and train resets. Requires server 0.3.16. Older credits have an unknown source.", Kihtli),
+        ]),
         new("0.5.0.8", "2026-09-08", "Suppress repeated detection alerts at the edge of range.",
         [
             new("Detection", "Finding the same mark at the same spawn no longer repeats chat, speech or fly-text alerts when it drops in and out of range. Notification memory resets on zone/world/instance changes, observed kills or a different spawn location. Live map visibility still expires normally.", Kihtli),

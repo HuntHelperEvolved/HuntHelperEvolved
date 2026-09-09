@@ -2950,9 +2950,26 @@ public sealed partial class Plugin : IDalamudPlugin
         ImGui.TextWrapped("Scouts: " + string.Join(", ", CombinedTrainScouts()));
         if (ImGui.TreeNode("Add scout credits"))
         {
+            var previousManualScouts = _config.AdditionalScouts.ToList();
             DrawStringList(_config.AdditionalScouts, MaxAdditionalScouts, "+ Add scout",
                 $"Maximum of {MaxAdditionalScouts} additional scouts reached.");
-            ImGui.TextWrapped("Shared credits are retained for this train until it is reset.");
+            foreach (var removed in previousManualScouts.Except(_config.AdditionalScouts, StringComparer.OrdinalIgnoreCase))
+                _sync.ChangeScoutCredit(removed, false);
+            if (_sync.IsConnected && _config.SyncShareTrain && _sync.SupportsScoutRemoval)
+            {
+                ImGui.TextWrapped("Shared credits — removal applies to the group until restored.");
+                foreach (var credit in _sync.ScoutCredits.ToList())
+                {
+                    ImGui.PushID("credit:" + credit.Name);
+                    if (ImGui.SmallButton(credit.Removed ? "Restore" : "Remove"))
+                        _sync.ChangeScoutCredit(credit.Name, credit.Removed);
+                    ImGui.SameLine();
+                    ImGui.TextWrapped(credit.Name + (credit.Removed ? " (removed)" : "") + " — " + credit.Source
+                        + (string.IsNullOrWhiteSpace(credit.AddedBy) ? "" : " by " + credit.AddedBy));
+                    ImGui.PopID();
+                }
+            }
+            else ImGui.TextWrapped("Shared credit removal requires a connected server with scout-removal support.");
             ImGui.TreePop();
         }
     }
