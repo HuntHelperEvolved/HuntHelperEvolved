@@ -20,10 +20,11 @@ public sealed class VisibleMarkOptions
 }
 public static class VisibleMarkFilter
 {
+    public static bool Fresh(VisibleMark row, DateTime now) => now < (row.DisplayUntil ?? row.Mark.SeenAt.AddSeconds(3));
     public static bool Matches(VisibleMark row, VisibleMarkOptions options, string self, DateTime now, uint dc, string expansion)
     {
         var mark=row.Mark;
-        if (now-mark.SeenAt >= TimeSpan.FromSeconds(3) || !float.IsFinite(mark.HpPercent)
+        if (!Fresh(row, now) || !float.IsFinite(mark.HpPercent)
             || mark.HpPercent < 0 || mark.HpPercent > 100) return false;
         if (!row.ObserverIds.Any(id => options.IncludeOwn || id != self)) return false;
         if (!options.Ranks.Contains(mark.Rank)) return false;
@@ -47,7 +48,7 @@ public static class ActiveMarkRows
     public static List<ActiveMarkRow> Merge(IEnumerable<VisibleMark> visible, IEnumerable<SyncSRankStatus> statuses, DateTime now)
     {
         var states=statuses.ToDictionary(s=>s.Key);
-        var rows=visible.Where(v=>now-v.Mark.SeenAt<TimeSpan.FromSeconds(3))
+        var rows=visible.Where(v=>VisibleMarkFilter.Fresh(v,now))
             .ToDictionary(v=>v.Mark.Key,v=>new ActiveMarkRow(v.Mark,v,states.GetValueOrDefault(v.Mark.Key)));
         foreach(var status in states.Values)
         {

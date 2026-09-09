@@ -359,6 +359,8 @@ public sealed class WatchesMessage
 
 public sealed class VisibleMark
 {
+    [Newtonsoft.Json.JsonIgnore]
+    public DateTime? DisplayUntil { get; set; }
     public SyncSighting Mark { get; set; } = new();
     public List<string> ObserverIds { get; set; } = new();
     public List<string> Observers { get; set; } = new();

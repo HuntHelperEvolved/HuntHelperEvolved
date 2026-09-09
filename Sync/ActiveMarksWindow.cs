@@ -9,10 +9,13 @@ namespace HuntHelperEvolved.Sync;
 public sealed class ActiveMarksWindow(Configuration config, SyncCoordinator sync, WorldData worlds,
     MarkDetector detector, IGameGui gameGui, LifestreamTravel travel, Action openSettings)
 {
+    private readonly ActiveMarkGrace _localGrace = new();
+    private (uint Zone, uint World, uint Instance) _localScope;
     private string _search = string.Empty;
     public void Toggle() { config.ActiveSRankWindowOpen = !config.ActiveSRankWindowOpen; config.Save(); }
     public void Draw()
     {
+        if (!sync.IsConnected) _localGrace.Clear();
         if (!config.ActiveSRankWindowOpen) return;
         var open=true;
         ImGui.SetNextWindowSize(new Vector2(460,300),ImGuiCond.FirstUseEver);
@@ -42,20 +45,36 @@ public sealed class ActiveMarksWindow(Configuration config, SyncCoordinator sync
     private void DrawRows(string tab)
     {
         var now=DateTime.UtcNow;
-        var visible=sync.VisibleMarks.ToDictionary(v=>v.Mark.Key);
+        var scope=(detector.CurrentTerritoryId,detector.CurrentWorldId(),MarkDetector.GetCurrentInstance());
+        if (scope != _localScope) { _localGrace.Clear(); _localScope=scope; }
+        var visible=sync.ActiveMarkDisplay.ToDictionary(v=>v.Mark.Key);
         if(config.VisibleMarkFilters.IncludeOwn)
             foreach(var local in detector.VisibleMarks.Where(v=>now-v.LastSeenUtc<TimeSpan.FromSeconds(1)))
             {
                 var previous=visible.GetValueOrDefault(local.Key);
-                visible[local.Key]=new VisibleMark
+                _localGrace.Update(new VisibleMark
                 {
                     Mark=new SyncSighting { NameId=local.NameId,WorldId=local.WorldId,Instance=local.Instance,
                         TerritoryId=local.TerritoryId,MapId=local.MapId,Name=local.Name,Rank=previous?.Mark.Rank??local.Rank.ToString(),
                         X=local.MapPosition.X,Y=local.MapPosition.Y,HpPercent=local.HealthPercent,NearbyPlayers=local.NearbyPlayers,InCombat=local.InCombat,SeenAt=local.LastSeenUtc },
-                    ObserverIds=(previous?.ObserverIds??new List<string>()).Append(sync.ClientId).Distinct().ToList(),
-                    Observers=(previous?.Observers??new List<string>()).Append("You").Distinct().ToList()
-                };
+                    ObserverIds=new() { sync.ClientId },
+                    Observers=new() { sync.DisplayName() }
+                }, local.LastSeenUtc);
             }
+        if (config.VisibleMarkFilters.IncludeOwn)
+        {
+            foreach (var local in _localGrace.Snapshot(now))
+            {
+                if (visible.TryGetValue(local.Mark.Key, out var remote))
+                    visible[local.Mark.Key]=new VisibleMark {
+                        Mark=local.Mark.SeenAt>=remote.Mark.SeenAt ? local.Mark : remote.Mark,
+                        DisplayUntil=local.Mark.SeenAt>=remote.Mark.SeenAt ? local.DisplayUntil : remote.DisplayUntil,
+                        ObserverIds=local.ObserverIds.Concat(remote.ObserverIds).Distinct().ToList(),
+                        Observers=local.Observers.Concat(remote.Observers).Distinct(StringComparer.OrdinalIgnoreCase).ToList() };
+                else visible[local.Mark.Key]=local;
+            }
+        }
+        else _localGrace.Clear();
         var rows=ActiveMarkRows.Merge(visible.Values,sync.SRankStatuses.Values,now).Select(row =>
         {
             var dc=worlds.LocateWorld(row.Mark.WorldId) is { } loc ? worlds.DataCenters[loc.DcIndex] : default;
@@ -121,7 +140,8 @@ public sealed class ActiveMarksWindow(Configuration config, SyncCoordinator sync
                         detail+=$"\nActive for {(int)Math.Max(0,age.TotalHours):00}:{Math.Max(0,age.Minutes):00}:{Math.Max(0,age.Seconds):00}";
                     }
 
-                    detail+="\n"+(row.Visible is { } observation ? "Seen by: "+string.Join(", ",observation.Observers) : "Faloop report");
+                    detail+="\n"+(row.Visible is { } observation ? "Seen by: "+string.Join(", ",ActiveMarkGrace.ObserverLabels(observation,sync.ClientId,sync.DisplayName())) : "Faloop report");
+                    if (row.Visible is not null) detail+="\nLast reported HP; brief report gaps are held for up to 5 seconds.";
                     detail+=row.HasPosition ? "\nClick: map" : "\nLocation not reported";
                     if(canTravel) detail+=" · Ctrl-click: teleport";
                     detail+="\nRight-click for actions";

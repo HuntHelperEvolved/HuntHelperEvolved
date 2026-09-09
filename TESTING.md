@@ -92,6 +92,15 @@ configuration before testing. Build and automated test instructions are in the
   mark at a different spawn: the next detection should announce again.
 - A pulled mark moving away from its spawn must not trigger a repeated find.
 
+## Active Marks report gaps
+
+- Briefly lose reports from one scout: rows and observer names should remain for
+  up to five seconds. Continued gaps must expire; repeated UI draws must not
+  extend retention. Fresh HP/death reports should update immediately.
+- Stand near a shared mark: your observer identity should appear only as You,
+  alongside other scouts. Verify Include own, and disconnect/reconnect.
+- Confirm map icons still use immediate visibility rather than the window grace.
+
 ## Active marks, alerts and travel
 
 - In `/hhsa` or `/hhv`, check All/S/A/B tabs, zone, HP and filters. Green means

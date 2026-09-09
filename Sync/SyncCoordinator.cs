@@ -60,6 +60,8 @@ public sealed partial class SyncCoordinator : IDisposable
     private readonly Dictionary<(uint TerritoryId, uint WorldId, uint Instance), SyncSpawnZone> _zones = new();
     private readonly Dictionary<(uint NameId, uint Instance, uint WorldId), VisibleMark> _visibleMarks = new();
     public IReadOnlyCollection<VisibleMark> VisibleMarks => _visibleMarks.Values;
+    private readonly ActiveMarkGrace _activeMarkGrace = new();
+    public IReadOnlyCollection<VisibleMark> ActiveMarkDisplay => _activeMarkGrace.Snapshot(DateTime.UtcNow);
     public string ClientId { get; private set; } = string.Empty;
     public bool SupportsVisibleMarks { get; private set; }
     private List<SyncPresence> _clients = new();
@@ -368,7 +370,7 @@ public sealed partial class SyncCoordinator : IDisposable
         {
             case "marks.visible":
                 var visible = SyncProtocol.Deserialize<VisibleMarksBroadcast>(payload)!;
-                foreach (var mark in visible.Marks) _visibleMarks[mark.Mark.Key] = mark;
+                foreach (var mark in visible.Marks) { _visibleMarks[mark.Mark.Key] = mark; _activeMarkGrace.Update(mark, DateTime.UtcNow); }
                 foreach (var key in visible.Removed) _visibleMarks.Remove(key.ToTuple());
                 break;
             case "counter.state":
@@ -473,8 +475,8 @@ public sealed partial class SyncCoordinator : IDisposable
         if (ARankHistory.Merge(_config.ARankKills, welcome.ARankKills.Concat(ARankHistory.FromMarks(welcome.Marks)), DateTime.UtcNow)) _config.Save();
         ClientId = welcome.ClientId;
         SupportsVisibleMarks = welcome.SupportsVisibleMarks;
-        _visibleMarks.Clear();
-        foreach (var mark in welcome.VisibleMarks) _visibleMarks[mark.Mark.Key] = mark;
+        _visibleMarks.Clear(); _activeMarkGrace.Clear();
+        foreach (var mark in welcome.VisibleMarks) { _visibleMarks[mark.Mark.Key] = mark; _activeMarkGrace.Update(mark, DateTime.UtcNow); }
         WelcomeCounters(welcome);
         ApplyWatches(welcome.WatchState, joining: true);
         ServerVersion = welcome.ServerVersion;
@@ -720,7 +722,7 @@ public sealed partial class SyncCoordinator : IDisposable
     private void ForgetRemoteState()
     {
         ResetCompletionConnection();
-        _visibleMarks.Clear(); ClientId = string.Empty; SupportsVisibleMarks = false;
+        _visibleMarks.Clear(); _activeMarkGrace.Clear(); ClientId = string.Empty; SupportsVisibleMarks = false;
         _counterServerId = string.Empty; _counterReady = false; _sharedCounters.Clear();
         _known.Clear();
         _lastSentOrder = new();
