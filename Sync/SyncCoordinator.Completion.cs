@@ -21,19 +21,56 @@ public sealed partial class SyncCoordinator
         if (_config.SyncShareTrain && _config.AdditionalScouts.RemoveAll(n => removed.Contains(n.Trim())) > 0) _config.Save();
     }
     public bool SupportsTrainFinish { get; private set; }
+
+    /// <summary>
+    /// Whether the server supports partial clearing and durable reported-history
+    /// reconciliation. Both capabilities are required before posting shared reports.
+    /// </summary>
+    public bool SupportsPartialFinish { get; private set; }
+
     public IReadOnlyList<string> TrainScouts => _trainScouts;
     private List<string> _trainScouts = new();
     private string? _manualScoutsSent;
     private readonly Dictionary<string, TaskCompletionSource<TrainFinishResult>> _finishRequests = new();
 
-    public TrainFinishMessage PrepareFinish(IEnumerable<TrackedMark> history) => new()
+    /// <summary>
+    /// Builds the completion request.
+    ///
+    /// <paramref name="submitted"/> names the rows the report actually covered
+    /// and <paramref name="keptWatches"/> the S-rank watches belonging to legs
+    /// it did not, so the server takes only those rows off the shared train and
+    /// leaves the rest of it - and its watches - standing for the group.
+    ///
+    /// Both are omitted against a server without partial-finish support, which
+    /// clears the shared train outright as it always did. The caller checks the
+    /// same capability before deciding what to report, so an old server gets a
+    /// whole-train report and a whole-train clear, consistently.
+    ///
+    /// The full history still goes up either way: it is the kill evidence the
+    /// server records, and narrowing it would lose kills the group made.
+    /// </summary>
+    public TrainFinishMessage PrepareFinish(
+        IEnumerable<TrackedMark> history,
+        IEnumerable<(uint ModelId, uint Instance, uint WorldId)>? submitted = null,
+        IEnumerable<FlagEntry>? keptWatches = null)
     {
-        RequestId = Guid.NewGuid().ToString(), ClearShared = _config.SyncShareTrain,
-        WatchRevision = _watchRevision,
-        ExpectedMarks = _detector.Ordered().Select(m => ToSyncMark(m, _known.GetValueOrDefault(m.Key).Revision)).ToList(),
-        History = history.Select(m => new SyncMark { NameId=m.ModelId, WorldId=m.WorldId, Instance=m.Instance,
-            TerritoryId=m.TerritoryId, Dead=m.Dead, LastSeen=m.LastSeenUtc, DeathAt=m.DeathObservedAtUtc, SnipedAt=m.SnipedAtUtc }).ToList()
-    };
+        var partial = submitted is not null && SupportsPartialFinish;
+        return new TrainFinishMessage
+        {
+            RequestId = Guid.NewGuid().ToString(), ClearShared = _config.SyncShareTrain,
+            WatchRevision = _watchRevision,
+            ExpectedMarks = _detector.Ordered().Select(m => ToSyncMark(m, _known.GetValueOrDefault(m.Key).Revision)).ToList(),
+            History = history.Select(m => new SyncMark { NameId=m.ModelId, WorldId=m.WorldId, Instance=m.Instance,
+                TerritoryId=m.TerritoryId, Dead=m.Dead, LastSeen=m.LastSeenUtc, DeathAt=m.DeathObservedAtUtc, SnipedAt=m.SnipedAtUtc }).ToList(),
+            ClearKeys = partial
+                ? submitted!.Select(k => new SyncKey { NameId=k.ModelId, Instance=k.Instance, WorldId=k.WorldId }).ToList()
+                : null,
+            RemainingWatches = partial
+                ? (keptWatches ?? Enumerable.Empty<FlagEntry>()).Select(w => new SyncWatch { Label=w.Label,
+                    SpawnStatus=(int)w.SpawnStatus, TerritoryId=w.TerritoryId, HasLocation=w.HasLocation, X=w.X, Y=w.Y }).ToList()
+                : null,
+        };
+    }
     public Task<TrainFinishResult> SubmitFinish(TrainFinishMessage request, string connectionId)
     {
         if (!IsConnected || !SupportsTrainFinish || ClientId != connectionId)
@@ -48,7 +85,8 @@ public sealed partial class SyncCoordinator
     {
         foreach (var request in _finishRequests.Values)
             request.TrySetResult(new TrainFinishResult { Message="Disconnected before acknowledgement; check the shared train before retrying." });
-        _finishRequests.Clear(); SupportsScoutRemoval=false; _scoutCredits.Clear(); SupportsTrainFinish=false; _trainScouts.Clear(); _manualScoutsSent=null;
+        _finishRequests.Clear(); SupportsScoutRemoval=false; _scoutCredits.Clear(); SupportsTrainFinish=false;
+        SupportsPartialFinish=false; _trainScouts.Clear(); _manualScoutsSent=null;
     }
     private void SendManualScouts()
     {
