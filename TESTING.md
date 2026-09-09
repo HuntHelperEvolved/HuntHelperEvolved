@@ -131,3 +131,16 @@ Automated tests use local fixtures and loopback servers; in-game group testing i
 separate. Include versions, mark, world, instance and expected/actual behaviour in
 reports. Remove passwords, webhook URLs, character names and other private data
 from logs and screenshots before posting.
+
+## Partial train completion
+
+- Scout five expansions and complete three. Preview must exclude the two unrun
+  legs; submit must preserve their marks/order/watches and scout credits.
+- Use Remove Dead before submitting: those kills must still be reported once,
+  then forgotten on every connected updated client.
+- Disconnect one updated client during completion; reconnect/reload afterwards.
+  Completed kills must be forgotten, but later kills of the same mark retained.
+- Restart the server after partial completion and repeat reconnect.
+- Shared reporting on a disconnected or older server must be refused before
+  Discord is posted. Upgrade every client that might submit reports: old builds
+  cannot apply completion acknowledgements and may post obsolete local history.

@@ -35,6 +35,7 @@
     <Compile Include="../../Detection/NearbyPlayerCache.cs" Link="NearbyPlayerCache.cs" />
     <Compile Include="../../Detection/DetectedMark.cs" Link="DetectedMark.cs" />
     <Compile Include="../../Interop/TrainExchange.cs" Link="TrainExchange.cs" />
+    <Compile Include="../../Reports/ReportedHistory.cs" Link="ReportedHistory.cs" />
     <Compile Include="../../Reports/TrainReportHistory.cs" Link="TrainReportHistory.cs" />
     <Compile Include="../../Train/TrackedMark.cs" Link="TrackedMark.cs" />
     <Compile Include="../../Reports/TrainReport.cs" Link="TrainReport.cs" />

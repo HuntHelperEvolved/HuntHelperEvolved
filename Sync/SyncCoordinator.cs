@@ -166,7 +166,7 @@ public sealed partial class SyncCoordinator : IDisposable
     /// plugin handles these rather than this class, because forgetting them
     /// means reaching into report history, which the plugin owns.
     /// </summary>
-    public event Action<List<(uint NameId, uint Instance, uint WorldId)>>? ReportedRemoval;
+    public event Action<List<ReportedMark>>? ReportedRemoval;
     public event Action<SRankSpawnBroadcast>? SRankSpawned;
 
     public SyncCoordinator(
@@ -418,7 +418,7 @@ public sealed partial class SyncCoordinator : IDisposable
                 if (_config.SyncShareTrain)
                 {
                     var removal = SyncProtocol.Deserialize<TrainRemoveBroadcast>(payload)!;
-                    ApplyRemoves(removal.Keys, removal.Reported);
+                    ApplyRemoves(removal.Keys, removal.Reported, removal.ReportedMarks);
                 }
                 break;
 
@@ -479,7 +479,7 @@ public sealed partial class SyncCoordinator : IDisposable
     private void ApplyWelcome(WelcomeMessage welcome)
     {
         ResetCompletionConnection();
-        SupportsTrainFinish=welcome.SupportsTrainFinish; SupportsPartialFinish=welcome.SupportsPartialFinish;
+        SupportsTrainFinish=welcome.SupportsTrainFinish; SupportsPartialFinish=welcome.SupportsPartialFinish && welcome.SupportsReportedHistory;
         _trainScouts=welcome.TrainScouts;
         SupportsScoutRemoval=welcome.SupportsScoutRemoval; ApplyScoutCredits(welcome.ScoutCredits);
         _watchSent = null;
@@ -527,6 +527,9 @@ public sealed partial class SyncCoordinator : IDisposable
             finally { _applying = false; }
             ApplyMarks(welcome.Marks);
             ApplyOrder(welcome.Order);
+            _applying = true;
+            try { ReportedRemoval?.Invoke(welcome.ReportedMarks); }
+            finally { _applying = false; }
         }
 
         Bump();
@@ -626,7 +629,7 @@ public sealed partial class SyncCoordinator : IDisposable
     /// and again when whoever is still running the train finishes its remaining
     /// legs. So a reported removal forgets rather than retains.
     /// </summary>
-    private void ApplyRemoves(List<SyncKey> keys, bool reported = false)
+    private void ApplyRemoves(List<SyncKey> keys, bool reported = false, List<ReportedMark>? reportedMarks = null)
     {
         _applying = true;
         try
@@ -637,7 +640,7 @@ public sealed partial class SyncCoordinator : IDisposable
             // A reported removal has report history to settle as well as the
             // row itself, and that history belongs to the plugin rather than
             // here; an ordinary one only has to take the row off the list.
-            if (reported) ReportedRemoval?.Invoke(removed);
+            if (reported) ReportedRemoval?.Invoke(reportedMarks ?? new());
             else foreach (var key in removed) _detector.Remove(key);
         }
         finally

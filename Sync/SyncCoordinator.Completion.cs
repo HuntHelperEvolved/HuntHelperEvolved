@@ -23,10 +23,8 @@ public sealed partial class SyncCoordinator
     public bool SupportsTrainFinish { get; private set; }
 
     /// <summary>
-    /// Whether the server can clear only the reported part of the shared
-    /// train. Against a server that cannot, reporting still wipes the shared
-    /// train outright, so the client reports the WHOLE train rather than
-    /// keeping legs locally that the group is about to lose anyway.
+    /// Whether the server supports partial clearing and durable reported-history
+    /// reconciliation. Both capabilities are required before posting shared reports.
     /// </summary>
     public bool SupportsPartialFinish { get; private set; }
 

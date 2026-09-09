@@ -294,6 +294,8 @@ public sealed class WelcomeMessage
     /// whole train rather than silently dropping the legs it kept.
     /// </summary>
     public bool SupportsPartialFinish { get; set; }
+    public bool SupportsReportedHistory { get; set; }
+    public List<ReportedMark> ReportedMarks { get; set; } = new();
     public List<string> TrainScouts { get; set; } = new();
     public bool SupportsScoutRemoval { get; set; }
     public List<ScoutCreditDto> ScoutCredits { get; set; } = new();
@@ -319,8 +321,17 @@ public sealed class WelcomeMessage
 
 public sealed class ErrorMessage { public string Code { get; set; } = string.Empty; public string Message { get; set; } = string.Empty; }
 public sealed class TrainUpsertBroadcast { public List<SyncMark> Marks { get; set; } = new(); public string By { get; set; } = string.Empty; }
+public sealed class ReportedMark
+{
+    public uint NameId { get; set; }
+    public uint Instance { get; set; }
+    public uint WorldId { get; set; }
+    public DateTime Through { get; set; }
+    public (uint, uint, uint) Key => (NameId, Instance, WorldId);
+}
 public sealed class TrainRemoveBroadcast
 {
+    public List<ReportedMark> ReportedMarks { get; set; } = new();
     public List<SyncKey> Keys { get; set; } = new();
     public string By { get; set; } = string.Empty;
 
