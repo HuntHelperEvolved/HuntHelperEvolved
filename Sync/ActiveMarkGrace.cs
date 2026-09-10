@@ -24,6 +24,10 @@ public sealed class ActiveMarkGrace
         foreach (var name in row.Observers) entry.Names[name] = until;
         entry.Row = new VisibleMark { Mark=row.Mark, DisplayUntil=until };
     }
+    public bool IsAlive((uint NameId, uint Instance, uint WorldId) key, DateTime? killedAt, DateTime now) =>
+        _rows.TryGetValue(key, out var entry) && ActiveSRankFilter.LivingObservation(
+            entry.Row.Mark.HpPercent, entry.Row.Mark.SeenAt, entry.Row.DisplayUntil ?? DateTime.MinValue, killedAt, now);
+
     public List<VisibleMark> Snapshot(DateTime now)
     {
         foreach (var key in _rows.Where(p=>p.Value.Row.DisplayUntil<=now).Select(p=>p.Key).ToList()) _rows.Remove(key);

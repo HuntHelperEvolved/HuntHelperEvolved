@@ -1763,19 +1763,8 @@ public sealed partial class Plugin : IDalamudPlugin
     }
 
     /// <summary>
-    /// The map controls, pinned to the top edge of the game's own map window
-    /// and shown only while that map is open.
-    ///
-    /// Deliberately one row tall. The map has a generous minimum width but no
-    /// spare height, so the controls spread sideways and stay out of the way
-    /// vertically. Anchored by its bottom-left corner to the map's top-left, so
-    /// it sits above the map without covering any of it — and without having to
-    /// know its own height first, which it could not until after it had drawn.
-    /// </summary>
-    /// <summary>
-    /// How tall the bar measured on its last draw, used to decide whether it
-    /// fits above the map. Seeded with a two-row guess for the first frame,
-    /// then always the real figure.
+    /// Measured toolbar height: place above the map when it fits, below otherwise.
+    /// Keep the map title bar free so the player can drag it away from the screen edge.
     /// </summary>
     private float _mapBarHeight = 56f;
 
@@ -1789,21 +1778,10 @@ public sealed partial class Plugin : IDalamudPlugin
         var width = addon.ScaledWidth;
         if (width <= 0) return;
 
-        // Pivot (0, 1) treats the given point as the window's bottom-left, which
-        // puts the bar above the map.
-        //
-        // Unless there is no room above, with the map pushed against the top of
-        // the screen. Then it anchors by its top-left instead and lies over the
-        // map's first rows, which is worth more than being off-screen.
-        //
-        // The height comes from what the bar actually measured last frame
-        // rather than a constant. It was a constant, and adding a second row of
-        // toggles made it wrong — this cannot go stale.
-        var room = addon.Y >= _mapBarHeight;
-        ImGui.SetNextWindowPos(
-            new Vector2(addon.X, addon.Y),
-            ImGuiCond.Always,
-            room ? new Vector2(0f, 1f) : new Vector2(0f, 0f));
+        var viewport = ImGui.GetMainViewport();
+        var top = MapBarPlacement.Top(addon.Y, addon.ScaledHeight, _mapBarHeight,
+            viewport.WorkPos.Y, viewport.WorkSize.Y);
+        ImGui.SetNextWindowPos(new Vector2(addon.X, top), ImGuiCond.Always);
         ImGui.SetNextWindowSize(new Vector2(width, 0f), ImGuiCond.Always);
 
         // Tighter than the default, to keep two rows from becoming a slab.

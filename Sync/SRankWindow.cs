@@ -340,6 +340,7 @@ public sealed class SRankWindow
         ImGui.TableNextColumn();
         var nameState=SRankBoardFilter.NameState(window.Phase, SpawnConditionData.HasTimedCondition(timer.Name), ConditionFor(row,now),now);
         var nameColour=nameState switch { SRankNameState.Ready => new Vector4(0.35f,0.95f,0.4f,1),
+            SRankNameState.OpeningSoon => WindowColour,
             SRankNameState.ConditionsUnmet => new Vector4(1f,0.3f,0.3f,1), _ => new Vector4(0.65f,0.65f,0.65f,1) };
         ImGui.TextColored(offline ? new Vector4(0.55f,0.55f,0.55f,1) : nameColour,$"{timer.Name}{ExpansionData.InstanceGlyph(row.Instance)}");
         if (offline) TimerTableUi.StrikeLastItem();
@@ -413,7 +414,8 @@ public sealed class SRankWindow
         var window=ConditionFor(row,now);
         if(window is not { } w) { ImGui.TextDisabled("Forecast unavailable"); return; }
         var start=gate is { } g && g>w.Start ? g : w.Start;
-        if(now<start) ImGui.TextColored(ForcedColour,"In "+Countdown(start-now));
+        if(now<start) ImGui.TextColored(SRankBoardFilter.Available(row.Window.Phase) && SRankBoardFilter.OpensSoon(start,now)
+            ? WindowColour : ForcedColour,"In "+Countdown(start-now));
         else ImGui.TextColored(reliable ? UpColour : WindowColour,(reliable ? "Open: " : "Condition: ")+Countdown(w.End-now));
         if(ImGui.IsItemHovered()) ImGui.SetTooltip(SpawnConditionData.Description(row.Timer.Name)
             + "\nCountdown uses real time; green means the respawn window and timed restrictions are open."
