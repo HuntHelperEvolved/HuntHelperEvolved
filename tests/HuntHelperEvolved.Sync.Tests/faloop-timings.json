@@ -1,0 +1,472 @@
+{
+  "laideronnette": {
+    "normal": {
+      "min": 42.0,
+      "cap": 48.0
+    },
+    "maintenance": {
+      "min": 25.2,
+      "cap": 28.8
+    }
+  },
+  "wulgaru": {
+    "normal": {
+      "min": 67.0,
+      "cap": 78.0
+    },
+    "maintenance": {
+      "min": 40.2,
+      "cap": 46.8
+    }
+  },
+  "mindflayer": {
+    "normal": {
+      "min": 50.0,
+      "cap": 50.0
+    },
+    "maintenance": {
+      "min": 30.0,
+      "cap": 30.0
+    }
+  },
+  "thousand_cast_theda": {
+    "normal": {
+      "min": 57.0,
+      "cap": 65.0
+    },
+    "maintenance": {
+      "min": 34.2,
+      "cap": 39.0
+    }
+  },
+  "zona_seeker": {
+    "normal": {
+      "min": 57.0,
+      "cap": 65.0
+    },
+    "maintenance": {
+      "min": 34.2,
+      "cap": 39.0
+    }
+  },
+  "brontes": {
+    "normal": {
+      "min": 67.0,
+      "cap": 77.0
+    },
+    "maintenance": {
+      "min": 40.2,
+      "cap": 46.2
+    }
+  },
+  "lampalagua": {
+    "normal": {
+      "min": 67.0,
+      "cap": 78.0
+    },
+    "maintenance": {
+      "min": 40.2,
+      "cap": 46.8
+    }
+  },
+  "nunyunuwi": {
+    "normal": {
+      "min": 44.0,
+      "cap": 54.0
+    },
+    "maintenance": {
+      "min": 26.4,
+      "cap": 32.4
+    }
+  },
+  "minhocao": {
+    "normal": {
+      "min": 57.0,
+      "cap": 63.0
+    },
+    "maintenance": {
+      "min": 34.2,
+      "cap": 37.8
+    }
+  },
+  "croque_mitaine": {
+    "normal": {
+      "min": 65.0,
+      "cap": 75.0
+    },
+    "maintenance": {
+      "min": 39.0,
+      "cap": 45.0
+    }
+  },
+  "croakadile": {
+    "normal": {
+      "min": 50.0,
+      "cap": 50.0
+    },
+    "maintenance": {
+      "min": 30.0,
+      "cap": 30.0
+    }
+  },
+  "the_garlok": {
+    "normal": {
+      "min": 42.0,
+      "cap": 48.0
+    },
+    "maintenance": {
+      "min": 25.2,
+      "cap": 28.8
+    }
+  },
+  "bonnacon": {
+    "normal": {
+      "min": 65.0,
+      "cap": 75.0
+    },
+    "maintenance": {
+      "min": 39.0,
+      "cap": 45.0
+    }
+  },
+  "nandi": {
+    "normal": {
+      "min": 47.0,
+      "cap": 53.0
+    },
+    "maintenance": {
+      "min": 28.0,
+      "cap": 32.0
+    }
+  },
+  "chernobog": {
+    "normal": {
+      "min": 65.0,
+      "cap": 71.0
+    },
+    "maintenance": {
+      "min": 39.0,
+      "cap": 42.6
+    }
+  },
+  "safat": {
+    "normal": {
+      "min": 60.0,
+      "cap": 84.0
+    },
+    "maintenance": {
+      "min": 36.0,
+      "cap": 50.4
+    }
+  },
+  "agrippa_the_mighty": {
+    "normal": {
+      "min": 60.0,
+      "cap": 84.0
+    },
+    "maintenance": {
+      "min": 36.0,
+      "cap": 50.4
+    }
+  },
+  "kaiser_behemoth": {
+    "normal": {
+      "min": 84.0,
+      "cap": 132.0
+    },
+    "maintenance": {
+      "min": 50.4,
+      "cap": 79.2
+    }
+  },
+  "senmurv": {
+    "normal": {
+      "min": 84.0,
+      "cap": 132.0
+    },
+    "maintenance": {
+      "min": 50.4,
+      "cap": 79.2
+    }
+  },
+  "the_pale_rider": {
+    "normal": {
+      "min": 84.0,
+      "cap": 132.0
+    },
+    "maintenance": {
+      "min": 50.4,
+      "cap": 79.2
+    }
+  },
+  "gandarewa": {
+    "normal": {
+      "min": 84.0,
+      "cap": 132.0
+    },
+    "maintenance": {
+      "min": 50.4,
+      "cap": 79.2
+    }
+  },
+  "bird_of_paradise": {
+    "normal": {
+      "min": 84.0,
+      "cap": 132.0
+    },
+    "maintenance": {
+      "min": 50.4,
+      "cap": 79.2
+    }
+  },
+  "leucrotta": {
+    "normal": {
+      "min": 84.0,
+      "cap": 132.0
+    },
+    "maintenance": {
+      "min": 50.4,
+      "cap": 79.2
+    }
+  },
+  "okina": {
+    "normal": {
+      "min": 84.0,
+      "cap": 132.0
+    },
+    "maintenance": {
+      "min": 50.4,
+      "cap": 79.2
+    }
+  },
+  "gamma": {
+    "normal": {
+      "min": 84.0,
+      "cap": 132.0
+    },
+    "maintenance": {
+      "min": 50.4,
+      "cap": 79.2
+    }
+  },
+  "orghana": {
+    "normal": {
+      "min": 84.0,
+      "cap": 132.0
+    },
+    "maintenance": {
+      "min": 50.4,
+      "cap": 79.2
+    }
+  },
+  "udumbara": {
+    "normal": {
+      "min": 84.0,
+      "cap": 132.0
+    },
+    "maintenance": {
+      "min": 50.4,
+      "cap": 79.2
+    }
+  },
+  "bone_crawler": {
+    "normal": {
+      "min": 84.0,
+      "cap": 132.0
+    },
+    "maintenance": {
+      "min": 50.4,
+      "cap": 79.2
+    }
+  },
+  "salt_and_light": {
+    "normal": {
+      "min": 84.0,
+      "cap": 132.0
+    },
+    "maintenance": {
+      "min": 50.4,
+      "cap": 79.2
+    }
+  },
+  "aglaope": {
+    "normal": {
+      "min": 84.0,
+      "cap": 132.0
+    },
+    "maintenance": {
+      "min": 50.4,
+      "cap": 79.2
+    }
+  },
+  "ixtab": {
+    "normal": {
+      "min": 84.0,
+      "cap": 132.0
+    },
+    "maintenance": {
+      "min": 50.4,
+      "cap": 79.2
+    }
+  },
+  "gunitt": {
+    "normal": {
+      "min": 84.0,
+      "cap": 132.0
+    },
+    "maintenance": {
+      "min": 50.4,
+      "cap": 79.2
+    }
+  },
+  "tarchia": {
+    "normal": {
+      "min": 84.0,
+      "cap": 132.0
+    },
+    "maintenance": {
+      "min": 50.4,
+      "cap": 79.2
+    }
+  },
+  "tyger": {
+    "normal": {
+      "min": 84.0,
+      "cap": 132.0
+    },
+    "maintenance": {
+      "min": 50.4,
+      "cap": 79.2
+    }
+  },
+  "forgiven_pedantry": {
+    "normal": {
+      "min": 84.0,
+      "cap": 132.0
+    },
+    "maintenance": {
+      "min": 50.4,
+      "cap": 79.2
+    }
+  },
+  "burfurlur_the_canny": {
+    "normal": {
+      "min": 84.0,
+      "cap": 132.0
+    },
+    "maintenance": {
+      "min": 50.4,
+      "cap": 79.2
+    }
+  },
+  "sphatika": {
+    "normal": {
+      "min": 84.0,
+      "cap": 132.0
+    },
+    "maintenance": {
+      "min": 50.4,
+      "cap": 79.2
+    }
+  },
+  "armstrong": {
+    "normal": {
+      "min": 84.0,
+      "cap": 132.0
+    },
+    "maintenance": {
+      "min": 50.4,
+      "cap": 79.2
+    }
+  },
+  "ruminator": {
+    "normal": {
+      "min": 84.0,
+      "cap": 132.0
+    },
+    "maintenance": {
+      "min": 50.4,
+      "cap": 79.2
+    }
+  },
+  "ophioneus": {
+    "normal": {
+      "min": 84.0,
+      "cap": 132.0
+    },
+    "maintenance": {
+      "min": 50.4,
+      "cap": 79.2
+    }
+  },
+  "narrow_rift": {
+    "normal": {
+      "min": 84.0,
+      "cap": 132.0
+    },
+    "maintenance": {
+      "min": 50.4,
+      "cap": 79.2
+    }
+  },
+  "kirlirger_the_abhorrent": {
+    "normal": {
+      "min": 84.0,
+      "cap": 132.0
+    },
+    "maintenance": {
+      "min": 50.4,
+      "cap": 79.2
+    }
+  },
+  "ihnuxokiy": {
+    "normal": {
+      "min": 84.0,
+      "cap": 132.0
+    },
+    "maintenance": {
+      "min": 50.4,
+      "cap": 79.2
+    }
+  },
+  "neyoozoteel": {
+    "normal": {
+      "min": 84.0,
+      "cap": 132.0
+    },
+    "maintenance": {
+      "min": 50.4,
+      "cap": 79.2
+    }
+  },
+  "sansheya": {
+    "normal": {
+      "min": 84.0,
+      "cap": 132.0
+    },
+    "maintenance": {
+      "min": 50.4,
+      "cap": 79.2
+    }
+  },
+  "atticus_the_primogenitor": {
+    "normal": {
+      "min": 84.0,
+      "cap": 132.0
+    },
+    "maintenance": {
+      "min": 50.4,
+      "cap": 79.2
+    }
+  },
+  "the_forecaster": {
+    "normal": {
+      "min": 84.0,
+      "cap": 132.0
+    },
+    "maintenance": {
+      "min": 50.4,
+      "cap": 79.2
+    }
+  }
+}

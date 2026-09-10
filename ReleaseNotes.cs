@@ -34,9 +34,14 @@ public static class ReleaseNotes
 
     public static readonly Release[] All =
     {
+        new("0.5.0.12", "2026-09-10", "Align S-rank respawn windows with Faloop.",
+        [
+            new("Timers", "Corrected maintenance ranges to match Faloop exactly, including fractional hours, and updated differing ARR normal ranges. Existing kill and restart times are preserved. Server 0.3.19 applies the same correction to the admin board.", Kihtli),
+            new("Credits", "Corrected beta 11 attribution: musicmanbowls contributed partial train completion in plugin PR #34 and server PR #2; kihtli added the review fixes and reconnect safeguards.", "musicmanbowls, kihtli"),
+        ]),
         new("0.5.0.11", "2026-09-09", "Submit completed train legs while keeping the rest scouted.",
         [
-            new("Trains", "End Train reports expansions with observed kills and clears their dead marks, keeping unrun legs, live marks, watches and scout credits. Completed history is reconciled after reconnect without losing later spawn cycles. Requires server 0.3.18; shared reporting is refused on older servers. Update all conductors before partial reports.", Kihtli),
+            new("Trains", "End Train reports expansions with observed kills and clears their dead marks, keeping unrun legs, live marks, watches and scout credits. Completed history is reconciled after reconnect without losing later spawn cycles. Requires server 0.3.18; shared reporting is refused on older servers. Update all conductors before partial reports.", "musicmanbowls, kihtli"),
         ]),
         new("0.5.0.10", "2026-09-09", "Stabilise Active Marks during brief reporting gaps.",
         [

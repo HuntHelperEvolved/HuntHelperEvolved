@@ -76,3 +76,7 @@ The SS event coordinates in `GameData/SsMinionSpawns.cs` — four minion spots a
 mark spawn for each of the eighteen ShB, EW and DT hunt zones — were taken from
 Faloop's published hunt data. Facts about the game rather than code, recorded
 here so their source is not lost.
+
+S-rank normal and maintenance respawn ranges in `Sync/SRankTimerData.cs` and
+its numerical test reference follow Faloop's published hunt data, checked
+10 September 2026. Fractional maintenance hours are retained exactly.

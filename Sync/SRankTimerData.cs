@@ -9,10 +9,10 @@ namespace HuntHelperEvolved.Sync;
 /// Hours are after the kill for the normal range and after the servers
 /// return for the maintenance range. A fixed timer has Min == Max.
 ///
-/// Sonar's SonarResources/Readers/HuntReader.cs (MIT) is the source: every
-/// S from Heavensward on is 84-132 hours (50-80 after maintenance); ARR's
-/// are all different and listed one by one. The sync server carries the
-/// same table, and the two must agree.
+/// Respawn ranges follow Faloop's published hunt data, checked 2026-09-10.
+/// Maintenance hours retain their fractional precision (normally 50.4-79.2
+/// from Heavensward onward). Keep this table and its counterpart in the
+/// sync plugin/server aligned; regression fixtures cover all 47 timed marks.
 /// </summary>
 public sealed record SRankTimer(
     uint NameId,
@@ -60,7 +60,7 @@ public readonly record struct SRankCycle(
 
 public static class SRankTimerData
 {
-    private const double Min = 84, Max = 132, MMin = 50, MMax = 80;
+    private const double Min = 84, Max = 132, MMin = 50.4, MMax = 79.2;
 
     /// <summary>
     /// Only S ranks with a respawn timer. The SS-event marks and their
@@ -70,23 +70,23 @@ public static class SRankTimerData
     /// </summary>
     public static readonly IReadOnlyList<SRankTimer> All = new List<SRankTimer>
     {
-        new(2953, "Laideronnette", "ARR", 0, 148, "Central Shroud", 42, 48, 25, 29),
-        new(2954, "Wulgaru", "ARR", 0, 152, "East Shroud", 67, 78, 39, 47),
+        new(2953, "Laideronnette", "ARR", 0, 148, "Central Shroud", 42, 48, 25.2, 28.8),
+        new(2954, "Wulgaru", "ARR", 0, 152, "East Shroud", 67, 78, 40.2, 46.8),
         new(2955, "Mindflayer", "ARR", 0, 153, "South Shroud", 50, 50, 30, 30),
-        new(2956, "Thousand-cast Theda", "ARR", 0, 154, "North Shroud", 57, 63, 34, 38),
-        new(2957, "Zona Seeker", "ARR", 0, 140, "Western Thanalan", 57, 63, 34, 38),
-        new(2958, "Brontes", "ARR", 0, 141, "Central Thanalan", 66, 78, 39, 47),
-        new(2959, "Lampalagua", "ARR", 0, 145, "Eastern Thanalan", 66, 78, 39, 47),
-        new(2960, "Nunyunuwi", "ARR", 0, 146, "Southern Thanalan", 44, 54, 26, 33),
-        new(2961, "Minhocao", "ARR", 0, 147, "Northern Thanalan", 57, 63, 34, 38),
+        new(2956, "Thousand-cast Theda", "ARR", 0, 154, "North Shroud", 57, 65, 34.2, 39),
+        new(2957, "Zona Seeker", "ARR", 0, 140, "Western Thanalan", 57, 65, 34.2, 39),
+        new(2958, "Brontes", "ARR", 0, 141, "Central Thanalan", 67, 77, 40.2, 46.2),
+        new(2959, "Lampalagua", "ARR", 0, 145, "Eastern Thanalan", 67, 78, 40.2, 46.8),
+        new(2960, "Nunyunuwi", "ARR", 0, 146, "Southern Thanalan", 44, 54, 26.4, 32.4),
+        new(2961, "Minhocao", "ARR", 0, 147, "Northern Thanalan", 57, 63, 34.2, 37.8),
         new(2962, "Croque-mitaine", "ARR", 0, 134, "Middle La Noscea", 65, 75, 39, 45),
         new(2963, "Croakadile", "ARR", 0, 135, "Lower La Noscea", 50, 50, 30, 30),
-        new(2964, "The Garlok", "ARR", 0, 137, "Eastern La Noscea", 42, 48, 21, 29),
+        new(2964, "The Garlok", "ARR", 0, 137, "Eastern La Noscea", 42, 48, 25.2, 28.8),
         new(2965, "Bonnacon", "ARR", 0, 138, "Western La Noscea", 65, 75, 39, 45),
         new(2966, "Nandi", "ARR", 0, 139, "Upper La Noscea", 47, 53, 28, 32),
-        new(2967, "Chernobog", "ARR", 0, 180, "Outer La Noscea", 65, 71, 39, 43),
-        new(2968, "Safat", "ARR", 0, 155, "Coerthas Central Highlands", 60, 84, 36, 51),
-        new(2969, "Agrippa The Mighty", "ARR", 0, 156, "Mor Dhona", 60, 84, 36, 51),
+        new(2967, "Chernobog", "ARR", 0, 180, "Outer La Noscea", 65, 71, 39, 42.6),
+        new(2968, "Safat", "ARR", 0, 155, "Coerthas Central Highlands", 60, 84, 36, 50.4),
+        new(2969, "Agrippa The Mighty", "ARR", 0, 156, "Mor Dhona", 60, 84, 36, 50.4),
 
         new(4374, "Kaiser Behemoth", "Heavensward", 1, 397, "Coerthas Western Highlands", Min, Max, MMin, MMax),
         new(4375, "Senmurv", "Heavensward", 1, 398, "The Dravanian Forelands", Min, Max, MMin, MMax),
@@ -153,8 +153,10 @@ public static class SRankTimerData
 
         var min = status.Maintenance ? timer.MaintMinHours : timer.MinHours;
         var max = status.Maintenance ? timer.MaintMaxHours : timer.MaxHours;
-        var opens = killed.AddHours(min);
-        var forced = killed.AddHours(max);
+        // Whole-second durations avoid binary fractional hours truncating a tick
+        // (50.4 hours would otherwise display 09:03 instead of 09:04).
+        var opens = killed.AddSeconds(Math.Round(min * 3600));
+        var forced = killed.AddSeconds(Math.Round(max * 3600));
         var since = nowUtc - killed;
 
         double percent;
