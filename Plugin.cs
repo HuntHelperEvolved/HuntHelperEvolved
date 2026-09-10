@@ -40,6 +40,8 @@ public sealed partial class Plugin : IDalamudPlugin
         ("/hhn", "Move to the next live mark in the train and flag it."),
         ("/hhna", "Name the closest aetheryte to the next mark."),
         ("/hhc", "Open the trigger-mob counter popout."),
+        ("/hhm", "Show or hide the map control bar."),
+        ("/hhtally", "Open the hunt tally. Use /hhtally config for settings or /hhtally ipc to test the IPC feed."),
     };
 
     /// <summary>Which aliases were actually claimed, so Dispose gives back exactly those.</summary>
@@ -1172,6 +1174,8 @@ public sealed partial class Plugin : IDalamudPlugin
                     "/hhn" => OnNextMarkCommand,
                     "/hhna" => OnNextAetheryteCommand,
                     "/hhc" => OnCounterCommand,
+                    "/hhm" => OnMapCommand,
+                    "/hhtally" => OnTallyCommand,
                     _ => null,
                 };
 

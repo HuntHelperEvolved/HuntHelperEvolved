@@ -38,13 +38,13 @@ why.
 
 | | |
 |---|---|
-| `/htr` | the main window — Conductor, Train, Scout, S Counters, Marks Slain, Settings, Help |
-| `/htrt` | the train list, as a popout |
-| `/htrc` | the trigger-mob counter popout — also Narrow-rift's Wee Ea headcount in Ultima Thule and Nunyunuwi's no-FATE-failed clock in Southern Thanalan |
-| `/htra` | name the closest aetheryte to the next mark |
-| `/htrm` | show or hide the control bar above the map |
+| `/hh` or `/htr` | the main window — Conductor, Train, Scout, S Counters, Marks Slain, Settings, Help |
+| `/hht` or `/htrt` | the train list, as a popout |
+| `/hhc` or `/htrc` | the trigger-mob counter popout — also Narrow-rift's Wee Ea headcount in Ultima Thule and Nunyunuwi's no-FATE-failed clock in Southern Thanalan |
+| `/hhna` or `/htra` | name the closest aetheryte to the next mark |
+| `/hhm` or `/htrm` | show or hide the control bar above the map |
 | `/hhs` or `/htrs` | the S-rank board — windows, kill times and spawn points, shared through sync |
-| `/hunttally` | the kill tally. `/hunttally config` for its settings |
+| `/hhtally` or `/hunttally` | the kill tally. `/hhtally config` (or `/hunttally config`) for its settings |
 
 HHE also provides `/hh` for the main window, `/hht` for the train list,
 `/hhn` to flag the next live mark, `/hhna` for its nearest aetheryte, and `/hhc`
