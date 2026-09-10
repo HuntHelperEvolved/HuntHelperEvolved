@@ -86,11 +86,16 @@ public sealed partial class SyncCoordinator
         foreach (var request in _finishRequests.Values)
             request.TrySetResult(new TrainFinishResult { Message="Disconnected before acknowledgement; check the shared train before retrying." });
         _finishRequests.Clear(); SupportsScoutRemoval=false; _scoutCredits.Clear(); SupportsTrainFinish=false;
-        SupportsPartialFinish=false; _trainScouts.Clear(); _manualScoutsSent=null;
+        SupportsPartialFinish=false; _trainScouts.Clear(); _manualScoutsSent=null; _scoutingSent=false;
     }
+    private bool _scoutingSent;
     private void SendManualScouts()
     {
-        if (!SupportsTrainFinish || !_config.SyncShareTrain || _detector.Marks.Count==0) return;
+        if (!SupportsTrainFinish || !_config.SyncShareTrain) return;
+        var scouting = !_config.ScanningPaused && _config.TrackingEnabled;
+        if (scouting && !_scoutingSent) _client.Send(new TrainScoutsMessage { Scouting=true });
+        _scoutingSent=scouting;
+        if (_detector.Marks.Count==0) return;
         var names=_config.AdditionalScouts.Where(n=>!string.IsNullOrWhiteSpace(n)).Select(n=>n.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         var serialized=SyncProtocol.Serialize(names);
         if (serialized==_manualScoutsSent) return;

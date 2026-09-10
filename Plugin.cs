@@ -259,6 +259,8 @@ public sealed partial class Plugin : IDalamudPlugin
         }
 
         _config = loaded ?? new Configuration();
+        _config.ScanningPaused = true;
+        clientState.Login += PauseScoutingOnLogin;
         _config.Initialize(_pluginInterface);
 
         if (migrated)
@@ -511,6 +513,8 @@ public sealed partial class Plugin : IDalamudPlugin
     /// <summary>Writes queued tally changes, at the interval Flush enforces.</summary>
     private void OnTallyFrameworkUpdate(IFramework framework) => _tallyConfig.Flush();
 
+    private void PauseScoutingOnLogin() => _config.ScanningPaused = true;
+
     private void OnTallyLogin()
     {
         if (_tallyConfig.AutoSeedOnLogin)
@@ -519,6 +523,7 @@ public sealed partial class Plugin : IDalamudPlugin
 
     private void OnTallyLogout(int type, int code)
     {
+        _config.ScanningPaused = true;
         _detector.ClearNearbyPlayers();
         _tallyConfig.Flush(force: true);
     }
@@ -2973,7 +2978,7 @@ public sealed partial class Plugin : IDalamudPlugin
 
     private List<string> CombinedTrainScouts() => (_sync.IsConnected && _config.SyncShareTrain ? _sync.TrainScouts : Array.Empty<string>())
         .Concat(_config.AdditionalScouts)
-        .Append((!_sync.IsConnected || !_config.SyncShareTrain) && _detector.Marks.Count > 0 ? _objectTable.LocalPlayer?.Name?.TextValue ?? string.Empty : string.Empty)
+        .Append((!_sync.IsConnected || !_config.SyncShareTrain) && !_config.ScanningPaused && _detector.Marks.Count > 0 ? _objectTable.LocalPlayer?.Name?.TextValue ?? string.Empty : string.Empty)
         .Where(n => !string.IsNullOrWhiteSpace(n)).Select(n => n.Trim())
         .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
 
@@ -3840,6 +3845,7 @@ public sealed partial class Plugin : IDalamudPlugin
         _damage.Dispose();
         _reward.Dispose();
 
+        _clientState.Login -= PauseScoutingOnLogin;
         HuntTally.Service.ClientState.Login -= OnTallyLogin;
         HuntTally.Service.ClientState.Logout -= OnTallyLogout;
         HuntTally.Service.Framework.Update -= OnTallyFrameworkUpdate;
@@ -4069,12 +4075,16 @@ public sealed partial class Plugin : IDalamudPlugin
         if (!partial)
         {
             _watcher.ResetNow();
-            _currentMark = null; _config.Flags.Clear(); ClearSavedTrain();
+            _currentMark = null; _config.Flags.Clear();
+            _config.AdditionalScouts.Clear(); _config.ScanningPaused = true;
+            ClearSavedTrain();
             return;
         }
 
         _watcher.ForgetReported(submitted.Select(m => m.Key));
         _config.Flags = keptWatches;
+        if (_detector.Marks.Count == 0 && keptWatches.Count == 0)
+        { _config.AdditionalScouts.Clear(); _config.ScanningPaused = true; }
         if (_currentMark is { } current && submitted.Any(m => m.Key == current)) _currentMark = null;
         _config.Save();
         PersistTrain();
