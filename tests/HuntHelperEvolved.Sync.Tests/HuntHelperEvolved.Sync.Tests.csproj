@@ -7,6 +7,7 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
   <ItemGroup>
+    <EmbeddedResource Include="faloop-timings.json" LogicalName="faloop-timings.json" />
     <EmbeddedResource Include="condition-reference.json" LogicalName="condition-reference.json" />
     <EmbeddedResource Include="../../Sync/SpawnConditions.json" LogicalName="HuntHelperEvolved.Sync.SpawnConditions.json" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
