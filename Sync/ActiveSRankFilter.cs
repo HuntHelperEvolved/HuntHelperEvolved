@@ -4,6 +4,10 @@ namespace HuntHelperEvolved.Sync;
 
 public static class ActiveSRankFilter
 {
+    public static bool LivingObservation(float hp, DateTime seenAt, DateTime expiresAt, DateTime? killedAt, DateTime now) =>
+        float.IsFinite(hp) && hp > 0 && hp <= 100 && expiresAt > now
+        && seenAt <= now.AddSeconds(10) && (killedAt is null || seenAt > killedAt);
+
     public static string? Status(SyncSRankStatus status, bool seenUp, DateTime now)
     {
         if (seenUp) return "Visible to a scout";

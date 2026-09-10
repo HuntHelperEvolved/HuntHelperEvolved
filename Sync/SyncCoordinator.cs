@@ -968,8 +968,15 @@ public sealed partial class SyncCoordinator : IDisposable
     {
         var key = (nameId, instance, worldId);
         var now = DateTime.UtcNow;
-        return (_detector.OtherRanks.TryGetValue(key, out var local) && now - local.LastSeenUtc < RemoteSightingTtl)
-            || (IsConnected && _remote.TryGetValue(key, out var remote) && now - remote.LastSeenUtc < RemoteSightingTtl);
+        var killed = StatusFor(nameId, worldId, instance)?.KilledAt;
+        if (_detector.OtherRanks.TryGetValue(key, out var local) && ActiveSRankFilter.LivingObservation(
+            local.HealthPercent, local.LastSeenUtc, local.LastSeenUtc + RemoteSightingTtl, killed, now)) return true;
+        if (!IsConnected) return false;
+        // Match Active Marks. Legacy sightings can outlive the newer observer removal
+        // stream; a previous-cycle sighting must not override the new kill clock.
+        if (SupportsVisibleMarks) return _activeMarkGrace.IsAlive(key, killed, now);
+        return _remote.TryGetValue(key, out var remote) && ActiveSRankFilter.LivingObservation(
+            remote.HealthPercent, remote.LastSeenUtc, remote.LastSeenUtc + RemoteSightingTtl, killed, now);
     }
 
     public string DisplayName()
