@@ -2987,11 +2987,8 @@ public sealed partial class Plugin : IDalamudPlugin
         ImGui.TextWrapped("Scouts: " + string.Join(", ", CombinedTrainScouts()));
         if (ImGui.TreeNode("Add scout credits"))
         {
-            var previousManualScouts = _config.AdditionalScouts.ToList();
             DrawStringList(_config.AdditionalScouts, MaxAdditionalScouts, "+ Add scout",
                 $"Maximum of {MaxAdditionalScouts} additional scouts reached.");
-            foreach (var removed in previousManualScouts.Except(_config.AdditionalScouts, StringComparer.OrdinalIgnoreCase))
-                _sync.ChangeScoutCredit(removed, false);
             if (_sync.IsConnected && _config.SyncShareTrain && _sync.SupportsScoutRemoval)
             {
                 ImGui.TextWrapped("Shared credits — removal applies to the group until restored.");
@@ -3760,59 +3757,50 @@ public sealed partial class Plugin : IDalamudPlugin
         }
     }
 
-    /// <summary>
-    /// Reusable add/remove list editor for simple string lists (currently just
-    /// additional scouts).
-    /// </summary>
+    // Draft text never enters configuration or the sync diff until explicitly added.
+    private string _manualScoutDraft = string.Empty;
     private void DrawStringList(List<string> list, int maxCount, string addLabel, string maxReachedLabel)
     {
-        int? toRemove = null;
-
-        for (var i = 0; i < list.Count; i++)
+        string? toRemove = null;
+        var names = list.Where(n => !string.IsNullOrWhiteSpace(n)).Select(n => n.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        foreach (var name in names)
         {
-            ImGui.PushID(i);
-
-            var value = list[i];
-            ImGui.SetNextItemWidth(320);
-            if (ImGui.InputText("##listItem", ref value, 512))
-            {
-                list[i] = value;
-            }
-            if (ImGui.IsItemDeactivatedAfterEdit())
-            {
-                _config.Save();
-            }
-
-            if (list.Count > 1)
-            {
-                ImGui.SameLine();
-                if (ImGui.Button("Remove"))
-                {
-                    toRemove = i;
-                }
-            }
-
+            ImGui.PushID(name);
+            ImGui.TextUnformatted(name);
+            ImGui.SameLine();
+            if (ImGui.SmallButton("Remove")) toRemove = name;
             ImGui.PopID();
         }
-
-        if (toRemove.HasValue)
+        if (toRemove is not null)
         {
-            list.RemoveAt(toRemove.Value);
-            if (list.Count == 0) list.Add(string.Empty);
+            list.RemoveAll(n => n.Trim().Equals(toRemove, StringComparison.OrdinalIgnoreCase));
+            _sync.ChangeScoutCredit(toRemove, false);
             _config.Save();
         }
-
-        if (list.Count < maxCount)
-        {
-            if (ImGui.Button(addLabel))
-            {
-                list.Add(string.Empty);
-                _config.Save();
-            }
-        }
-        else
+        if (names.Count >= maxCount && toRemove is null)
         {
             ImGui.TextDisabled(maxReachedLabel);
+            return;
+        }
+        ImGui.SetNextItemWidth(320);
+        var submit = ImGui.InputTextWithHint("##manualScoutDraft", "Scout name", ref _manualScoutDraft,
+            100, ImGuiInputTextFlags.EnterReturnsTrue);
+        ImGui.SameLine();
+        var nameToAdd = _manualScoutDraft.Trim();
+        var valid = nameToAdd.Length > 0 && !nameToAdd.Any(char.IsControl)
+            && !list.Any(n => n.Trim().Equals(nameToAdd, StringComparison.OrdinalIgnoreCase));
+        ImGui.BeginDisabled(!valid);
+        var clicked = ImGui.Button(addLabel);
+        ImGui.EndDisabled();
+        if (valid && (submit || clicked))
+        {
+            list.RemoveAll(string.IsNullOrWhiteSpace);
+            list.Add(nameToAdd);
+            // An explicit add can restore a name removed earlier in this train.
+            _sync.ChangeScoutCredit(nameToAdd, true);
+            _manualScoutDraft = string.Empty;
+            _config.Save();
         }
     }
 

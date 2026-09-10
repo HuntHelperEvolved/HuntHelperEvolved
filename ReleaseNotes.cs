@@ -34,6 +34,10 @@ public static class ReleaseNotes
 
     public static readonly Release[] All =
     {
+        new("0.5.0.14", "2026-09-10", "Share manual scout names only when added.",
+        [
+            new("Scouts", "Manual scout text stays local until you press Enter or Add scout. Typing no longer shares and removes partial names. Both scout editors use the same behavior; remove a committed name explicitly, and add it again to restore it if needed.", Kihtli),
+        ]),
         new("0.5.0.13", "2026-09-10", "Reliable scout resets and Faloop confirmation after maintenance.",
         [
             new("Scouting", "Scouting starts paused on login and plugin load. Unpause to join automatic scout credits; paused health and death updates do not add your name. Finishing the last train leg clears all scout credits and removals and pauses scouting. Partial reports keep credits for remaining marks and watches. Update scouts to this version and use server 0.3.20.", Kihtli),
