@@ -136,7 +136,7 @@ public class Configuration : IPluginConfiguration
     /// already in the list keep updating and still auto-mark dead from Hunt
     /// Tally. For detours into zones whose A-ranks shouldn't join the train.
     /// </summary>
-    public bool ScanningPaused { get; set; } = false;
+    public bool ScanningPaused { get; set; } = true;
 
     /// <summary>
     /// The last version whose notes were shown. Compared against the running

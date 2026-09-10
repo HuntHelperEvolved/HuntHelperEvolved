@@ -392,6 +392,8 @@ public sealed partial class SyncCoordinator : IDisposable
             case "train.scouts":
                 var scouts=SyncProtocol.Deserialize<TrainScoutsBroadcast>(payload)!;
                 _trainScouts=scouts.Names; ApplyScoutCredits(scouts.Credits);
+                if (scouts.Reset && _config.SyncShareTrain)
+                { _config.AdditionalScouts.Clear(); _config.ScanningPaused=true; _scoutingSent=false; _config.Save(); }
                 if (_trainScouts.Count==0) _manualScoutsSent=null;
                 break;
             case ServerMessageTypes.Welcome:
@@ -801,7 +803,7 @@ public sealed partial class SyncCoordinator : IDisposable
         var removed = _known.Keys.Where(k => !present.Contains(k)).ToList();
         foreach (var key in removed) _known.Remove(key);
 
-        if (upserts.Count > 0) _client.Send(new TrainUpsertMessage { Marks = upserts });
+        if (upserts.Count > 0) _client.Send(new TrainUpsertMessage { Marks = upserts, Scouting = !_config.ScanningPaused && _config.TrackingEnabled });
         if (removed.Count > 0) _client.Send(new TrainRemoveMessage { Keys = removed.Select(SyncKey.From).ToList() });
         if (newlyDead.Count > 0) _client.Send(new SightingsRemoveMessage { Keys = newlyDead });
 

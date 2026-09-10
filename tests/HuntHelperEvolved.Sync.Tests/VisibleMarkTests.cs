@@ -6,6 +6,15 @@ public class VisibleMarkTests
     private static readonly DateTime Now=DateTime.UtcNow;
     private static VisibleMark Seen(float hp=100,bool? combat=false) => new()
     { Mark=new() { NameId=8905,WorldId=80,TerritoryId=813,Rank="S",HpPercent=hp,InCombat=combat,SeenAt=Now },ObserverIds=new(){"other"} };
+    [Fact] public void ExistingLiveRowGainsFaloopTimerWithoutLosingHealth()
+    {
+        var seen=Seen(87);
+        Assert.Null(Assert.Single(ActiveMarkRows.Merge(new[]{seen},Array.Empty<SyncSRankStatus>(),Now)).Status);
+        var community=new SyncSRankStatus { NameId=8905,WorldId=80,FaloopActiveAt=Now,FaloopActiveUntil=Now.AddMinutes(5),SpawnedAt=Now.AddMinutes(-1) };
+        var row=Assert.Single(ActiveMarkRows.Merge(new[]{seen},new[]{community},Now));
+        Assert.True(row.HealthKnown); Assert.Equal(87,row.Mark.HpPercent);
+        Assert.Equal(Now,row.Status!.FaloopActiveAt);
+    }
     [Fact] public void FreshnessAndObserversAreRequired()
     {
         var row=Seen(); var options=new VisibleMarkOptions { IncludeOwn=false };

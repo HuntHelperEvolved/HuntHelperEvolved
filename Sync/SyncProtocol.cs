@@ -236,7 +236,7 @@ public sealed class HelloMessage
     public List<SyncWorld> Worlds { get; set; } = new();
 }
 
-public sealed class TrainUpsertMessage { public string Type => "train.upsert"; public List<SyncMark> Marks { get; set; } = new(); }
+public sealed class TrainUpsertMessage { public bool Scouting { get; set; } public string Type => "train.upsert"; public List<SyncMark> Marks { get; set; } = new(); }
 public sealed class TrainRemoveMessage { public string Type => "train.remove"; public List<SyncKey> Keys { get; set; } = new(); }
 public sealed class TrainClearMessage { public string Type => "train.clear"; }
 public sealed class TrainOrderMessage { public string Type => "train.order"; public List<SyncKey> Keys { get; set; } = new(); }
@@ -444,6 +444,7 @@ public sealed class ScoutCreditDto
 }
 public sealed class TrainScoutsMessage
 {
+    public bool Scouting { get; set; }
     public List<string> Remove { get; set; } = new();
     public List<string> Restore { get; set; } = new();
     public string Type => "train.scouts";
@@ -451,6 +452,7 @@ public sealed class TrainScoutsMessage
 }
 public sealed class TrainScoutsBroadcast
 {
+    public bool Reset { get; set; }
     public List<ScoutCreditDto> Credits { get; set; } = new();
 
     public List<string> Names { get; set; } = new();

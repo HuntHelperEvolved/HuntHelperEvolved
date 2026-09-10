@@ -34,6 +34,11 @@ public static class ReleaseNotes
 
     public static readonly Release[] All =
     {
+        new("0.5.0.13", "2026-09-10", "Reliable scout resets and Faloop confirmation after maintenance.",
+        [
+            new("Scouting", "Scouting starts paused on login and plugin load. Unpause to join automatic scout credits; paused health and death updates do not add your name. Finishing the last train leg clears all scout credits and removals and pauses scouting. Partial reports keep credits for remaining marks and watches. Update scouts to this version and use server 0.3.20.", Kihtli),
+            new("Faloop", "Server 0.3.20 accepts reports for worlds whose maintenance timer rows have no kill time. A later Faloop confirmation can then add its timer to a mark already detected locally, keeping its live health.", Kihtli),
+        ]),
         new("0.5.0.12", "2026-09-10", "Align S-rank respawn windows with Faloop.",
         [
             new("Timers", "Corrected maintenance ranges to match Faloop exactly, including fractional hours, and updated differing ARR normal ranges. Existing kill and restart times are preserved. Server 0.3.19 applies the same correction to the admin board.", Kihtli),
