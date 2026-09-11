@@ -34,6 +34,15 @@ public static class ReleaseNotes
 
     public static readonly Release[] All =
     {
+        new("0.5.0.15", "2026-09-11", "Shared manual mapping and the latest beta improvements.",
+        [
+            new("Mapping", "Shift-click an S-capable map point to toggle a shared exclusion, or click the point count in /hhs to compare coordinates and record a Faloop, Bear or other source. Undo removes only manual evidence. Entries persist per world and instance until the next S kill. Requires server 0.3.21.", Kihtli),
+            new("S ranks", "The timer board now uses the same bounded visibility feed as Active Marks and ignores pre-kill sightings when deciding UP. This addresses stale UP states after several instances die.", Kihtli),
+            new("Conditions", "Eligible S-rank names and condition countdowns turn yellow under five minutes before the condition opens, then green when open.", Kihtli, 35),
+            new("Map", "Map controls move below the map when there is no room above, keeping the title bar draggable.", Kihtli, 36),
+            new("Commands", "Every /htr command has an /hh equivalent. Added /hhm for map controls and /hhtally, including config and ipc arguments. /hhna remains the /htra equivalent; /hha opens A-rank timers.", Kihtli),
+            new("Trains", "Verified empty trains with no history submit nothing, while unsubmitted Marks Slain history remains reportable. Partial completion preserves unfinished legs and full completion resets scouts. The underlying partial-train feature was contributed by musicmanbowls, with kihtli's safeguards.", "musicmanbowls, kihtli", 37),
+        ]),
         new("0.5.0.14", "2026-09-10", "Share manual scout names only when added.",
         [
             new("Scouts", "Manual scout text stays local until you press Enter or Add scout. Typing no longer shares and removes partial names. Both scout editors use the same behavior; remove a committed name explicitly, and add it again to restore it if needed.", Kihtli),

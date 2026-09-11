@@ -50,6 +50,11 @@ HHE also provides `/hh` for the main window, `/hht` for the train list,
 `/hhn` to flag the next live mark, `/hhna` for its nearest aetheryte, and `/hhc`
 for the counter. A shortcut already held by another plugin is left alone.
 
+Manual S-rank mapping: **Shift-click** an S-capable map point to toggle a shared
+exclusion, or click the point count in `/hhs` to compare coordinates and select a
+source (Manual, Faloop, Bear or Other). Requires a server with manual-mapping
+support. Entries reset on the next S kill; undo leaves automatic evidence intact.
+
 ## Settings and help
 
 Settings uses a category sidebar, or a dropdown in narrow windows: Train, Counters, Map,

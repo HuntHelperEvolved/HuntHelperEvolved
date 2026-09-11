@@ -528,24 +528,39 @@ public sealed class SRankWindow
         }
 
         var zone = _sync.ZoneFor(row.Timer.TerritoryId, worldId, row.Instance);
-        if (zone is null)
+        var left = capable.Count(i => zone is null || !zone.IsRuledOut(i));
+        if (ImGui.SmallButton($"{left}/{capable.Count}##mapping")) ImGui.OpenPopup("mapping");
+        if (ImGui.BeginPopup("mapping"))
         {
-            ImGui.TextDisabled($"?/{capable.Count}");
-            if (ImGui.IsItemHovered()) ImGui.SetTooltip("Nothing recorded for this zone yet.");
-            return;
-        }
-
-        var left = capable.Count(i => !zone.IsRuledOut(i));
-        var colour = left == 1 ? UpColour : left <= 3 ? WindowColour : Vector4.One;
-        ImGui.TextColored(colour, $"{left}/{capable.Count}");
-        if (ImGui.IsItemHovered())
-        {
-            var since = zone.SinceAt is { } s ? $"since {Local(s)}" : "since tracking began";
-            ImGui.SetTooltip($"{left} of {capable.Count} S-capable points still possible, {since}.\n"
-                             + $"{zone.Eliminated.Count} ruled out by A/B sightings"
-                             + (zone.LastSDeathIndex is { } d ? $", plus point {d + 1} where it last died." : "."));
+            ImGui.TextUnformatted($"{row.Timer.Name} — {_worldData.NameOf(worldId)}" + (row.Instance>0 ? $" i{row.Instance}" : ""));
+            ImGui.TextDisabled("Uncheck a possible point to exclude it for this kill cycle.");
+            if (!_sync.SupportsManualMapping) ImGui.TextWrapped("Manual mapping requires an updated sync server.");
+            ImGui.SetNextItemWidth(160);
+            ImGui.Combo("Source", ref _mappingSource, "Manual\0Faloop\0Bear\0Other\0");
+            if (!string.IsNullOrEmpty(_sync.LastError)) ImGui.TextWrapped(_sync.LastError);
+            ImGui.BeginChild("mappingPoints",new Vector2(420,280),true);
+            foreach (var i in capable)
+            {
+                var manual = zone?.Eliminated.FirstOrDefault(e=>e.Index==i && e.Rank=="Manual");
+                var automatic = zone?.LastSDeathIndex==i || zone?.Eliminated.Any(e=>e.Index==i && e.Rank!="Manual")==true;
+                var possible = zone is null || !zone.IsRuledOut(i);
+                ImGui.BeginDisabled(!_sync.IsConnected || !_sync.SupportsManualMapping || (automatic && manual is null) || zone?.SCurrentIndex==i);
+                if (ImGui.Checkbox($"#{i+1}  ({points[i].X:0.0}, {points[i].Y:0.0})",ref possible))
+                    _sync.SetManualMapping(row.Timer.TerritoryId,worldId,row.Instance,i,!possible,new[]{"Manual","Faloop","Bear","Other"}[_mappingSource]);
+                ImGui.EndDisabled();
+                if (manual is not null)
+                {
+                    ImGui.SameLine(); ImGui.TextDisabled($"{manual.Source ?? "Manual"} — {manual.Reporter ?? "Unknown"}");
+                    if (automatic && ImGui.SmallButton($"Undo manual exclusion##{i}"))
+                        _sync.SetManualMapping(row.Timer.TerritoryId,worldId,row.Instance,i,false);
+                }
+                if (automatic && ImGui.IsItemHovered()) ImGui.SetTooltip("Automatically ruled out; removing a manual exclusion does not remove observation evidence.");
+            }
+            ImGui.EndChild();
+            ImGui.EndPopup();
         }
     }
+    private int _mappingSource;
 
     private void DrawRecordCell(Row row, uint worldId)
     {

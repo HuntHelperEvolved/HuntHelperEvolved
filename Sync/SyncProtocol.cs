@@ -144,6 +144,8 @@ public sealed class SyncSRankStatus
 
 public sealed class SyncEliminatedPoint
 {
+    public string? Reporter { get; set; }
+    public string? Source { get; set; }
     public int Index { get; set; }
     public string Rank { get; set; } = "A";
     public uint NameId { get; set; }
@@ -300,6 +302,7 @@ public sealed class WelcomeMessage
     public bool SupportsScoutRemoval { get; set; }
     public List<ScoutCreditDto> ScoutCredits { get; set; } = new();
     public List<ARankKill> ARankKills { get; set; } = new();
+    public bool SupportsManualMapping { get; set; }
     public bool SupportsVisibleMarks { get; set; }
     public List<VisibleMark> VisibleMarks { get; set; } = new();
     public string CounterServerId { get; set; } = string.Empty;
@@ -456,4 +459,16 @@ public sealed class TrainScoutsBroadcast
     public List<ScoutCreditDto> Credits { get; set; } = new();
 
     public List<string> Names { get; set; } = new();
+}
+
+public sealed class ManualMappingMessage
+{
+    public string Type => "spawn.manual";
+    public uint TerritoryId { get; set; }
+    public uint WorldId { get; set; }
+    public uint Instance { get; set; }
+    public int Index { get; set; }
+    public bool Exclude { get; set; }
+    public DateTime? ExpectedSinceAt { get; set; }
+    public string Source { get; set; } = "Manual";
 }
