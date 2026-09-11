@@ -5,6 +5,17 @@ public class MappingTests
 {
     private static readonly SpawnPoint[] Points={new(10,10,SpawnRanks.A|SpawnRanks.S),new(15,10,SpawnRanks.B|SpawnRanks.S)};
     [Fact]
+    public void ManualExclusionsCountTowardLastCandidateAndUndoPreservesAutomaticReason()
+    {
+        var points=new[] {new SpawnPoint(10,10,SpawnRanks.S),new SpawnPoint(20,20,SpawnRanks.S)};
+        var zone=new SyncSpawnZone { SinceAt=DateTime.UtcNow,Eliminated=new(){new(){Index=0,Rank="Manual"}} };
+        Assert.Equal(1,SpawnMapping.ConfirmedPoint(points,zone,true));
+        zone.Eliminated.Add(new(){Index=0,Rank="A"});
+        zone.Eliminated.RemoveAll(e=>e.Rank=="Manual");
+        Assert.True(zone.IsRuledOut(0));
+        Assert.Equal(1,SpawnMapping.ConfirmedPoint(points,zone,true));
+    }
+    [Fact]
     public void TravelUsesRemainingCandidatesOnlyWithReliableMapping()
     {
         var zone = new SyncSpawnZone { SinceAt = DateTime.UtcNow, LastSDeathIndex = 0 };

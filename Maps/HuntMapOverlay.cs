@@ -361,6 +361,7 @@ public sealed unsafe class HuntMapOverlay : IDisposable
         sighting.IsRemote ? $" — seen by {sighting.Reporter} {FormatAge(sighting.LastSeenUtc)} ago" : string.Empty;
 
     private static string ClaimantName(SyncEliminatedPoint claim) =>
+        claim.Rank == "Manual" ? $"Manual exclusion ({claim.Source ?? "Manual"}, {claim.Reporter ?? "Unknown"})" :
         OtherRankData.Lookup(claim.NameId)?.Name
         ?? ExpansionData.Lookup(claim.NameId)?.Name
         ?? $"{claim.Rank} rank";
@@ -417,6 +418,21 @@ public sealed unsafe class HuntMapOverlay : IDisposable
     /// unset — KamiToolKit only shows the clickable cursor for markers that
     /// have one, so the map stops offering something that would not happen.
     /// </summary>
+    private Action? SpawnPointClick(uint territory, uint world, uint instance, uint map, int index, SpawnPoint point)
+    {
+        var flag = FlagPlaceOnClick(territory,map,point.X,point.Y);
+        if (!point.Ranks.HasFlag(SpawnRanks.S) || _sync?.SupportsManualMapping != true) return flag;
+        return () =>
+        {
+            if (Dalamud.Bindings.ImGui.ImGui.GetIO().KeyShift)
+            {
+                var excluded = _sync.ZoneFor(territory,world,instance)?.Eliminated.Any(e=>e.Index==index && e.Rank=="Manual")==true;
+                _sync.SetManualMapping(territory,world,instance,index,!excluded);
+            }
+            else flag?.Invoke();
+        };
+    }
+
     private Action? FlagPlaceOnClick(uint territory, uint mapId, float mapX, float mapY)
     {
         if (!_config.ClickSpawnPointToFlag) return null;
@@ -1002,11 +1018,11 @@ public sealed unsafe class HuntMapOverlay : IDisposable
 
             // Only mapping changes rebuild static markers. Heartbeats and live movement
             // update existing nodes below, keeping their textures attached.
-            long markSignature = 0;
+            long markSignature = HashCode.Combine(_sync?.SupportsManualMapping, _sync?.IsConnected);
             var mapping = _sync?.ZoneFor(territory, worldId, instance);
             if (mapping is not null)
             {
-                markSignature = HashCode.Combine(mapping.SCurrentIndex, mapping.LastSDeathIndex, mapping.SinceAt);
+                markSignature = HashCode.Combine(markSignature, mapping.SCurrentIndex, mapping.LastSDeathIndex, mapping.SinceAt);
                 foreach (var excluded in mapping.Eliminated) markSignature += HashCode.Combine(excluded.Index);
             }
             if (SRankTimerData.ForTerritory(territory) is { } timer)
@@ -1115,7 +1131,9 @@ public sealed unsafe class HuntMapOverlay : IDisposable
                         // Keep the ordinary point fill; only candidates get a gold outline.
                         var reason = confirmed is not null ? "the S point is confirmed elsewhere"
                             : zone.LastSDeathIndex == pointIndex ? $"{sTimer.Name} spawned here last time"
-                            : zone.EliminatedBy(pointIndex) is { } by ? $"{ClaimantName(by)} seen here {FormatAge(by.SeenAt)} ago" : "ruled out";
+                            : zone.EliminatedBy(pointIndex) is { } by ? by.Rank == "Manual"
+                                ? $"{ClaimantName(by)}, added {FormatAge(by.SeenAt)} ago"
+                                : $"{ClaimantName(by)} seen here {FormatAge(by.SeenAt)} ago" : "ruled out";
                         tooltip += $"\nRuled out for {sTimer.Name}: {reason}.";
                     }
                     else
@@ -1135,8 +1153,8 @@ public sealed unsafe class HuntMapOverlay : IDisposable
                     Position = world,
                     TexturePath = dots[dot],
                     Size = new Vector2(_config.SpawnDotSize, _config.SpawnDotSize),
-                    TextTooltip = tooltip + ClickHint,
-                    OnClick = FlagPlaceOnClick(territory, mapId, point.X, point.Y),
+                    TextTooltip = tooltip + ClickHint + (point.Ranks.HasFlag(SpawnRanks.S) && _sync?.SupportsManualMapping == true ? "\nShift-click: toggle manual S-rank exclusion." : ""),
+                    OnClick = SpawnPointClick(territory, worldId, instance, mapId, pointIndex, point),
                 });
                 placed++;
             }

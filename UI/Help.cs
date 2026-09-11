@@ -9,6 +9,8 @@ public sealed partial class Plugin
     private string _helpSearch = string.Empty;
     private static readonly (string Title, string Text)[] HelpTopics =
     [
+        ("Manual S-rank mapping",
+            "Shift-click an S-capable spawn point to toggle a shared manual exclusion. Or click the point count in /hhs to compare coordinates, choose Manual, Faloop, Bear or Other as the source, and uncheck points that cannot host the S. Recheck to undo a manual exclusion; automatic A/B evidence and the previous S spawn remain protected. Entries apply only to the selected world, instance and kill cycle, and reset on the next S kill. Sharing requires a server with manual-mapping support. These controls record your input; they do not automatically import Bear or Faloop maps."),
         ("Getting around",
             "Conductor manages a train and its reports; Train shows the route and import/export controls; Scout prepares a scouting report; S Counters tracks S-rank spawn progress; Marks Slain shows report history. Settings groups preferences by task. Changes save as you edit.\n\n" +
             "Commands: /hh opens the main window; /hht the train; /hhc the trigger counters; /hhs the S-rank timers; /hha the A-rank timers; /hhv or /hhsa Active Marks; /hhtally or /hunttally the lifetime tally. /hhn flags the next live train mark; /hhna names its nearest aetheryte; /hhm or /htrm toggles map controls."),

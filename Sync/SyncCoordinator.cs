@@ -64,6 +64,7 @@ public sealed partial class SyncCoordinator : IDisposable
     public IReadOnlyCollection<VisibleMark> ActiveMarkDisplay => _activeMarkGrace.Snapshot(DateTime.UtcNow);
     public string ClientId { get; private set; } = string.Empty;
     public bool SupportsVisibleMarks { get; private set; }
+    public bool SupportsManualMapping { get; private set; }
     private List<SyncPresence> _clients = new();
     private SyncFaloopStatus _faloop = new();
 
@@ -488,6 +489,7 @@ public sealed partial class SyncCoordinator : IDisposable
         if (ARankHistory.Merge(_config.ARankKills, welcome.ARankKills.Concat(ARankHistory.FromMarks(welcome.Marks)), DateTime.UtcNow)) _config.Save();
         ClientId = welcome.ClientId;
         SupportsVisibleMarks = welcome.SupportsVisibleMarks;
+        SupportsManualMapping = welcome.SupportsManualMapping;
         _visibleMarks.Clear(); _activeMarkGrace.Clear();
         foreach (var mark in welcome.VisibleMarks) { _visibleMarks[mark.Mark.Key] = mark; _activeMarkGrace.Update(mark, DateTime.UtcNow); }
         WelcomeCounters(welcome);
@@ -750,7 +752,7 @@ public sealed partial class SyncCoordinator : IDisposable
     private void ForgetRemoteState()
     {
         ResetCompletionConnection();
-        _visibleMarks.Clear(); _activeMarkGrace.Clear(); ClientId = string.Empty; SupportsVisibleMarks = false;
+        _visibleMarks.Clear(); _activeMarkGrace.Clear(); ClientId = string.Empty; SupportsVisibleMarks = false; SupportsManualMapping = false;
         _counterServerId = string.Empty; _counterReady = false; _sharedCounters.Clear();
         _known.Clear();
         _lastSentOrder = new();
@@ -977,6 +979,14 @@ public sealed partial class SyncCoordinator : IDisposable
         if (SupportsVisibleMarks) return _activeMarkGrace.IsAlive(key, killed, now);
         return _remote.TryGetValue(key, out var remote) && ActiveSRankFilter.LivingObservation(
             remote.HealthPercent, remote.LastSeenUtc, remote.LastSeenUtc + RemoteSightingTtl, killed, now);
+    }
+
+    public void SetManualMapping(uint territory, uint world, uint instance, int index, bool exclude, string source = "Manual")
+    {
+        if (!IsConnected || !SupportsManualMapping) return;
+        LastError = string.Empty;
+        _client.Send(new ManualMappingMessage { TerritoryId=territory, WorldId=world, Instance=instance,
+            Index=index, Exclude=exclude, Source=source, ExpectedSinceAt=ZoneFor(territory,world,instance)?.SinceAt });
     }
 
     public string DisplayName()
