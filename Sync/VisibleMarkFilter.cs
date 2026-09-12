@@ -5,6 +5,7 @@ namespace HuntHelperEvolved.Sync;
 
 public sealed class VisibleMarkOptions
 {
+    public bool ShowDataCenter { get; set; }
     public bool IncludeOwn { get; set; } = true;
     public bool IncludeCommunity { get; set; } = true;
     public bool Alive { get; set; } = true;
@@ -45,16 +46,24 @@ public sealed record ActiveMarkRow(SyncSighting Mark, VisibleMark? Visible, Sync
 }
 public static class ActiveMarkRows
 {
+    // Observers overlap: use the broadest fresh count, never add their totals.
+    public static SyncSighting MergeObservation(SyncSighting local, SyncSighting remote)
+    {
+        var latest = local.SeenAt >= remote.SeenAt ? local : remote;
+        var count = new[] { local.NearbyPlayers, remote.NearbyPlayers }.Max();
+        return latest.WithNearbyPlayers(count);
+    }
+
     public static List<ActiveMarkRow> Merge(IEnumerable<VisibleMark> visible, IEnumerable<SyncSRankStatus> statuses, DateTime now)
     {
         var states=statuses.ToDictionary(s=>s.Key);
         var rows=visible.Where(v=>VisibleMarkFilter.Fresh(v,now))
-            .ToDictionary(v=>v.Mark.Key,v=>new ActiveMarkRow(v.Mark,v,states.GetValueOrDefault(v.Mark.Key)));
+            .ToDictionary(v=>v.Mark.LiveKey,v=>new ActiveMarkRow(v.Mark,v,states.GetValueOrDefault(v.Mark.Key)));
         foreach(var status in states.Values)
         {
-            if(rows.ContainsKey(status.Key) || ActiveSRankFilter.Status(status,false,now) is null
+            if(rows.Values.Any(r => r.Mark.Key == status.Key) || ActiveSRankFilter.Status(status,false,now) is null
                 || !SRankTimerData.ByNameId.TryGetValue(status.NameId,out var mark)) continue;
-            rows[status.Key]=new(new SyncSighting { NameId=status.NameId,WorldId=status.WorldId,Instance=status.Instance,
+            rows[(status.NameId,status.Instance,status.WorldId,0,0)]=new(new SyncSighting { NameId=status.NameId,WorldId=status.WorldId,Instance=status.Instance,
                 TerritoryId=mark.TerritoryId,Name=mark.Name,Rank="S",X=status.SpawnX??float.NaN,Y=status.SpawnY??float.NaN },null,status);
         }
         return rows.Values.ToList();

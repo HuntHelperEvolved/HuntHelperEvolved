@@ -34,6 +34,20 @@ public static class ReleaseNotes
 
     public static readonly Release[] All =
     {
+        new("0.5.0.16", "2026-09-12", "A tidier hunt workspace, reliable minion tracking and smarter train watches.",
+        [
+            new("Workspace", "The main /hh window now has Train, S Ranks, Settings and Help tabs. Train controls and reports are available together; shared controls and scouts can be collapsed. Use the Windows menu to open separate boards and tools.", Kihtli, 43),
+            new("Detection", "Wait for the current world to resolve before announcing marks, preventing duplicate FOUND messages when zoning.", Kihtli, 38),
+            new("Active Marks", "Nearby player counts use the largest fresh observer count instead of alternating between scouts; counts are never added together.", Kihtli, 39),
+            new("Travel", "Lifestream travel from a mark now continues to its instance after reaching the correct world and zone, where instance switching is available. Normal clicks still place map flags; use Teleport or Ctrl-click to travel.", Kihtli, 40),
+            new("Active Marks", "The window stays visible during travel between data centres after the first login. It remains hidden before the first character login.", Kihtli, 41),
+            new("Active Marks", "Added an optional data-centre label alongside the world name in Active Marks settings.", Kihtli, 42),
+            new("Map", "Only left-click places map flags. Right-click no longer places and immediately clears a flag; Shift-left-click still toggles a manual mapping exclusion.", Kihtli, 44),
+            new("Minions", "Identical SS-event minions keep separate health, combat state, observers and map icons using actor IDs, even when moving or sharing coordinates. Requires server 0.3.23 and updated reporting/viewing plugins; older reports cannot reliably distinguish actors.", Kihtli),
+            new("Faloop", "Sniped reports advance the bounded spawn window and reset mapping from receipt of the report. Repeated snapshots preserve new mapping evidence. Requires server 0.3.22 or later.", Kihtli),
+            new("Train watches", "S-rank watches now live under Train. Optionally follow eligible spawn windows for train worlds and instances; confirmed mapping supplies the location without guessing. Reminders respect the train world and instance. Enable automation on the client preparing the train; requires server 0.3.22 or later.", Kihtli),
+            new("Commands", "The installer lists only /hh commands when Hunt Helper is absent, or /htr commands when it is installed. Available aliases still work; commands owned by another plugin are left alone.", Kihtli),
+        ]),
         new("0.5.0.15", "2026-09-11", "Shared manual mapping and the latest beta improvements.",
         [
             new("Mapping", "Shift-click an S-capable map point to toggle a shared exclusion, or click the point count in /hhs to compare coordinates and record a Faloop, Bear or other source. Undo removes only manual evidence. Entries persist per world and instance until the next S kill. Requires server 0.3.21.", Kihtli),

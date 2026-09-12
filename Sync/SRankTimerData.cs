@@ -156,23 +156,24 @@ public static class SRankTimerData
         // Whole-second durations avoid binary fractional hours truncating a tick
         // (50.4 hours would otherwise display 09:03 instead of 09:04).
         var opens = killed.AddSeconds(Math.Round(min * 3600));
-        var forced = killed.AddSeconds(Math.Round(max * 3600));
+        var boundedSniped = status.Uncertain && status.KilledAtLatest is { } latest && latest >= killed;
+        var forced = (boundedSniped ? status.KilledAtLatest!.Value : killed).AddSeconds(Math.Round(max * 3600));
         var since = nowUtc - killed;
 
         double percent;
         if (nowUtc < opens) percent = 0;
-        else if (max <= min) percent = 100;
-        else percent = Math.Clamp((nowUtc - opens).TotalHours / (max - min) * 100.0, 0, 100);
+        else if (forced <= opens) percent = 100;
+        else percent = Math.Clamp((nowUtc - opens).TotalSeconds / (forced - opens).TotalSeconds * 100.0, 0, 100);
 
         var phase = up ? SRankPhase.Up
-            : status.Uncertain ? SRankPhase.Uncertain
+            : status.Uncertain && !boundedSniped ? SRankPhase.Uncertain
             : nowUtc < opens ? SRankPhase.Cooldown
             : nowUtc >= forced ? SRankPhase.Forced
             : SRankPhase.Window;
 
         // A sniped mark died at or after the recorded time, so "opens" is
         // the earliest the window can start and nothing bounds it above.
-        if (status.Uncertain) return new SRankCycle(phase, 0, opens, null, since);
+        if (status.Uncertain && !boundedSniped) return new SRankCycle(phase, 0, opens, null, since);
 
         return new SRankCycle(phase, percent, opens, forced, since);
     }

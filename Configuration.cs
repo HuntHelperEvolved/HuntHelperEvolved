@@ -566,6 +566,8 @@ public class Configuration : IPluginConfiguration
     /// <summary>Height of a train list row, in pixels.</summary>
     public int TrainRowHeight { get; set; } = 22;
 
+    public bool AutoTrainWatches { get; set; }
+
     public bool SRankZoneReminderEnabled { get; set; } = true;
 
     /// <summary>

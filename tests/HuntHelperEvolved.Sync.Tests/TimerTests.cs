@@ -5,6 +5,31 @@ namespace HuntHelperEvolved.Sync.Tests;
 public class TimerTests
 {
     private static readonly DateTime Now = new(2026, 9, 6, 12, 0, 0, DateTimeKind.Utc);
+    [Fact]
+    public void MappingCanRestartAtSnipeReceiptWithoutPretendingTheKillIsExact()
+    {
+        var status=new SyncSRankStatus { KilledAt=Now.AddHours(-24), Uncertain=true };
+        var zone=new SyncSpawnZone { SinceAt=Now, ResetBySnipe=true };
+        Assert.True(SpawnMapping.ReliableCycle(zone,status));
+        zone.ResetBySnipe=false;
+        Assert.False(SpawnMapping.ReliableCycle(zone,status));
+    }
+
+    [Theory]
+    [InlineData(90, SRankPhase.Cooldown, 0)]
+    [InlineData(120, SRankPhase.Window, 0)]
+    [InlineData(144, SRankPhase.Window, 50)]
+    [InlineData(168, SRankPhase.Forced, 100)]
+    public void SafatSnipedWindowMatchesFaloopBounds(double elapsed, SRankPhase phase, double percent)
+    {
+        var baseline = Now.AddHours(-elapsed);
+        var cycle = SRankTimerData.Compute(SRankTimerData.ByNameId[2968], new()
+        { KilledAt=baseline.AddHours(60),KilledAtLatest=baseline.AddHours(84),Uncertain=true },Now,false);
+        Assert.Equal(baseline.AddHours(120),cycle.OpensAtUtc);
+        Assert.Equal(baseline.AddHours(168),cycle.ForcedAtUtc);
+        Assert.Equal(phase,cycle.Phase); Assert.Equal(percent,cycle.Percent);
+    }
+
     [Theory]
     [InlineData(80, SRankPhase.Cooldown, 0)]
     [InlineData(84, SRankPhase.Window, 0)]

@@ -32,21 +32,6 @@ public sealed partial class Plugin : IDalamudPlugin
     private const string MapCommand = "/htrm";
     private const string SRankCommand = "/htrs";
 
-    /// <summary>Short commands for HHE windows and train actions.</summary>
-    private static readonly (string Command, string Help)[] ShortCommands =
-    {
-        ("/hh", "Open the main window."),
-        ("/hht", "Open the train list popout."),
-        ("/hhn", "Move to the next live mark in the train and flag it."),
-        ("/hhna", "Name the closest aetheryte to the next mark."),
-        ("/hhc", "Open the trigger-mob counter popout."),
-        ("/hhm", "Show or hide the map control bar."),
-        ("/hhtally", "Open the hunt tally. Use /hhtally config for settings or /hhtally ipc to test the IPC feed."),
-    };
-
-    /// <summary>Which aliases were actually claimed, so Dispose gives back exactly those.</summary>
-    private readonly List<string> _claimedAliases = new();
-
     /// <summary>
     /// The tally's original command, kept verbatim. It was a separate plugin
     /// until this release and people have it in macros and muscle memory, so
@@ -86,6 +71,7 @@ public sealed partial class Plugin : IDalamudPlugin
     };
 
     private readonly IDalamudPluginInterface _pluginInterface;
+    private readonly IFramework _framework;
     private readonly ICommandManager _commandManager;
     private readonly IChatGui _chatGui;
     private readonly IObjectTable _objectTable;
@@ -180,7 +166,6 @@ public sealed partial class Plugin : IDalamudPlugin
     private bool _configWindowVisible;
     private bool _trainPopoutVisible;
     private bool _counterPopoutVisible;
-    private string _importCode = string.Empty;
     private string _customFlagLabel = string.Empty;
 
     // Custom flags removed a few seconds after teleporting to them — instant
@@ -235,6 +220,7 @@ public sealed partial class Plugin : IDalamudPlugin
         IPluginLog pluginLog)
     {
         _pluginInterface = pluginInterface;
+        _framework = framework;
         _commandManager = commandManager;
         _chatGui = chatGui;
         _objectTable = objectTable;
@@ -354,7 +340,7 @@ public sealed partial class Plugin : IDalamudPlugin
         }
 
         _notifier = new MarkNotifier(chatGui, flyTextGui, _log, _config);
-        _zoneReminder = new SRankZoneReminder(clientState, chatGui, _log, _config, _detector);
+        _zoneReminder = new SRankZoneReminder(clientState, chatGui, _log, _config, _detector, framework, AutomaticWatchAvailable);
         _counter = new HuntCounter(chatGui, clientState, objectTable, _config);
         _spawnWatch = new SpawnWatchCounters(framework, clientState, objectTable, fateTable, _log);
         _worldData = new WorldData(dataManager);
@@ -369,7 +355,7 @@ public sealed partial class Plugin : IDalamudPlugin
         _sync.ReportedRemoval += OnReportedRemoval;
         _sync.SRankSpawned += OnRemoteSRankSpawn;
         _srankTravel = new LifestreamTravel(_pluginInterface, framework, _detector, _chatGui, _log);
-        _activeMarksWindow = new ActiveMarksWindow(_config, _sync, _worldData, _detector, _gameGui, _srankTravel, () => { _configWindowVisible=true; _selectSyncTab=true; });
+        _activeMarksWindow = new ActiveMarksWindow(_config, _sync, _worldData, _detector, _gameGui, _srankTravel, () => { _configWindowVisible=true; _selectActiveMarksSettings=true; });
         _srankWindow = new SRankWindow(_config, _sync, _worldData, _detector, _srankTravel);
         _arankWindow = new ARankWindow(_config, _sync, _worldData, _detector);
         // After the detector exists, since the gates read straight off it.
@@ -394,47 +380,8 @@ public sealed partial class Plugin : IDalamudPlugin
         _watcher.PersistRequested += PersistTrain;
         RestoreSavedTrain();
 
-        _commandManager.AddHandler(ConfigCommand, new CommandInfo(OnCommand)
-        {
-            HelpMessage = "Open Hunt Helper Evolved settings.",
-        });
-
-        _commandManager.AddHandler(TrainCommand, new CommandInfo(OnTrainCommand)
-        {
-            HelpMessage = "Open the Hunt Helper Evolved train list popout.",
-        });
-
-        _commandManager.AddHandler(CounterCommand, new CommandInfo(OnCounterCommand)
-        {
-            HelpMessage = "Open the Hunt Helper Evolved mob counter popout.",
-        });
-
-        _commandManager.AddHandler(NextAetheryteCommand, new CommandInfo(OnNextAetheryteCommand)
-        {
-            HelpMessage = "Name the closest aetheryte to the next mark in the train.",
-        });
-
-        _commandManager.AddHandler(MapCommand, new CommandInfo(OnMapCommand)
-        {
-            HelpMessage = "Open the map dot filters.",
-        });
-
-        _commandManager.AddHandler(SRankCommand, new CommandInfo(OnSRankCommand)
-        {
-            HelpMessage = "Open the S-rank board: windows, kill times and spawn points, shared through sync.",
-        });
-        _commandManager.AddHandler("/hhv", new CommandInfo((_, _) => _activeMarksWindow.Toggle()) { HelpMessage = "Open marks currently visible to group members, with health and combat status." });
-        _commandManager.AddHandler("/hhsa", new CommandInfo((_, _) => _activeMarksWindow.Toggle()) { HelpMessage = "Open Active Marks across covered worlds, with All/S/A/B tabs." });
-        _commandManager.AddHandler("/hhs", new CommandInfo(OnSRankCommand)
-        { HelpMessage = "Open the S-rank board with world, expansion and availability filters." });
-        _commandManager.AddHandler("/hha", new CommandInfo((_, _) => _arankWindow.Toggle()) { HelpMessage = "Open the A-rank respawn window board." });
-        RegisterShortCommands();
-
-        _commandManager.AddHandler(TallyCommand, new CommandInfo(OnTallyCommand)
-        {
-            HelpMessage = "Open the hunt tally. \"/hunttally config\" for settings, "
-                          + "\"/hunttally ipc\" to test the IPC feed.",
-        });
+        RegisterCommands();
+        _framework.Update += OnPluginFrameworkUpdate;
 
         _pluginInterface.UiBuilder.Draw += DrawUI;
         _pluginInterface.UiBuilder.OpenConfigUi += OnOpenConfigUi;
@@ -442,12 +389,14 @@ public sealed partial class Plugin : IDalamudPlugin
         // The tally's display window is the plugin's "main" UI, as it was when
         // the tally was its own plugin. The gear opens settings, which are now
         // a tab of this plugin's config window.
-        _pluginInterface.UiBuilder.OpenMainUi += ToggleTallyWindow;
+        _pluginInterface.UiBuilder.OpenMainUi += OpenMainWindow;
     }
 
     // ---------------------------------------------------------------------
     // Tally
     // ---------------------------------------------------------------------
+
+    private void OpenMainWindow() => _configWindowVisible = true;
 
     private void ToggleTallyWindow() => _tallyWindow.Toggle();
 
@@ -514,6 +463,16 @@ public sealed partial class Plugin : IDalamudPlugin
 
     /// <summary>Writes queued tally changes, at the interval Flush enforces.</summary>
     private void OnTallyFrameworkUpdate(IFramework framework) => _tallyConfig.Flush();
+
+    private void OnPluginFrameworkUpdate(IFramework framework)
+    {
+        if (_commandHelpDirty) RefreshCommandHelp();
+        UpdateAutomaticTrainWatches();
+        // During DC transfers the game hides its UI at character selection.
+        // Only Active Marks is drawn there; normal hide preferences apply in game.
+        _pluginInterface.UiBuilder.DisableUserUiHide = _releaseNotesChecked
+            && !_clientState.IsLoggedIn && _config.ActiveSRankWindowOpen;
+    }
 
     private void PauseScoutingOnLogin() => _config.ScanningPaused = true;
 
@@ -926,9 +885,13 @@ public sealed partial class Plugin : IDalamudPlugin
 
     private void DrawUI()
     {
-        // Keep every window hidden at the title screen and character selection.
-        // Delay acknowledging update notes until the user can actually see them.
-        if (!_clientState.IsLoggedIn) return;
+        // Keep startup quiet, but preserve Active Marks after the first login
+        // while DC travel passes through character selection.
+        if (!_clientState.IsLoggedIn)
+        {
+            if (_releaseNotesChecked) _activeMarksWindow.Draw();
+            return;
+        }
         if (!_releaseNotesChecked)
         {
             _releaseNotesChecked = true;
@@ -960,49 +923,33 @@ public sealed partial class Plugin : IDalamudPlugin
 
         if (!_configWindowVisible) return;
 
-        ImGui.SetNextWindowSize(new Vector2(620, 560), ImGuiCond.FirstUseEver);
-        ImGui.SetNextWindowSizeConstraints(new Vector2(420, 240), new Vector2(float.MaxValue, float.MaxValue));
-        if (ImGui.Begin("Hunt Helper Evolved", ref _configWindowVisible))
+        ImGui.SetNextWindowSize(new Vector2(900, 620), ImGuiCond.FirstUseEver);
+        ImGui.SetNextWindowSizeConstraints(new Vector2(560, 320), new Vector2(float.MaxValue, float.MaxValue));
+        if (ImGui.Begin("Hunt Helper Evolved", ref _configWindowVisible, ImGuiWindowFlags.MenuBar))
         {
+            DrawWindowMenu();
             if (ImGui.BeginTabBar("HuntHelperEvolvedTabs"))
             {
-                if (ImGui.BeginTabItem("Conductor"))
-                {
-                    DrawConductorTab();
-                    ImGui.EndTabItem();
-                }
-
                 if (ImGui.BeginTabItem("Train"))
                 {
                     DrawTrainTab();
                     ImGui.EndTabItem();
                 }
-
-                if (ImGui.BeginTabItem("Scout"))
+                if (ImGui.BeginTabItem("S Ranks"))
                 {
-                    DrawScoutTab();
+                    DrawSRankWorkspace();
                     ImGui.EndTabItem();
                 }
 
-                if (ImGui.BeginTabItem("S Counters"))
-                {
-                    DrawCountersTab();
-                    ImGui.EndTabItem();
-                }
-
-                if (ImGui.BeginTabItem("Marks Slain"))
-                {
-                    DrawMarksSlainTab();
-                    ImGui.EndTabItem();
-                }
-
-                var settingsRequested = _selectSyncTab || _selectTallyTab;
+                var settingsRequested = _selectSyncTab || _selectTallyTab || _selectActiveMarksSettings;
                 if (_selectSyncTab) _settingsPage = SettingsPage.Sharing;
                 if (_selectTallyTab) _settingsPage = SettingsPage.Tally;
+                if (_selectActiveMarksSettings) _settingsPage = SettingsPage.ActiveMarks;
                 if (ImGui.BeginTabItem("Settings", settingsRequested ? ImGuiTabItemFlags.SetSelected : ImGuiTabItemFlags.None))
                 {
                     _selectSyncTab = false;
                     _selectTallyTab = false;
+                    _selectActiveMarksSettings = false;
                     DrawSettingsTab();
                     ImGui.EndTabItem();
                 }
@@ -1015,12 +962,7 @@ public sealed partial class Plugin : IDalamudPlugin
                 ImGui.EndTabBar();
             }
 
-            if (!string.IsNullOrEmpty(_lastPostResult))
-            {
-                ImGui.Spacing();
-                ImGui.Separator();
-                ImGui.TextWrapped($"Last post: {_lastPostResult}");
-            }
+
         }
         ImGui.End();
     }
@@ -1047,16 +989,6 @@ public sealed partial class Plugin : IDalamudPlugin
             ImGui.Spacing();
             ImGui.Separator();
         }
-
-        ImGui.Spacing();
-        if (ImGui.Button("Open the tally"))
-            _tallyWindow.IsOpen = true;
-        ImGui.SameLine();
-        ImGui.TextDisabled("Also \"/hunttally\".");
-
-        ImGui.Spacing();
-        ImGui.Separator();
-        ImGui.Spacing();
 
         _tallySettings.Draw();
     }
@@ -1158,47 +1090,6 @@ public sealed partial class Plugin : IDalamudPlugin
         if (next == null) return;
 
         SetCurrentMark(next, announce: _config.EchoOnAdvance);
-    }
-
-    /// <summary>Registers each shortcut independently, leaving occupied commands alone.</summary>
-    private void RegisterShortCommands()
-    {
-        foreach (var (command, help) in ShortCommands)
-        {
-            try
-            {
-                var handler = command switch
-                {
-                    "/hh" => new IReadOnlyCommandInfo.HandlerDelegate(OnCommand),
-                    "/hht" => OnTrainCommand,
-                    "/hhn" => OnNextMarkCommand,
-                    "/hhna" => OnNextAetheryteCommand,
-                    "/hhc" => OnCounterCommand,
-                    "/hhm" => OnMapCommand,
-                    "/hhtally" => OnTallyCommand,
-                    _ => null,
-                };
-
-                if (handler == null) continue;
-
-                if (!_commandManager.AddHandler(command, new CommandInfo(handler) { HelpMessage = help }))
-                {
-                    _log.Warning($"Could not register {command}; another plugin holds it.");
-                    continue;
-                }
-                _claimedAliases.Add(command);
-            }
-            catch (Exception ex)
-            {
-                _log.Warning(ex, $"Could not register {command}; something else holds it.");
-            }
-        }
-
-        if (_claimedAliases.Count > 0)
-        {
-            _log.Information(
-                $"Registered HHE shortcuts: {string.Join(", ", _claimedAliases)}.");
-        }
     }
 
     /// <summary>
@@ -1390,45 +1281,44 @@ public sealed partial class Plugin : IDalamudPlugin
     }
 
     /// <summary>
-    /// The actions that actually send something, or throw a train away. All
-    /// three require Shift to be held: they're irreversible enough that a
-    /// stray click mid-train is genuinely costly.
-    ///
-    /// Dimming and ignoring clicks manually rather than using ImGui's
-    /// BeginDisabled — same result, and it avoids an API this project has
-    /// deliberately steered clear of.
+    /// Report and reset actions share the same Shift guard in both train views.
     /// </summary>
     private void DrawTrainFooter()
     {
         var armed = ImGui.GetIO().KeyShift;
-
-        if (!armed) ImGui.PushStyleVar(ImGuiStyleVar.Alpha, 0.45f);
-
-        if (ImGui.Button("Send Scouting Report") && armed)
-        {
-            _ = SendScoutingReportAsync();
-        }
-
-        ImGui.SameLine();
-        if (ImGui.Button("End Train Now") && armed)
-        {
-            _ = EndTrainNowAsync();
-        }
-
-        ImGui.SameLine();
+        ImGui.BeginDisabled(!armed);
+        if (ImGui.Button("Send Scouting Report")) _ = SendScoutingReportAsync();
+        TrainControlSameLine("End Train Now");
+        if (ImGui.Button("End Train Now")) _ = EndTrainNowAsync();
+        TrainControlSameLine("Reset");
         ImGui.PushStyleColor(ImGuiCol.Text, new Vector4(1f, 0.35f, 0.35f, 1f));
-        var resetPressed = ImGui.Button("Reset");
+        if (ImGui.Button("Reset")) ResetTrainWithUndo();
         ImGui.PopStyleColor();
+        ImGui.EndDisabled();
+        ImGui.TextDisabled("Hold Shift to send, finish or reset.");
+    }
 
-        if (resetPressed && armed) ResetTrainWithUndo();
+    private static void TrainControlSameLine(string nextLabel)
+    {
+        var style = ImGui.GetStyle();
+        var right = ImGui.GetWindowPos().X + ImGui.GetWindowContentRegionMax().X;
+        if (ImGui.GetItemRectMax().X + style.ItemSpacing.X + ImGui.CalcTextSize(nextLabel).X
+            + style.FramePadding.X * 2 <= right) ImGui.SameLine();
+    }
 
-        if (!armed) ImGui.PopStyleVar();
-
-        if (!armed)
+    private static float TrainFooterHeight()
+    {
+        var width = ImGui.GetContentRegionAvail().X;
+        var used = 0f;
+        var lines = 1;
+        foreach (var label in new[] { "Send Scouting Report", "End Train Now", "Reset" })
         {
-            ImGui.SameLine();
-            ImGui.TextDisabled("(hold Shift)");
+            var button = ImGui.CalcTextSize(label).X + ImGui.GetStyle().FramePadding.X * 2;
+            if (used > 0 && used + button > width) { lines++; used = 0; }
+            used += button + ImGui.GetStyle().ItemSpacing.X;
         }
+        return lines * ImGui.GetFrameHeightWithSpacing() + ImGui.GetTextLineHeightWithSpacing()
+            + ImGui.GetStyle().ItemSpacing.Y * 2;
     }
 
     private const int MaxBlacklistedAetherytes = 15;
@@ -1986,7 +1876,6 @@ public sealed partial class Plugin : IDalamudPlugin
 
     private void DrawTrainControls()
     {
-        DrawTrainUndo();
 
         // Row 1: scanning state.
         if (_config.ScanningPaused)
@@ -2017,14 +1906,14 @@ public sealed partial class Plugin : IDalamudPlugin
             _detector.RemoveDead();
         }
 
-        ImGui.SameLine();
+        TrainControlSameLine("Next Mark");
         if (ImGui.Button("Next Mark"))
         {
             SetCurrentMark(NextLiveMark(), announce: true);
         }
         if (ImGui.IsItemHovered()) ImGui.SetTooltip("Move to the next live mark and flag it");
 
-        ImGui.SameLine();
+        TrainControlSameLine("Add Flag");
         if (ImGui.Button("Add Flag"))
         {
             var added = _detector.AddCustomFlag(_customFlagLabel);
@@ -2036,11 +1925,11 @@ public sealed partial class Plugin : IDalamudPlugin
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip("Adds your current map flag to the train as a custom stop");
 
-        ImGui.SameLine();
+        TrainControlSameLine("flag name (optional)");
         ImGui.SetNextItemWidth(110);
         ImGui.InputTextWithHint("##customFlagLabel", "flag name", ref _customFlagLabel, 64);
 
-        ImGui.SameLine();
+        TrainControlSameLine("Next Aetheryte");
         if (ImGui.Button("Next Aetheryte"))
         {
             OnNextAetheryteCommand(NextAetheryteCommand, string.Empty);
@@ -2054,6 +1943,17 @@ public sealed partial class Plugin : IDalamudPlugin
         if (ImGui.Button("Import from Clipboard"))
         {
             ImportFromClipboard();
+        }
+
+        TrainControlSameLine("Copy Export Code");
+        if (ImGui.Button("Copy Export Code"))
+        {
+            if (_detector.Marks.Count == 0) _lastPostResult = "Nothing to export — no marks detected yet.";
+            else
+            {
+                ImGui.SetClipboardText(TrainExchange.Export(_detector.Ordered()));
+                _lastPostResult = $"Exported {_detector.Marks.Count} marks to clipboard.";
+            }
         }
 
         // Row 3
@@ -2072,7 +1972,7 @@ public sealed partial class Plugin : IDalamudPlugin
             _config.Save();
         }
 
-        ImGui.SameLine();
+        TrainControlSameLine("Group by expansion");
         var grouped = _config.GroupTrainByExpansion;
         if (ImGui.Checkbox("Group by expansion", ref grouped))
         {
@@ -2087,7 +1987,7 @@ public sealed partial class Plugin : IDalamudPlugin
         // an API this project has stayed off.
         if (grouped)
         {
-            ImGui.SameLine();
+            TrainControlSameLine("Open next automatically");
             var autoExpand = _config.AutoExpandNextExpansion;
             if (ImGui.Checkbox("Open next automatically", ref autoExpand))
             {
@@ -2097,14 +1997,6 @@ public sealed partial class Plugin : IDalamudPlugin
 
         }
 
-        // Row 5 — same setting as the one on the Settings tab, so the two
-        // always agree.
-        var spicingHere = _config.ShowSpicing;
-        if (ImGui.Checkbox("Show spicing markers", ref spicingHere))
-        {
-            _config.ShowSpicing = spicingHere;
-            _config.Save();
-        }
     }
 
     /// <summary>
@@ -2830,7 +2722,7 @@ public sealed partial class Plugin : IDalamudPlugin
     /// <summary>
     /// The Spawned / Didn't Spawn pair for one watch.
     ///
-    /// Shared by the Conductor tab and the train list rather than written out
+    /// Shared by Train > S-rank watches and the train list rather than written out
     /// twice, because the two are the same fact about the same object and
     /// writing them separately is how they would come to disagree.
     /// </summary>
@@ -2854,13 +2746,13 @@ public sealed partial class Plugin : IDalamudPlugin
     }
 
     /// <summary>
-    /// The Conductor tab's S-rank watches, repeated under the train.
+    /// The S-rank workspace’s S-rank watches, repeated under the train.
     ///
     /// The same FlagEntry objects, not copies: a box ticked here is ticked
     /// there, and either way it is the same answer that reaches the end-of-
     /// train report.
     ///
-    /// Adding and removing watches stays on the Conductor tab. This is the
+    /// Adding and removing watches stays on Train > S-rank watches. This is the
     /// during-the-train view, and the only question it has to answer is whether
     /// the thing was up — an S rank gets checked in passing, between marks, and
     /// walking back to a settings tab to record it is exactly when it gets
@@ -2882,7 +2774,7 @@ public sealed partial class Plugin : IDalamudPlugin
             var flag = _config.Flags[i];
             ImGui.PushID($"srankwatch{i}");
 
-            // Boxes before the label, unlike the Conductor tab. Watch labels
+            // Boxes before the label, unlike Train > S-rank watches. Watch labels
             // run to very different lengths — "Tyger" against "Narrow-rift —
             // Spawn 3 (23.4, 33.1)" — and a label first would move the boxes
             // for every row, in the one window being clicked at while running.
@@ -2905,57 +2797,43 @@ public sealed partial class Plugin : IDalamudPlugin
 
     private void DrawTrainTab()
     {
-        ImGui.Spacing();
-
-        ImGui.TextDisabled("Reports use this train and its recorded history.");
-
-        ImGui.Spacing();
-        DrawTrainControls();
-
-        ImGui.Spacing();
-        if (ImGui.Button("Open Train Popout"))
+        DrawTrainUndo();
+        if (ImGui.CollapsingHeader("Controls & scouts", ImGuiTreeNodeFlags.DefaultOpen))
         {
-            _trainPopoutVisible = true;
+            DrawTrainControls();
+            DrawTrainScouts();
         }
-        ImGui.SameLine();
-        if (ImGui.Button("Clear All")) ResetTrainWithUndo(clearWatches: false);
-
-        ImGui.Spacing();
-        if (ImGui.Button("Copy Export Code"))
+        var footerHeight = TrainFooterHeight();
+        if (!string.IsNullOrEmpty(_lastPostResult))
         {
-            if (_detector.Marks.Count == 0)
+            ImGui.TextWrapped(_lastPostResult);
+            ImGui.Separator();
+        }
+        if (ImGui.BeginChild("Train workspace", new Vector2(0, -footerHeight), false))
+        {
+            if (ImGui.BeginTabBar("Train views"))
             {
-                _lastPostResult = "Nothing to export — no marks detected yet.";
+                if (ImGui.BeginTabItem("Route"))
+                {
+                    DrawTrainList();
+                    ImGui.EndTabItem();
+                }
+                if (ImGui.BeginTabItem("Report preview"))
+                {
+                    DrawMarksSlainTab();
+                    ImGui.EndTabItem();
+                }
+                if (ImGui.BeginTabItem("S-rank watches"))
+                {
+                    DrawSRankWatches();
+                    ImGui.EndTabItem();
+                }
+                ImGui.EndTabBar();
             }
-            else
-            {
-                ImGui.SetClipboardText(TrainExchange.Export(_detector.Ordered()));
-                _lastPostResult = $"Exported {_detector.Marks.Count} marks to clipboard.";
-            }
-        }
-        ImGui.TextDisabled("Share this code with another Hunt Helper Evolved user.");
-
-        ImGui.Spacing();
-        ImGui.SetNextItemWidth(260);
-        ImGui.InputTextWithHint("##importCode", "Paste an import code here", ref _importCode, 65536);
-        ImGui.SameLine();
-        if (ImGui.Button("Import"))
-        {
-            var before = _detector.Marks.Count;
-            ImportTrainCode(_importCode, "the box");
-            if (_detector.Marks.Count != before) _importCode = string.Empty;
-        }
-        ImGui.TextDisabled("Imports merge — a mark already in the train is never overwritten by one arriving in a code.");
-
-        ImGui.Spacing();
-        ImGui.Separator();
-        ImGui.Spacing();
-
-        if (ImGui.BeginChild("trainTabScroll", new Vector2(0, 0), false))
-        {
-            DrawTrainList();
         }
         ImGui.EndChild();
+        ImGui.Separator();
+        DrawTrainFooter();
     }
 
     private List<string> CombinedTrainScouts() => (_sync.IsConnected && _config.SyncShareTrain ? _sync.TrainScouts : Array.Empty<string>())
@@ -2998,6 +2876,7 @@ public sealed partial class Plugin : IDalamudPlugin
         ImGui.SetNextWindowSizeConstraints(new Vector2(420, 200), new Vector2(float.MaxValue, float.MaxValue));
         if (ImGui.Begin("Hunt Train", ref _trainPopoutVisible))
         {
+            DrawTrainUndo();
             // Controls sit outside the scrolling region so they stay put while
             // the list scrolls underneath.
             ImGui.SetNextItemOpen(_config.TrainPopoutControlsExpanded, ImGuiCond.Always);
@@ -3012,7 +2891,7 @@ public sealed partial class Plugin : IDalamudPlugin
 
             // Reserve room at the bottom for the footer, so the list scrolls
             // between two fixed strips rather than under them.
-            var footerHeight = ImGui.GetFrameHeightWithSpacing() + ImGui.GetStyle().ItemSpacing.Y * 2;
+            var footerHeight = TrainFooterHeight();
             if (ImGui.BeginChild("trainScroll", new Vector2(0, -footerHeight), false))
             {
                 DrawTrainList(showZones: !_config.HideZonesInPopout);
@@ -3404,83 +3283,18 @@ public sealed partial class Plugin : IDalamudPlugin
         ImGui.TextDisabled("Full notices are in THIRD-PARTY-NOTICES.md in the repository.");
     }
 
-    private void DrawConductorTab()
+    private void DrawSRankWatches()
     {
+        var automatic = _config.AutoTrainWatches;
+        var supported = !_config.SyncShareTrain || _sync.SupportsScopedTrainWatches;
+        ImGui.BeginDisabled(!supported && !automatic);
+        if (ImGui.Checkbox("Automatically follow spawn windows", ref automatic))
+        { _config.AutoTrainWatches = automatic; _config.Save(); }
+        ImGui.EndDisabled();
+        ImGui.TextWrapped(supported
+            ? "Enable on the client preparing the train. Watches follow its worlds and zones; completed checks and manual watches are kept."
+            : "Connect to an updated sync server to enable automatic train watches.");
         ImGui.Spacing();
-
-        var tracking = _config.TrackingEnabled;
-        if (ImGui.Checkbox("Tracking this train (records exact kill times)", ref tracking))
-        {
-            _config.TrackingEnabled = tracking;
-            _config.Save();
-        }
-        ImGui.TextDisabled("Turn this on at the start of a train for accurate per-mark kill times. Nothing posts automatically — use End Train Now when it's actually finished.");
-
-        ImGui.Spacing();
-        ImGui.TextWrapped($"Status: {_watcher.LastStatus}");
-
-        ImGui.Spacing();
-        var autoMark = _config.AutoMarkDeadEnabled;
-        if (ImGui.Checkbox("Auto-mark dead using Hunt Tally", ref autoMark))
-        {
-            _config.AutoMarkDeadEnabled = autoMark;
-            _config.Save();
-        }
-        ImGui.TextDisabled(TallyFeedStatus());
-        ImGui.TextDisabled("Observed deaths update this train automatically; unknown kill times remain unknown.");
-
-        ImGui.Spacing();
-        ImGui.Separator();
-        ImGui.Spacing();
-
-        if (ImGui.Button("End Train Now"))
-        {
-            _ = EndTrainNowAsync();
-        }
-        ImGui.TextDisabled("Posts the report, sorted by the order marks actually died, plus any S-rank checks below. Only clears once the post actually succeeds.");
-
-        ImGui.Spacing();
-        if (ImGui.Button("Reset train tracking now")) ResetTrainWithUndo();
-        DrawTrainUndo();
-        ImGui.TextDisabled("Clears tracking and S-rank watches without posting anything — use if you need to abandon a train.");
-        if (_config.SyncEnabled && _config.SyncShareTrain)
-            ImGui.TextDisabled("Sync is on: this also empties the shared train for everyone.");
-
-        ImGui.Spacing();
-        ImGui.Separator();
-        ImGui.Spacing();
-
-        ImGui.TextWrapped("S-Rank Watches");
-
-        var reminderOn = _config.SRankZoneReminderEnabled;
-        if (ImGui.Checkbox("Remind me on entering an S-rank zone", ref reminderOn))
-        {
-            _config.SRankZoneReminderEnabled = reminderOn;
-            _config.Save();
-        }
-
-        if (_config.SRankZoneReminderEnabled)
-        {
-            ImGui.SameLine();
-            var reminderSound = _config.SRankZoneReminderSound;
-            if (ImGui.Checkbox("with sound", ref reminderSound))
-            {
-                _config.SRankZoneReminderSound = reminderSound;
-                _config.Save();
-            }
-        }
-        ImGui.TextDisabled("Lakeland (Tyger), Ultima Thule (Narrow-rift), Elpis (Ophioneus), Yak T'el (Neyoozoteel). Only you see it.");
-
-        ImGui.Spacing();
-        var watchesInList = _config.ShowSRankWatchesInTrainList;
-        if (ImGui.Checkbox("Show these watches on the train list", ref watchesInList))
-        {
-            _config.ShowSRankWatchesInTrainList = watchesInList;
-            _config.Save();
-        }
-
-        ImGui.Spacing();
-
         foreach (var (name, territoryId) in SimpleSRanks)
         {
             if (ImGui.Button($"Watch {name}"))
@@ -3492,13 +3306,13 @@ public sealed partial class Plugin : IDalamudPlugin
                 });
                 _config.Save();
             }
-            ImGui.SameLine();
         }
 
+        ImGui.Spacing();
         var spawnLabels = NarrowRiftSpawns.Select((s, i) => $"Spawn {i + 1} ({s.X:F1}, {s.Y:F1})").ToArray();
         ImGui.SetNextItemWidth(180);
         ImGui.Combo("##narrowRiftSpawn", ref _selectedNarrowRiftSpawn, spawnLabels, spawnLabels.Length);
-        ImGui.SameLine();
+        TrainControlSameLine("Watch Narrow-rift");
         if (ImGui.Button("Watch Narrow-rift"))
         {
             var spot = NarrowRiftSpawns[_selectedNarrowRiftSpawn];
@@ -3521,14 +3335,13 @@ public sealed partial class Plugin : IDalamudPlugin
             var flag = _config.Flags[i];
             ImGui.PushID(i);
 
-            ImGui.TextWrapped(flag.Label);
+            ImGui.TextWrapped(flag.Label + (flag.Automatic ? " (automatic)" : ""));
 
             DrawSpawnStatusBoxes(flag);
             ImGui.SameLine();
-            if (ImGui.Button("Remove"))
-            {
-                toRemove = i;
-            }
+            ImGui.BeginDisabled(flag.Automatic && _config.AutoTrainWatches);
+            if (ImGui.Button("Remove")) toRemove = i;
+            ImGui.EndDisabled();
 
             ImGui.Separator();
             ImGui.PopID();
@@ -3541,37 +3354,10 @@ public sealed partial class Plugin : IDalamudPlugin
         }
     }
 
-    private void DrawScoutTab()
-    {
-        ImGui.Spacing();
-        if (ImGui.Button("Send Scouting Report"))
-        {
-            _ = SendScoutingReportAsync();
-        }
-        ImGui.TextDisabled("Posts this train as an import code with worlds, flags and known kill times, plus a per-expansion up count.");
-
-        ImGui.Spacing();
-        ImGui.Separator();
-        ImGui.Spacing();
-        ImGui.TextWrapped(
-            "Additional scouts — credit anyone else whose scouting you folded into this report " +
-            "(e.g. they sent you their train export code privately and you imported it)."
-        );
-        ImGui.Spacing();
-
-        ImGui.PushID("scouts");
-        DrawStringList(
-            _config.AdditionalScouts,
-            MaxAdditionalScouts,
-            "+ Add scout",
-            $"Maximum of {MaxAdditionalScouts} additional scouts reached.");
-        ImGui.PopID();
-    }
-
     private void DrawMarksSlainTab()
     {
         ImGui.Spacing();
-        ImGui.TextWrapped("Preview of the report: confirmed kills, sniped marks, and unfinished or unknown-time entries. Posting keeps shared trains intact; use Reset when ready.");
+        ImGui.TextWrapped("Preview of the completion report. End Train Now submits completed expansions and keeps unfinished legs.");
         ImGui.Spacing();
         ImGui.Separator();
         ImGui.Spacing();
@@ -3823,7 +3609,7 @@ public sealed partial class Plugin : IDalamudPlugin
 
         _trainIpc.Dispose();
 
-        _pluginInterface.UiBuilder.OpenMainUi -= ToggleTallyWindow;
+        _pluginInterface.UiBuilder.OpenMainUi -= OpenMainWindow;
         _tallyWindows.RemoveAllWindows();
         _tallyWindow.Dispose();
 
@@ -3865,20 +3651,8 @@ public sealed partial class Plugin : IDalamudPlugin
         PersistTrain();
         _pluginInterface.UiBuilder.Draw -= DrawUI;
         _pluginInterface.UiBuilder.OpenConfigUi -= OnOpenConfigUi;
-        _commandManager.RemoveHandler(ConfigCommand);
-        _commandManager.RemoveHandler(TrainCommand);
-        _commandManager.RemoveHandler(CounterCommand);
-        _commandManager.RemoveHandler(NextAetheryteCommand);
-        _commandManager.RemoveHandler(MapCommand);
-        _commandManager.RemoveHandler(SRankCommand);
-        _commandManager.RemoveHandler("/hhs");
-        _commandManager.RemoveHandler("/hhsa");
-        _commandManager.RemoveHandler("/hhv");
-        _commandManager.RemoveHandler("/hha");
-        _commandManager.RemoveHandler(TallyCommand);
-
-        foreach (var alias in _claimedAliases)
-            _commandManager.RemoveHandler(alias);
+        _framework.Update -= OnPluginFrameworkUpdate;
+        UnregisterCommands();
     }
 
     // ---------------------------------------------------------------------
@@ -3931,7 +3705,7 @@ public sealed partial class Plugin : IDalamudPlugin
             : _config.SyncSpawnDataCenters.Contains(dc.Id);
         if (!allowed) { _lastCommunityAlert += " Excluded by DC filter."; return; }
         if (!(test ? new Sync.SpawnAlertFilter() : _spawnAlertFilter).Accept(spawn, true, DateTime.UtcNow)) { _lastCommunityAlert += " Duplicate or invalid event time."; return; }
-        if (!test && _detector.OtherRanks.TryGetValue((spawn.NameId,spawn.Instance,spawn.WorldId),out var local)
+        if (!test && _detector.OtherRanks.TryGetValue((spawn.NameId,spawn.Instance,spawn.WorldId,0,0),out var local)
             && !local.IsRemote && DateTime.UtcNow-local.LastSeenUtc < TimeSpan.FromSeconds(2))
         { _lastCommunityAlert += " Already detected locally; relay suppressed."; return; }
         var position = SpawnPosition(spawn.X, spawn.Y);
@@ -3994,7 +3768,7 @@ public sealed partial class Plugin : IDalamudPlugin
         _config.Save();
     }
     private static List<FlagEntry> CloneWatches(IEnumerable<FlagEntry> watches) => watches.Select(f => new FlagEntry
-    { Label=f.Label, SpawnStatus=f.SpawnStatus, TerritoryId=f.TerritoryId, HasLocation=f.HasLocation, X=f.X, Y=f.Y }).ToList();
+    { WorldId=f.WorldId, Instance=f.Instance, Automatic=f.Automatic, Label=f.Label, SpawnStatus=f.SpawnStatus, TerritoryId=f.TerritoryId, HasLocation=f.HasLocation, X=f.X, Y=f.Y }).ToList();
 
     private void UndoTrainReset()
     {
@@ -4102,7 +3876,7 @@ public sealed partial class Plugin : IDalamudPlugin
         _config.Flags.Clear();
         _config.Save();
         ClearSavedTrain();
-        _chatGui.Print($"[Hunt Helper Evolved] {by} cleared the shared train. Use Undo reset at the top of the train window (or on the Conductor tab) to recover it locally.");
+        _chatGui.Print($"[Hunt Helper Evolved] {by} cleared the shared train. Use Undo reset at the top of the train window (or in /hh > Train) to recover it locally.");
     }
 
     /// <summary>

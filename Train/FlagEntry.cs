@@ -14,6 +14,10 @@ public enum SpawnStatus { Unknown, Spawned, NotSpawned }
 [Serializable]
 public class FlagEntry
 {
+    public uint WorldId { get; set; }
+    public uint Instance { get; set; }
+    public bool Automatic { get; set; }
+
     public string Label { get; set; } = string.Empty;
     public SpawnStatus SpawnStatus { get; set; } = SpawnStatus.Unknown;
 

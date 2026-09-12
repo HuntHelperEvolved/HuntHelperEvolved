@@ -62,6 +62,8 @@ public class OtherRankSighting
     public bool IsRemote => Reporter.Length > 0;
 
     /// <summary>As DetectedMark.Key, and for the same reason.</summary>
+    public uint EntityId;
+    public (uint NameId, uint Instance, uint WorldId, uint TerritoryId, uint EntityId) LiveKey => (NameId, Instance, WorldId, EntityId == 0 ? 0 : TerritoryId, EntityId);
     public (uint NameId, uint Instance, uint WorldId) Key => (NameId, Instance, WorldId);
 }
 
@@ -117,10 +119,10 @@ public sealed class MarkDetector
     // 4294967295 for their first flag and have the server treat them as one.
     private uint _nextCustomId = uint.MaxValue - (uint)Random.Shared.Next(0, 8_000_000) * 16;
 
-    private readonly Dictionary<(uint NameId, uint Instance, uint WorldId), OtherRankSighting> _visibleCorpses = new();
+    private readonly Dictionary<(uint NameId, uint Instance, uint WorldId, uint TerritoryId, uint EntityId), OtherRankSighting> _visibleCorpses = new();
     public IEnumerable<OtherRankSighting> VisibleMarks => _otherRanks.Values.Concat(_visibleCorpses.Values);
 
-    private readonly Dictionary<(uint NameId, uint Instance, uint WorldId), OtherRankSighting> _otherRanks = new();
+    private readonly Dictionary<(uint NameId, uint Instance, uint WorldId, uint TerritoryId, uint EntityId), OtherRankSighting> _otherRanks = new();
 
     /// <summary>
     /// Where the last scan ran. A change means a different set of marks is
@@ -133,7 +135,7 @@ public sealed class MarkDetector
     /// Every mark seen, of every rank. Independent of the train, and populated
     /// whether or not recording is active.
     /// </summary>
-    public IReadOnlyDictionary<(uint NameId, uint Instance, uint WorldId), OtherRankSighting> OtherRanks => _otherRanks;
+    public IReadOnlyDictionary<(uint NameId, uint Instance, uint WorldId, uint TerritoryId, uint EntityId), OtherRankSighting> OtherRanks => _otherRanks;
 
     /// <summary>Raised the first time any mark is spotted, regardless of rank.</summary>
     public event Action<OtherRankSighting>? OtherRankDetected;
@@ -261,6 +263,9 @@ public sealed class MarkDetector
         var instance = GetCurrentInstance();
         var worldId = CurrentWorldId();
         var worldName = CurrentWorldName();
+        // The object table can populate before the local world during zoning.
+        // Do not announce or share observations with an incomplete identity.
+        if (worldId == 0 || string.IsNullOrWhiteSpace(worldName)) return;
         var now = DateTime.UtcNow;
 
         // Live sightings belong only to the current world, instance and scan.
@@ -393,7 +398,9 @@ public sealed class MarkDetector
             rank = other.Rank;
         }
 
-        var key = (mob.NameId, instance, worldId);
+        // SS minions can share a name; their network actor ID survives movement.
+        var entityId = Sync.SyncCoordinator.SsEventMobs.Contains(mob.NameId) ? mob.EntityId : 0u;
+        var key = (mob.NameId, instance, worldId, entityId == 0 ? 0u : territoryId, entityId);
 
         // A corpse is not a mark that is up. Drop it rather than leaving a dot
         // on the map over something already dead, and do not re-add it as the
@@ -406,7 +413,7 @@ public sealed class MarkDetector
             _otherRanks.Remove(key);
             _visibleCorpses[key] = new OtherRankSighting
             {
-                WorldId=worldId, WorldName=worldName, Name=mob.Name.TextValue, NameId=mob.NameId,
+                EntityId=entityId, WorldId=worldId, WorldName=worldName, Name=mob.Name.TextValue, NameId=mob.NameId,
                 Rank=rank, TerritoryId=territoryId, MapId=mapId, Instance=instance,
                 MapPosition=MapCoordinates.FromWorld(_dataManager,mapId,mob.Position.X,mob.Position.Z),
                 LastSeenUtc=now, HealthPercent=0, NearbyPlayers=CountPlayers(mob.Position), InCombat=false, ZoneName=GetZoneName(territoryId)
@@ -429,6 +436,7 @@ public sealed class MarkDetector
 
         var sighting = new OtherRankSighting
         {
+            EntityId = entityId,
             WorldId = worldId,
             WorldName = worldName,
             Name = mob.Name.TextValue,
@@ -492,8 +500,10 @@ public sealed class MarkDetector
     /// being ticked dead is not necessarily on this world — and defaulting to
     /// here quietly cleared the wrong world's dot.
     /// </summary>
-    public void RemoveSighting(uint nameId, uint instance, uint worldId) =>
-        _otherRanks.Remove((nameId, instance, worldId));
+    public void RemoveSighting(uint nameId, uint instance, uint worldId)
+    {
+        foreach (var key in _otherRanks.Where(p => p.Value.Key == (nameId, instance, worldId) && p.Value.EntityId == 0).Select(p => p.Key).ToList()) _otherRanks.Remove(key);
+    }
 
     /// <summary>Zone name straight from the game's own data, so it's always correct.</summary>
     public string GetZoneName(uint territoryId)
