@@ -5,6 +5,10 @@ namespace HuntHelperEvolved.Sync;
 
 public static class SpawnMapping
 {
+    public static bool ReliableCycle(SyncSpawnZone? zone, SyncSRankStatus? status) =>
+        zone?.SinceAt is not null && (zone.ResetBySnipe
+            || status?.KilledAt == zone.SinceAt && status?.Uncertain == false);
+
     // Spawn tables contain rounded positions and idle marks can patrol around their origin.
     // Reject distant or ambiguous matches rather than eliminating a neighbouring point.
     public static int? Match(SpawnPoint[] points, Vector2 position, SpawnRanks rank)

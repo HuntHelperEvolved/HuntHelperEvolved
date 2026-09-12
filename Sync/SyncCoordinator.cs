@@ -40,7 +40,7 @@ public sealed partial class SyncCoordinator : IDisposable
     /// spawn point, so they are relayed as "SS" and kept out of the S-rank
     /// logic on the server. Same pairs as SsEventWatcher's table.
     /// </summary>
-    private static readonly HashSet<uint> SsEventMobs = new() { 8915, 8916, 10615, 10616, 13406, 13407 };
+    internal static readonly HashSet<uint> SsEventMobs = new() { 8915, 8916, 10615, 10616, 13406, 13407 };
 
     private readonly IFramework _framework;
     private readonly IClientState _clientState;
@@ -55,20 +55,21 @@ public sealed partial class SyncCoordinator : IDisposable
     private readonly Dictionary<(uint NameId, uint Instance, uint WorldId), KnownMark> _known = new();
     private List<(uint NameId, uint Instance, uint WorldId)> _lastSentOrder = new();
 
-    private readonly Dictionary<(uint NameId, uint Instance, uint WorldId), OtherRankSighting> _remote = new();
+    private readonly Dictionary<(uint NameId, uint Instance, uint WorldId, uint TerritoryId, uint EntityId), OtherRankSighting> _remote = new();
     private readonly Dictionary<(uint NameId, uint Instance, uint WorldId), SyncSRankStatus> _sranks = new();
     private readonly Dictionary<(uint TerritoryId, uint WorldId, uint Instance), SyncSpawnZone> _zones = new();
-    private readonly Dictionary<(uint NameId, uint Instance, uint WorldId), VisibleMark> _visibleMarks = new();
+    private readonly Dictionary<(uint NameId, uint Instance, uint WorldId, uint TerritoryId, uint EntityId), VisibleMark> _visibleMarks = new();
     public IReadOnlyCollection<VisibleMark> VisibleMarks => _visibleMarks.Values;
     private readonly ActiveMarkGrace _activeMarkGrace = new();
     public IReadOnlyCollection<VisibleMark> ActiveMarkDisplay => _activeMarkGrace.Snapshot(DateTime.UtcNow);
     public string ClientId { get; private set; } = string.Empty;
     public bool SupportsVisibleMarks { get; private set; }
+    public bool SupportsScopedTrainWatches { get; private set; }
     public bool SupportsManualMapping { get; private set; }
     private List<SyncPresence> _clients = new();
     private SyncFaloopStatus _faloop = new();
 
-    private readonly Dictionary<(uint NameId, uint Instance, uint WorldId), (float Hp, Vector2 Pos, DateTime At, int? Point, bool? InCombat)> _sentSightings = new();
+    private readonly Dictionary<(uint NameId, uint Instance, uint WorldId, uint TerritoryId, uint EntityId), (float Hp, Vector2 Pos, DateTime At, int? Point, bool? InCombat)> _sentSightings = new();
     private readonly Dictionary<(uint NameId, uint Instance, uint WorldId), DateTime> _reportedKills = new();
 
     private List<SyncWorld>? _worlds;
@@ -103,10 +104,10 @@ public sealed partial class SyncCoordinator : IDisposable
         _config.SyncLocalWatchBackup.Clear(); _config.Save();
     }
     private List<SyncWatch> ReadLocalWatches() => _config.Flags.Select(f => new SyncWatch
-    { Label = f.Label, SpawnStatus = (int)f.SpawnStatus, TerritoryId = f.TerritoryId, HasLocation = f.HasLocation, X = f.X, Y = f.Y }).ToList();
+    { WorldId=f.WorldId, Instance=f.Instance, Automatic=f.Automatic, Label = f.Label, SpawnStatus = (int)f.SpawnStatus, TerritoryId = f.TerritoryId, HasLocation = f.HasLocation, X = f.X, Y = f.Y }).ToList();
     private void SetLocalWatches(List<SyncWatch> watches)
     {
-        _config.Flags = watches.Select(w => new FlagEntry { Label = w.Label, SpawnStatus = (SpawnStatus)w.SpawnStatus,
+        _config.Flags = watches.Select(w => new FlagEntry { WorldId=w.WorldId, Instance=w.Instance, Automatic=w.Automatic, Label = w.Label, SpawnStatus = (SpawnStatus)w.SpawnStatus,
             TerritoryId = w.TerritoryId, HasLocation = w.HasLocation, X = w.X, Y = w.Y }).ToList();
         _config.Save();
     }
@@ -149,7 +150,7 @@ public sealed partial class SyncCoordinator : IDisposable
     /// Marks other members can see, in the same shape as local sightings so
     /// the map can draw them the same way. Reporter says who.
     /// </summary>
-    public IReadOnlyDictionary<(uint NameId, uint Instance, uint WorldId), OtherRankSighting> RemoteSightings => _remote;
+    public IReadOnlyDictionary<(uint NameId, uint Instance, uint WorldId, uint TerritoryId, uint EntityId), OtherRankSighting> RemoteSightings => _remote;
 
     public IReadOnlyDictionary<(uint NameId, uint Instance, uint WorldId), SyncSRankStatus> SRankStatuses => _sranks;
     public IReadOnlyDictionary<(uint TerritoryId, uint WorldId, uint Instance), SyncSpawnZone> SpawnZones => _zones;
@@ -378,8 +379,8 @@ public sealed partial class SyncCoordinator : IDisposable
         {
             case "marks.visible":
                 var visible = SyncProtocol.Deserialize<VisibleMarksBroadcast>(payload)!;
-                foreach (var mark in visible.Marks) { _visibleMarks[mark.Mark.Key] = mark; _activeMarkGrace.Update(mark, DateTime.UtcNow); }
-                foreach (var key in visible.Removed) _visibleMarks.Remove(key.ToTuple());
+                foreach (var mark in visible.Marks) { _visibleMarks[mark.Mark.LiveKey] = mark; _activeMarkGrace.Update(mark, DateTime.UtcNow); }
+                foreach (var key in visible.Removed) _visibleMarks.Remove(key.ToLiveKey());
                 break;
             case "counter.state":
                 ApplyCounters(SyncProtocol.Deserialize<CounterBroadcast>(payload)!.Counters);
@@ -443,7 +444,7 @@ public sealed partial class SyncCoordinator : IDisposable
 
             case ServerMessageTypes.SightingsExpired:
                 foreach (var k in SyncProtocol.Deserialize<SightingsExpiredBroadcast>(payload)!.Keys)
-                    _remote.Remove(k.ToTuple());
+                    _remote.Remove(k.ToLiveKey());
                 Bump();
                 break;
 
@@ -490,8 +491,9 @@ public sealed partial class SyncCoordinator : IDisposable
         ClientId = welcome.ClientId;
         SupportsVisibleMarks = welcome.SupportsVisibleMarks;
         SupportsManualMapping = welcome.SupportsManualMapping;
+        SupportsScopedTrainWatches = welcome.SupportsScopedTrainWatches;
         _visibleMarks.Clear(); _activeMarkGrace.Clear();
-        foreach (var mark in welcome.VisibleMarks) { _visibleMarks[mark.Mark.Key] = mark; _activeMarkGrace.Update(mark, DateTime.UtcNow); }
+        foreach (var mark in welcome.VisibleMarks) { _visibleMarks[mark.Mark.LiveKey] = mark; _activeMarkGrace.Update(mark, DateTime.UtcNow); }
         WelcomeCounters(welcome);
         ApplyWatches(welcome.WatchState, joining: true);
         ServerVersion = welcome.ServerVersion;
@@ -707,18 +709,19 @@ public sealed partial class SyncCoordinator : IDisposable
     private void AddRemoteSighting(SyncSighting s)
     {
         if (s.NameId == 0) return;
-        if (s.HpPercent <= 0) { _remote.Remove(s.Key); return; }
+        if (s.HpPercent <= 0) { _remote.Remove(s.LiveKey); return; }
 
         // Our own reports come back to us too. They are already on the map
         // from the local scan, and once that expires the map should say the
         // mark is gone — not keep it lit on the strength of our own echo.
 
 
-        var key = s.Key;
+        var key = s.LiveKey;
         if (!_remote.TryGetValue(key, out var existing))
         {
             existing = new OtherRankSighting
             {
+                EntityId = s.EntityId,
                 Name = s.Name,
                 NameId = s.NameId,
                 Rank = s.Rank == "B" ? HuntRank.B : s.Rank == "A" ? HuntRank.A : HuntRank.S,
@@ -752,7 +755,7 @@ public sealed partial class SyncCoordinator : IDisposable
     private void ForgetRemoteState()
     {
         ResetCompletionConnection();
-        _visibleMarks.Clear(); _activeMarkGrace.Clear(); ClientId = string.Empty; SupportsVisibleMarks = false; SupportsManualMapping = false;
+        _visibleMarks.Clear(); _activeMarkGrace.Clear(); ClientId = string.Empty; SupportsVisibleMarks = false; SupportsManualMapping = false; SupportsScopedTrainWatches = false;
         _counterServerId = string.Empty; _counterReady = false; _sharedCounters.Clear();
         _known.Clear();
         _lastSentOrder = new();
@@ -851,21 +854,21 @@ public sealed partial class SyncCoordinator : IDisposable
             && s.WorldId == _detector.CurrentWorldId() && now - s.LastSeenUtc < TimeSpan.FromSeconds(1)).ToList()
             : new List<OtherRankSighting>();
         var changed = visible.Count != _sentSightings.Count || visible.Any(s =>
-            !_sentSightings.TryGetValue(s.Key, out var prev) || Math.Abs(prev.Hp - s.HealthPercent) >= 1f
+            !_sentSightings.TryGetValue(s.LiveKey, out var prev) || Math.Abs(prev.Hp - s.HealthPercent) >= 1f
             || Vector2.Distance(prev.Pos, s.MapPosition) >= 0.3f || prev.Point != s.SpawnPointIndex
             || prev.InCombat != s.InCombat || now - prev.At >= SightingHeartbeat);
         if (!changed) return;
         // Protocol 4: the complete visible set. Empty withdraws this player's observations only.
         var batch = visible.Select(s => new SyncSighting
         {
-            NameId = s.NameId, Instance = s.Instance, WorldId = s.WorldId, Name = s.Name,
+            EntityId = s.EntityId, NameId = s.NameId, Instance = s.Instance, WorldId = s.WorldId, Name = s.Name,
             Rank = SsEventMobs.Contains(s.NameId) ? "SS" : s.Rank.ToString(), TerritoryId = s.TerritoryId,
             MapId = s.MapId, X = s.MapPosition.X, Y = s.MapPosition.Y, HpPercent = s.HealthPercent, NearbyPlayers = s.NearbyPlayers, InCombat = s.InCombat,
             SeenAt = s.LastSeenUtc, SpawnPointIndex = s.SpawnPointIndex
         }).ToList();
         _client.Send(new SightingsMessage { Sightings = batch });
         _sentSightings.Clear();
-        foreach (var s in visible) _sentSightings[s.Key] = (s.HealthPercent, s.MapPosition, now, s.SpawnPointIndex, s.InCombat);
+        foreach (var s in visible) _sentSightings[s.LiveKey] = (s.HealthPercent, s.MapPosition, now, s.SpawnPointIndex, s.InCombat);
     }
 
     private void MaybeSendPresence()
@@ -886,13 +889,14 @@ public sealed partial class SyncCoordinator : IDisposable
     /// </summary>
     public void ReportMarkDeath(uint nameId, uint instance, uint territoryId, DateTime killedAtUtc, bool isSRank)
     {
+        if (SsEventMobs.Contains(nameId)) return; // Corpse snapshots identify the individual minion.
         if (!IsConnected || (!_config.SyncShareSightings && !_config.SyncReportSRankKills)) return;
 
         var world = _detector.CurrentWorldId();
         var key = (nameId, instance, world);
 
         _client.Send(new SightingsRemoveMessage { Keys = new() { SyncKey.From(key) } });
-        _sentSightings.Remove(key);
+        foreach (var live in _sentSightings.Keys.Where(k => (k.NameId,k.Instance,k.WorldId) == key).ToList()) _sentSightings.Remove(live);
 
         if (!isSRank || !_config.SyncReportSRankKills || !SRankTimerData.IsTimerSRank(nameId)) return;
         if (_reportedKills.TryGetValue(key, out var last) && killedAtUtc - last < KillDedupe) return;
@@ -900,7 +904,8 @@ public sealed partial class SyncCoordinator : IDisposable
 
         float? x = null, y = null;
         int? point = null;
-        if (_detector.OtherRanks.TryGetValue(key, out var seen) || _remote.TryGetValue(key, out seen))
+        var seen = _detector.OtherRanks.Values.Concat(_remote.Values).FirstOrDefault(s => s.Key == key);
+        if (seen is not null)
         {
             x = seen.MapPosition.X;
             y = seen.MapPosition.Y;
@@ -971,13 +976,13 @@ public sealed partial class SyncCoordinator : IDisposable
         var key = (nameId, instance, worldId);
         var now = DateTime.UtcNow;
         var killed = StatusFor(nameId, worldId, instance)?.KilledAt;
-        if (_detector.OtherRanks.TryGetValue(key, out var local) && ActiveSRankFilter.LivingObservation(
+        if (_detector.OtherRanks.TryGetValue((key.Item1,key.Item2,key.Item3,0,0), out var local) && ActiveSRankFilter.LivingObservation(
             local.HealthPercent, local.LastSeenUtc, local.LastSeenUtc + RemoteSightingTtl, killed, now)) return true;
         if (!IsConnected) return false;
         // Match Active Marks. Legacy sightings can outlive the newer observer removal
         // stream; a previous-cycle sighting must not override the new kill clock.
         if (SupportsVisibleMarks) return _activeMarkGrace.IsAlive(key, killed, now);
-        return _remote.TryGetValue(key, out var remote) && ActiveSRankFilter.LivingObservation(
+        return _remote.TryGetValue((key.Item1,key.Item2,key.Item3,0,0), out var remote) && ActiveSRankFilter.LivingObservation(
             remote.HealthPercent, remote.LastSeenUtc, remote.LastSeenUtc + RemoteSightingTtl, killed, now);
     }
 

@@ -16,11 +16,6 @@ public sealed partial class Plugin
 
     private void DrawCountersContents()
     {
-        if (ImGui.Button("Open Counter Popout"))
-        {
-            _counterPopoutVisible = true;
-        }
-        ImGui.SameLine();
         if (ImGui.Button("Reset All Local Counts"))
         {
             _counter.Reset();

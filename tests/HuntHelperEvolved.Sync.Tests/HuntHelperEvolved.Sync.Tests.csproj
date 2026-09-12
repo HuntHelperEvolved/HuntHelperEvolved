@@ -27,6 +27,7 @@
     <Compile Include="../../Sync/ActiveMarkGrace.cs" Link="ActiveMarkGrace.cs" />
     <Compile Include="../../Sync/VisibleMarkFilter.cs" Link="VisibleMarkFilter.cs" />
     <Compile Include="../../Sync/ActiveSRankFilter.cs" Link="ActiveSRankFilter.cs" />
+    <Compile Include="../../Sync/InstanceTravelHandoff.cs" Link="InstanceTravelHandoff.cs" />
     <Compile Include="../../Sync/TravelHandoff.cs" Link="TravelHandoff.cs" />
     <Compile Include="../../Sync/SpawnAlertFilter.cs" Link="SpawnAlertFilter.cs" />
     <Compile Include="../../Sync/SyncProtocol.cs" Link="SyncProtocol.cs" />
@@ -41,6 +42,7 @@
     <Compile Include="../../Reports/TrainReportHistory.cs" Link="TrainReportHistory.cs" />
     <Compile Include="../../Train/TrackedMark.cs" Link="TrackedMark.cs" />
     <Compile Include="../../Reports/TrainReport.cs" Link="TrainReport.cs" />
+    <Compile Include="../../Train/TrainWatchPlanner.cs" Link="TrainWatchPlanner.cs" />
     <Compile Include="../../Train/FlagEntry.cs" Link="FlagEntry.cs" />
     <Compile Include="../../GameData/SRankData.cs" Link="SRankData.cs" />
     <Compile Include="../../GameData/ExpansionData.cs" Link="ExpansionData.cs" />

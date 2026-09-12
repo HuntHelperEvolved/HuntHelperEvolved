@@ -37,6 +37,10 @@ public sealed class SyncKey
     public uint Instance { get; set; }
     public uint WorldId { get; set; }
 
+    public uint EntityId { get; set; }
+    public uint TerritoryId { get; set; }
+    public (uint NameId, uint Instance, uint WorldId, uint TerritoryId, uint EntityId) ToLiveKey() => (NameId, Instance, WorldId, EntityId == 0 ? 0 : TerritoryId, EntityId);
+
     public (uint NameId, uint Instance, uint WorldId) ToTuple() => (NameId, Instance, WorldId);
 
     public static SyncKey From((uint NameId, uint Instance, uint WorldId) key) =>
@@ -73,6 +77,16 @@ public sealed class SyncMark
 
 public sealed class SyncSighting
 {
+    public SyncSighting WithNearbyPlayers(int? count)
+    {
+        if (NearbyPlayers == count) return this;
+        var copy = (SyncSighting)MemberwiseClone();
+        copy.NearbyPlayers = count;
+        return copy;
+    }
+    public uint EntityId { get; set; }
+    [JsonIgnore]
+    public (uint NameId, uint Instance, uint WorldId, uint TerritoryId, uint EntityId) LiveKey => (NameId, Instance, WorldId, EntityId == 0 ? 0 : TerritoryId, EntityId);
     public uint NameId { get; set; }
     public uint Instance { get; set; }
     public uint WorldId { get; set; }
@@ -158,6 +172,7 @@ public sealed class SyncSpawnZone
     public uint WorldId { get; set; }
     public uint Instance { get; set; }
     public DateTime? SinceAt { get; set; }
+    public bool ResetBySnipe { get; set; }
     public int? LastSDeathIndex { get; set; }
     public int? SCurrentIndex { get; set; }
     public List<SyncEliminatedPoint> Eliminated { get; set; } = new();
@@ -302,6 +317,7 @@ public sealed class WelcomeMessage
     public bool SupportsScoutRemoval { get; set; }
     public List<ScoutCreditDto> ScoutCredits { get; set; } = new();
     public List<ARankKill> ARankKills { get; set; } = new();
+    public bool SupportsScopedTrainWatches { get; set; }
     public bool SupportsManualMapping { get; set; }
     public bool SupportsVisibleMarks { get; set; }
     public List<VisibleMark> VisibleMarks { get; set; } = new();
@@ -370,6 +386,10 @@ public sealed class SRankSpawnBroadcast
 
 public sealed class SyncWatch
 {
+    public uint WorldId { get; set; }
+    public uint Instance { get; set; }
+    public bool Automatic { get; set; }
+
     public string Label { get; set; } = "";
     public int SpawnStatus { get; set; }
     public uint TerritoryId { get; set; }

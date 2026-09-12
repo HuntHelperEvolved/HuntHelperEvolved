@@ -25,12 +25,12 @@ public sealed class ActiveMarksWindow(Configuration config, SyncCoordinator sync
             ImGui.InputTextWithHint("##activeSearch","Search marks…",ref _search,100);
             ImGui.SameLine();
             if (ImGui.SmallButton("Filters")) openSettings();
+            if (!string.IsNullOrEmpty(travel.Status)) ImGui.TextWrapped(travel.Status);
+            if (travel.Busy && ImGui.SmallButton("Cancel travel")) travel.Cancel();
             if (!config.SyncEnabled || !sync.IsConnected) ImGui.TextWrapped("Reports unavailable. " + sync.Status);
             else
             {
                 if (!sync.SupportsVisibleMarks) ImGui.TextWrapped("Update the server to 0.3.11 for live A/B/S observations, health and combat state.");
-                if (!string.IsNullOrEmpty(travel.Status)) ImGui.TextWrapped(travel.Status);
-                if (travel.Busy && ImGui.SmallButton("Cancel travel")) travel.Cancel();
                 if (ImGui.BeginTabBar("activeMarkRanks"))
                 {
                     foreach(var tab in new[] {"All","S","A","B"})
@@ -47,15 +47,15 @@ public sealed class ActiveMarksWindow(Configuration config, SyncCoordinator sync
         var now=DateTime.UtcNow;
         var scope=(detector.CurrentTerritoryId,detector.CurrentWorldId(),MarkDetector.GetCurrentInstance());
         if (scope != _localScope) { _localGrace.Clear(); _localScope=scope; }
-        var visible=sync.ActiveMarkDisplay.ToDictionary(v=>v.Mark.Key);
+        var visible=sync.ActiveMarkDisplay.ToDictionary(v=>v.Mark.LiveKey);
         if(config.VisibleMarkFilters.IncludeOwn)
             foreach(var local in detector.VisibleMarks.Where(v=>now-v.LastSeenUtc<TimeSpan.FromSeconds(1)))
             {
-                var previous=visible.GetValueOrDefault(local.Key);
+                var previous=visible.GetValueOrDefault(local.LiveKey);
                 _localGrace.Update(new VisibleMark
                 {
-                    Mark=new SyncSighting { NameId=local.NameId,WorldId=local.WorldId,Instance=local.Instance,
-                        TerritoryId=local.TerritoryId,MapId=local.MapId,Name=local.Name,Rank=previous?.Mark.Rank??local.Rank.ToString(),
+                    Mark=new SyncSighting { EntityId=local.EntityId,NameId=local.NameId,WorldId=local.WorldId,Instance=local.Instance,
+                        TerritoryId=local.TerritoryId,MapId=local.MapId,Name=local.Name,Rank=SyncCoordinator.SsEventMobs.Contains(local.NameId) ? "SS" : previous?.Mark.Rank??local.Rank.ToString(),
                         X=local.MapPosition.X,Y=local.MapPosition.Y,HpPercent=local.HealthPercent,NearbyPlayers=local.NearbyPlayers,InCombat=local.InCombat,SeenAt=local.LastSeenUtc },
                     ObserverIds=new() { sync.ClientId },
                     Observers=new() { sync.DisplayName() }
@@ -65,13 +65,13 @@ public sealed class ActiveMarksWindow(Configuration config, SyncCoordinator sync
         {
             foreach (var local in _localGrace.Snapshot(now))
             {
-                if (visible.TryGetValue(local.Mark.Key, out var remote))
-                    visible[local.Mark.Key]=new VisibleMark {
-                        Mark=local.Mark.SeenAt>=remote.Mark.SeenAt ? local.Mark : remote.Mark,
+                if (visible.TryGetValue(local.Mark.LiveKey, out var remote))
+                    visible[local.Mark.LiveKey]=new VisibleMark {
+                        Mark=ActiveMarkRows.MergeObservation(local.Mark,remote.Mark),
                         DisplayUntil=local.Mark.SeenAt>=remote.Mark.SeenAt ? local.DisplayUntil : remote.DisplayUntil,
                         ObserverIds=local.ObserverIds.Concat(remote.ObserverIds).Distinct().ToList(),
                         Observers=local.Observers.Concat(remote.Observers).Distinct(StringComparer.OrdinalIgnoreCase).ToList() };
-                else visible[local.Mark.Key]=local;
+                else visible[local.Mark.LiveKey]=local;
             }
         }
         else _localGrace.Clear();
@@ -100,8 +100,9 @@ public sealed class ActiveMarksWindow(Configuration config, SyncCoordinator sync
                 var nearby=row.HealthKnown && m.NearbyPlayers is { } count ? $"[{count}]" : "[?]";
                 var faloopAge=row.Status?.FaloopActiveAt is { } released && row.Status.FaloopActiveUntil > now
                     ? $" · Faloop {Elapsed(now-released)}" : string.Empty;
-                var label=$"{(tab=="All" ? m.Rank+": " : string.Empty)}{m.Name} - {hp} [{r.World}{instance}] · {r.Zone} · {nearby}{faloopAge}";
-                ImGui.PushID($"{m.WorldId}:{m.Instance}:{m.NameId}");
+                var dcLabel=config.VisibleMarkFilters.ShowDataCenter && !string.IsNullOrEmpty(r.Dc.Name) ? $" · {r.Dc.Name}" : string.Empty;
+                var label=$"{(tab=="All" ? m.Rank+": " : string.Empty)}{m.Name} - {hp} [{r.World}{dcLabel}{instance}] · {r.Zone} · {nearby}{faloopAge}";
+                ImGui.PushID($"{m.WorldId}:{m.Instance}:{m.NameId}:{m.TerritoryId}:{m.EntityId}");
                 ImGui.PushStyleColor(ImGuiCol.Text,colour);
                 var clicked=ImGui.Selectable(label+"###mark",false,ImGuiSelectableFlags.None,
                     new Vector2(Math.Max(ImGui.GetContentRegionAvail().X,ImGui.CalcTextSize(label).X),0));
@@ -110,7 +111,7 @@ public sealed class ActiveMarksWindow(Configuration config, SyncCoordinator sync
                 var canTravel=travel.Available && !travel.Busy && !dead && row.HasPosition;
                 if(clicked)
                 {
-                    if(ImGui.GetIO().KeyCtrl) { if(canTravel) travel.Start(m.WorldId,m.TerritoryId,new(m.X,m.Y)); }
+                    if(ImGui.GetIO().KeyCtrl) { if(canTravel) travel.Start(m.WorldId,m.TerritoryId,new(m.X,m.Y),m.Instance); }
                     else if(row.HasPosition) Flag(m);
                 }
                 if(ImGui.BeginPopupContextItem("markActions"))
@@ -122,7 +123,7 @@ public sealed class ActiveMarksWindow(Configuration config, SyncCoordinator sync
                     if(travel.Available)
                     {
                         ImGui.BeginDisabled(!canTravel);
-                        if(ImGui.MenuItem("Teleport to mark")) travel.Start(m.WorldId,m.TerritoryId,new(m.X,m.Y));
+                        if(ImGui.MenuItem("Teleport to mark")) travel.Start(m.WorldId,m.TerritoryId,new(m.X,m.Y),m.Instance);
                         ImGui.EndDisabled();
                     }
                     if(ImGui.MenuItem("Filters / settings")) openSettings();
@@ -166,13 +167,13 @@ public sealed class ActiveMarksWindow(Configuration config, SyncCoordinator sync
     {
         if (!ImGui.CollapsingHeader("Active Marks window filters",ImGuiTreeNodeFlags.DefaultOpen)) return;
         ImGui.PushID("visibleSettings");
-        if (ImGui.Button("Open Active Marks (/hhsa or /hhv)")) Toggle();
         ImGui.TextColored(new Vector4(0.35f,0.95f,0.4f,1),"Green: alive, not pulled");
         ImGui.SameLine(); ImGui.TextColored(new Vector4(1,0.65f,0.15f,1),"Orange: pulled");
         ImGui.SameLine(); ImGui.TextColored(new Vector4(1,0.3f,0.3f,1),"Red: dead");
         ImGui.TextColored(new Vector4(0.35f,0.7f,1f,1),"Blue: Faloop report, no live feedback");
         ImGui.TextDisabled("Grey: live report with unknown combat state. ?%: health unknown. Hover for details; click for map; Ctrl-click or right-click for travel.");
         var o=config.VisibleMarkFilters;
+        Option("Show data centre beside world",o.ShowDataCenter,v=>o.ShowDataCenter=v);
         Option("Include community S-rank reports",o.IncludeCommunity,v=>o.IncludeCommunity=v);
         Option("Include marks seen only by me",o.IncludeOwn,v=>o.IncludeOwn=v);
         foreach (var rank in new[] {"B","A","S","SS"}) { Select(rank+" ranks",rank,o.Ranks); ImGui.SameLine(); }

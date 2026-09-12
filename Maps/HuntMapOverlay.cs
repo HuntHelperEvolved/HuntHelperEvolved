@@ -69,7 +69,7 @@ public sealed unsafe class HuntMapOverlay : IDisposable
     private MapOverlayController? _overlay;
     private bool _enabled;
     private bool _needsRefresh = true;
-    private readonly Dictionary<(uint, uint, uint), (MapMarkerNode Dot, MarkLabelMarker? Label)> _liveNodes = new();
+    private readonly Dictionary<(uint, uint, uint, uint, uint), (MapMarkerNode Dot, MarkLabelMarker? Label)> _liveNodes = new();
     private uint _lastTerritory;
 
     // Instance and world are part of "which map am I looking at" just as much
@@ -275,7 +275,7 @@ public sealed unsafe class HuntMapOverlay : IDisposable
         if (_overlay == null) return 0;
 
         var placed = 0;
-        var retained = new HashSet<(uint, uint, uint)>();
+        var retained = new HashSet<(uint, uint, uint, uint, uint)>();
 
         foreach (var sighting in live)
         {
@@ -310,8 +310,8 @@ public sealed unsafe class HuntMapOverlay : IDisposable
             var world = MapCoordinates.ToWorld(
                 _dataManager, mapId, sighting.MapPosition.X, sighting.MapPosition.Y);
 
-            retained.Add(sighting.Key);
-            if (!_liveNodes.TryGetValue(sighting.Key, out var nodes))
+            retained.Add(sighting.LiveKey);
+            if (!_liveNodes.TryGetValue(sighting.LiveKey, out var nodes))
             {
                 var node = new MapMarkerNode
                 {
@@ -320,7 +320,7 @@ public sealed unsafe class HuntMapOverlay : IDisposable
                 };
                 _overlay.AddMarker(node);
                 nodes = (node, AddMarkLabel(mapId, sighting.MapPosition, sighting, _config.SpawnDotSize * LiveMarkScale));
-                _liveNodes[sighting.Key] = nodes;
+                _liveNodes[sighting.LiveKey] = nodes;
             }
             nodes.Dot.Position = world;
             nodes.Dot.TextTooltip = $"{sighting.Name}  ({sighting.Rank} rank) — UP{SeenBy(sighting)}\n{sighting.MapPosition.X:F1}, {sighting.MapPosition.Y:F1}";
@@ -424,6 +424,7 @@ public sealed unsafe class HuntMapOverlay : IDisposable
         if (!point.Ranks.HasFlag(SpawnRanks.S) || _sync?.SupportsManualMapping != true) return flag;
         return () =>
         {
+            if (!IsLeftMapClick()) return;
             if (Dalamud.Bindings.ImGui.ImGui.GetIO().KeyShift)
             {
                 var excluded = _sync.ZoneFor(territory,world,instance)?.Eliminated.Any(e=>e.Index==index && e.Rank=="Manual")==true;
@@ -433,12 +434,24 @@ public sealed unsafe class HuntMapOverlay : IDisposable
         };
     }
 
+    private static bool IsLeftMapClick()
+    {
+        // KamiToolKit invokes OnClick for every native MouseDown, including right-click.
+        // Use the native pressed button rather than ImGui's previous-frame state.
+        var module = FFXIVClientStructs.FFXIV.Client.UI.UIModule.Instance();
+        if (module == null) return false;
+        var input = module->GetUIInputData();
+        return input != null && input->CursorInputs.MouseButtonPressedFlags
+            == FFXIVClientStructs.FFXIV.Client.System.Input.MouseButtonFlags.LBUTTON;
+    }
+
     private Action? FlagPlaceOnClick(uint territory, uint mapId, float mapX, float mapY)
     {
         if (!_config.ClickSpawnPointToFlag) return null;
 
         return () =>
         {
+            if (!IsLeftMapClick()) return;
             try
             {
                 // Instance 0: a place is not a sighting, so it carries no
@@ -455,7 +468,7 @@ public sealed unsafe class HuntMapOverlay : IDisposable
     }
 
     /// <summary>The "click to flag it" line, when clicking would in fact do that.</summary>
-    private string ClickHint => _config.ClickSpawnPointToFlag ? "\nClick to flag it." : string.Empty;
+    private string ClickHint => _config.ClickSpawnPointToFlag ? "\nLeft-click to flag it." : string.Empty;
 
     /// <summary>
     /// The player's position on the map, or the last one known when they are
@@ -986,12 +999,12 @@ public sealed unsafe class HuntMapOverlay : IDisposable
             // not resurrected by a delayed report.
             if (_sync is not null && _sync.IsConnected && _config.SyncShowRemoteMarksOnMap)
             {
-                var localKeys = here.Select(o => o.Key).ToHashSet();
+                var localKeys = here.Select(o => o.LiveKey).ToHashSet();
                 foreach (var remote in _sync.RemoteSightings.Values)
                 {
                     if (remote.TerritoryId != territory || remote.Instance != instance
                         || remote.WorldId != worldId || DateTime.UtcNow - remote.LastSeenUtc > SyncCoordinator.RemoteSightingTtl) continue;
-                    if (localKeys.Contains(remote.Key) || deadKeys.Contains(remote.Key)) continue;
+                    if (localKeys.Contains(remote.LiveKey) || deadKeys.Contains(remote.Key)) continue;
                     here.Add(remote);
                 }
             }
@@ -1022,7 +1035,7 @@ public sealed unsafe class HuntMapOverlay : IDisposable
             var mapping = _sync?.ZoneFor(territory, worldId, instance);
             if (mapping is not null)
             {
-                markSignature = HashCode.Combine(markSignature, mapping.SCurrentIndex, mapping.LastSDeathIndex, mapping.SinceAt);
+                markSignature = HashCode.Combine(markSignature, mapping.SCurrentIndex, mapping.LastSDeathIndex, mapping.SinceAt, mapping.ResetBySnipe);
                 foreach (var excluded in mapping.Eliminated) markSignature += HashCode.Combine(excluded.Index);
             }
             if (SRankTimerData.ForTerritory(territory) is { } timer)
@@ -1117,7 +1130,7 @@ public sealed unsafe class HuntMapOverlay : IDisposable
                 {
                     var zone = _sync?.ZoneFor(territory, worldId, instance) ?? new SyncSpawnZone();
                     var status = _sync?.StatusFor(sTimer.NameId, worldId, instance);
-                    var reliableCycle = status?.KilledAt is not null && !status.Uncertain && status.KilledAt == zone.SinceAt;
+                    var reliableCycle = SpawnMapping.ReliableCycle(zone, status);
                     var confirmed = SpawnMapping.ConfirmedPoint(points, zone, reliableCycle);
                     if (confirmed == pointIndex)
                     {

@@ -69,25 +69,24 @@ public sealed class SRankWindow
         ImGui.SetNextWindowSizeConstraints(new Vector2(520, 240), new Vector2(float.MaxValue, float.MaxValue));
         if (ImGui.Begin("S Ranks", ref open))
         {
-            try
-            {
-                DrawContents();
-            }
-            catch (Exception ex)
-            {
-                ImGui.TextColored(ForcedColour, $"The S-rank board hit an error: {ex.Message}");
-            }
+            DrawContents();
         }
         ImGui.End();
 
         if (!open) Visible = false;
     }
 
-    private void DrawContents()
+    public void DrawContents()
+    {
+        try { DrawBoard(); }
+        catch (Exception ex) { ImGui.TextColored(ForcedColour, $"The S-rank board hit an error: {ex.Message}"); }
+    }
+
+    private void DrawBoard()
     {
         if (!_config.SyncEnabled)
         {
-            ImGui.TextWrapped("Kill times live on your group's sync server. Turn sync on in the Sync tab and this board fills in as the group reports kills.");
+            ImGui.TextWrapped("Kill times live on your group's sync server. Turn sync on in Settings > Sharing and this board fills in as the group reports kills.");
             return;
         }
 
@@ -294,8 +293,8 @@ public sealed class SRankWindow
     private Vector2? TravelPosition(Row row, uint world)
     {
         var key=(row.Timer.NameId,row.Instance,world);
-        if (_detector.OtherRanks.TryGetValue(key,out var local) && DateTime.UtcNow-local.LastSeenUtc < TimeSpan.FromSeconds(2)) return local.MapPosition;
-        if (_sync.IsSeenUp(row.Timer.NameId,world,row.Instance) && _sync.RemoteSightings.TryGetValue(key,out var remote)) return remote.MapPosition;
+        if (_detector.OtherRanks.TryGetValue((key.Item1,key.Item2,key.Item3,0,0),out var local) && DateTime.UtcNow-local.LastSeenUtc < TimeSpan.FromSeconds(2)) return local.MapPosition;
+        if (_sync.IsSeenUp(row.Timer.NameId,world,row.Instance) && _sync.RemoteSightings.TryGetValue((key.Item1,key.Item2,key.Item3,0,0),out var remote)) return remote.MapPosition;
         if (row.SeenUp && row.Status?.SpawnX is { } x && row.Status.SpawnY is { } y
             && float.IsFinite(x) && float.IsFinite(y) && x >= 1 && x <= 100 && y >= 1 && y <= 100) return new(x,y);
         return null;
@@ -350,12 +349,12 @@ public sealed class SRankWindow
             var position = exact ?? SpawnMapping.TravelEstimate(
                 SpawnPointData.For(timer.TerritoryId),
                 _sync.ZoneFor(timer.TerritoryId, worldId, row.Instance),
-                row.Status?.KilledAt is not null && !row.Status.Uncertain);
+                SpawnMapping.ReliableCycle(_sync.ZoneFor(timer.TerritoryId, worldId, row.Instance), row.Status));
             var destination = TeleportHelper.NearestTo(timer.TerritoryId, position);
             ImGui.SetTooltip(SpawnConditionData.Description(timer.Name));
             if (ImGui.GetIO().KeyCtrl && ImGui.IsMouseClicked(ImGuiMouseButton.Left)
                 && destination is not null && _travel.Available && !offline)
-                _travel.Start(worldId, timer.TerritoryId, position);
+                _travel.Start(worldId, timer.TerritoryId, position, row.Instance);
         }
 
         ImGui.TableNextColumn();
@@ -477,8 +476,8 @@ public sealed class SRankWindow
     private float? LiveHp(Row row, uint worldId)
     {
         var key = (row.Timer.NameId, row.Instance, worldId);
-        if (_detector.OtherRanks.TryGetValue(key, out var local)) return local.HealthPercent;
-        if (_sync.RemoteSightings.TryGetValue(key, out var remote)) return remote.HealthPercent;
+        if (_detector.OtherRanks.TryGetValue((key.Item1,key.Item2,key.Item3,0,0), out var local)) return local.HealthPercent;
+        if (_sync.RemoteSightings.TryGetValue((key.Item1,key.Item2,key.Item3,0,0), out var remote)) return remote.HealthPercent;
         return null;
     }
 
@@ -507,7 +506,9 @@ public sealed class SRankWindow
         {
             var who = string.IsNullOrEmpty(status.KillReporter) ? string.Empty : $" by {status.KillReporter}";
             var tip = $"{Local(killed)} — {what}{who}";
-            if (status.Uncertain) tip += "\nEarliest possible; it died unreported some time after this.";
+            if (status.Uncertain) tip += status.KilledAtLatest is { } latest
+                ? $"\nSniped: estimated kill range ends {latest.ToLocalTime():g}."
+                : "\nEarliest possible; it died unreported some time after this.";
             if (disagreement && status.FaloopKilledAt is { } f)
                 tip += $"\nFaloop has {Local(f)} instead. The member's report is being used.";
             ImGui.SetTooltip(tip);

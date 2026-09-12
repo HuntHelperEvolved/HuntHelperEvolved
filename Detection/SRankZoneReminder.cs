@@ -37,9 +37,14 @@ public sealed class SRankZoneReminder : IDisposable
     private readonly Configuration _config;
     private readonly MarkDetector _detector;
 
-    private readonly Dictionary<uint, DateTime> _lastFiredUtc = new();
+    private readonly Dictionary<(uint Zone, uint World, uint Instance), DateTime> _lastFiredUtc = new();
+    private readonly IFramework _framework;
+    private readonly Func<FlagEntry, bool> _automaticAvailable;
+    private (uint Zone, uint World, uint Instance) _scope;
+    private DateTime _scopeSince;
+    private bool _checked;
 
-    public SRankZoneReminder(IClientState clientState, IChatGui chatGui, IPluginLog log, Configuration config, MarkDetector detector)
+    public SRankZoneReminder(IClientState clientState, IChatGui chatGui, IPluginLog log, Configuration config, MarkDetector detector, IFramework framework, Func<FlagEntry, bool> automaticAvailable)
     {
         _clientState = clientState;
         _chatGui = chatGui;
@@ -47,12 +52,26 @@ public sealed class SRankZoneReminder : IDisposable
         _config = config;
         _detector = detector;
 
-        _clientState.TerritoryChanged += OnTerritoryChanged;
+        _framework = framework;
+        _automaticAvailable = automaticAvailable;
+        _framework.Update += OnUpdate;
     }
 
     public void Dispose()
     {
-        _clientState.TerritoryChanged -= OnTerritoryChanged;
+        _framework.Update -= OnUpdate;
+    }
+
+    private void OnUpdate(IFramework _)
+    {
+        var scope = (_clientState.TerritoryType, _detector.CurrentWorldId(), MarkDetector.GetCurrentInstance());
+        if (!_clientState.IsLoggedIn || scope.Item1 == 0 || scope.Item2 == 0)
+        { _scope = default; _checked = false; return; }
+        if (scope != _scope)
+        { _scope = scope; _scopeSince = DateTime.UtcNow; _checked = false; return; }
+        if (_checked || DateTime.UtcNow - _scopeSince < TimeSpan.FromSeconds(2)) return;
+        _checked = true;
+        OnTerritoryChanged(scope.Item1);
     }
 
     private void OnTerritoryChanged(uint territoryId)
@@ -60,15 +79,19 @@ public sealed class SRankZoneReminder : IDisposable
         if (!_config.SRankZoneReminderEnabled) return;
         if (!ZoneToSRank.TryGetValue(territoryId, out var markName)) return;
 
+        // A watch belongs to the route, not to whichever world the player visits.
+        if (!TrainWatchPlanner.BelongsToTrain(_detector.Marks.Values, _scope.World, territoryId, _scope.Instance)) return;
+
         // Only remind about marks the conductor has actually added to the watch
         // list — otherwise this fires every time anyone passes through Elpis,
         // Lakeland or Ultima Thule for any reason at all.
-        var watch = _config.Flags.FirstOrDefault(f => f.TerritoryId == territoryId);
-        if (watch == null) return;
+        var watch = _config.Flags.FirstOrDefault(f => f.TerritoryId == territoryId && f.SpawnStatus == SpawnStatus.Unknown
+            && (f.WorldId == 0 || f.WorldId == _scope.World && f.Instance == _scope.Instance));
+        if (watch == null || watch.Automatic && !_automaticAvailable(watch)) return;
 
         var now = DateTime.UtcNow;
-        if (_lastFiredUtc.TryGetValue(territoryId, out var last) && now - last < Cooldown) return;
-        _lastFiredUtc[territoryId] = now;
+        if (_lastFiredUtc.TryGetValue(_scope, out var last) && now - last < Cooldown) return;
+        _lastFiredUtc[_scope] = now;
 
         // If the conductor added a watch for this mark with a specific spawn
         // spot chosen, include it — and make it a clickable flag so they can

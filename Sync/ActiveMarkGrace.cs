@@ -13,11 +13,11 @@ public sealed class ActiveMarkGrace
         public readonly Dictionary<string, DateTime> Ids = new();
         public readonly Dictionary<string, DateTime> Names = new(StringComparer.OrdinalIgnoreCase);
     }
-    private readonly Dictionary<(uint NameId, uint Instance, uint WorldId), Entry> _rows = new();
+    private readonly Dictionary<(uint NameId, uint Instance, uint WorldId, uint TerritoryId, uint EntityId), Entry> _rows = new();
     public void Clear() => _rows.Clear();
     public void Update(VisibleMark row, DateTime receivedAt)
     {
-        if (!_rows.TryGetValue(row.Mark.Key, out var entry)) _rows[row.Mark.Key] = entry = new();
+        if (!_rows.TryGetValue(row.Mark.LiveKey, out var entry)) _rows[row.Mark.LiveKey] = entry = new();
         if (entry.Row.Mark.SeenAt > row.Mark.SeenAt) return;
         var until = receivedAt + Grace;
         foreach (var id in row.ObserverIds) entry.Ids[id] = until;
@@ -25,8 +25,8 @@ public sealed class ActiveMarkGrace
         entry.Row = new VisibleMark { Mark=row.Mark, DisplayUntil=until };
     }
     public bool IsAlive((uint NameId, uint Instance, uint WorldId) key, DateTime? killedAt, DateTime now) =>
-        _rows.TryGetValue(key, out var entry) && ActiveSRankFilter.LivingObservation(
-            entry.Row.Mark.HpPercent, entry.Row.Mark.SeenAt, entry.Row.DisplayUntil ?? DateTime.MinValue, killedAt, now);
+        _rows.Values.Any(entry => entry.Row.Mark.Key == key && ActiveSRankFilter.LivingObservation(
+            entry.Row.Mark.HpPercent, entry.Row.Mark.SeenAt, entry.Row.DisplayUntil ?? DateTime.MinValue, killedAt, now));
 
     public List<VisibleMark> Snapshot(DateTime now)
     {

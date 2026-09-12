@@ -67,7 +67,7 @@ public sealed partial class SyncCoordinator
                 : null,
             RemainingWatches = partial
                 ? (keptWatches ?? Enumerable.Empty<FlagEntry>()).Select(w => new SyncWatch { Label=w.Label,
-                    SpawnStatus=(int)w.SpawnStatus, TerritoryId=w.TerritoryId, HasLocation=w.HasLocation, X=w.X, Y=w.Y }).ToList()
+                    WorldId=w.WorldId, Instance=w.Instance, Automatic=w.Automatic, SpawnStatus=(int)w.SpawnStatus, TerritoryId=w.TerritoryId, HasLocation=w.HasLocation, X=w.X, Y=w.Y }).ToList()
                 : null,
         };
     }

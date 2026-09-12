@@ -23,8 +23,14 @@ namespace HuntHelperEvolved;
 
 public sealed partial class Plugin
 {
-    private enum SettingsPage { Train, Counters, Map, Notifications, Travel, Sharing, Discord, Tally, About }
+    private enum SettingsPage { Train, Counters, Map, Notifications, Travel, Sharing, ActiveMarks, Discord, Tally }
     private SettingsPage _settingsPage;
+    private static string SettingsPageLabel(SettingsPage page) => page switch
+    {
+        SettingsPage.Counters => "S Ranks",
+        SettingsPage.ActiveMarks => "Active Marks",
+        _ => page.ToString()
+    };
 
     private static void DrawSettingsHeading(string title)
     {
@@ -43,24 +49,24 @@ public sealed partial class Plugin
         {
             if (ImGui.BeginChild("Settings navigation", new Vector2(130 * scale, 0), true))
                 foreach (var page in Enum.GetValues<SettingsPage>())
-                    if (ImGui.Selectable(page.ToString(), _settingsPage == page)) _settingsPage = page;
+                    if (ImGui.Selectable(SettingsPageLabel(page), _settingsPage == page)) _settingsPage = page;
             ImGui.EndChild();
             ImGui.SameLine();
         }
         else
         {
             ImGui.SetNextItemWidth(-1);
-            if (ImGui.BeginCombo("##Settings category", _settingsPage.ToString()))
+            if (ImGui.BeginCombo("##Settings category", SettingsPageLabel(_settingsPage)))
             {
                 foreach (var page in Enum.GetValues<SettingsPage>())
-                    if (ImGui.Selectable(page.ToString(), _settingsPage == page)) _settingsPage = page;
+                    if (ImGui.Selectable(SettingsPageLabel(page), _settingsPage == page)) _settingsPage = page;
                 ImGui.EndCombo();
             }
         }
         if (ImGui.BeginChild("Settings content##" + _settingsPage, new Vector2(0, 0), false))
         {
             ImGui.PushID(_settingsPage.ToString());
-            ImGui.TextUnformatted(_settingsPage.ToString());
+            ImGui.TextUnformatted(SettingsPageLabel(_settingsPage));
             ImGui.Separator();
             ImGui.Spacing();
             switch (_settingsPage)
@@ -70,7 +76,6 @@ public sealed partial class Plugin
                     break;
                 case SettingsPage.Counters:
                     DrawCounterPreferences();
-                    if (ImGui.Button("Open counter popout")) _counterPopoutVisible = true;
                     break;
                 case SettingsPage.Map:
                     DrawMapPreferences();
@@ -87,17 +92,12 @@ public sealed partial class Plugin
                     DrawConnectionPreferences();
                     DrawSettingsHeading("Share with the group");
                     DrawSharingPreferences();
-                    DrawSettingsHeading("Active Marks");
+                    break;
+                case SettingsPage.ActiveMarks:
                     _activeMarksWindow.DrawSettings();
-                    if (ImGui.Button("Open Active Marks")) _activeMarksWindow.Toggle();
-                    ImGui.SameLine();
-                    if (ImGui.Button("S-rank timers")) _srankWindow.Toggle();
-                    ImGui.SameLine();
-                    if (ImGui.Button("A-rank timers")) _arankWindow.Toggle();
                     break;
                 case SettingsPage.Discord: DrawDiscordPreferences(); break;
                 case SettingsPage.Tally: DrawTallyTab(); break;
-                case SettingsPage.About: DrawAboutPreferences(); break;
             }
             ImGui.PopID();
         }
@@ -106,6 +106,16 @@ public sealed partial class Plugin
 
     private void DrawTrainPreferences()
     {
+        var autoMark = _config.AutoMarkDeadEnabled;
+        if (ImGui.Checkbox("Auto-mark dead using Hunt Tally", ref autoMark))
+        {
+            _config.AutoMarkDeadEnabled = autoMark;
+            _config.Save();
+        }
+        ImGui.TextDisabled(TallyFeedStatus());
+        ImGui.TextDisabled("Observed deaths update this train automatically; unknown kill times remain unknown.");
+
+
         var echoClick = _config.EchoOnMarkClick;
         if (ImGui.Checkbox("Echo a mark to chat when its row is clicked", ref echoClick))
         {
@@ -134,14 +144,6 @@ public sealed partial class Plugin
             _config.ShowMarkAge = showAge;
             _config.Save();
         }
-
-        var hideDeadSetting = _config.HideDeadMarks;
-        if (ImGui.Checkbox("Hide dead marks in the train list", ref hideDeadSetting))
-        {
-            _config.HideDeadMarks = hideDeadSetting;
-            _config.Save();
-        }
-        ImGui.TextDisabled("Display only — dead marks stay in the train and in reports.");
 
         var hideZones = _config.HideZonesInPopout;
         if (ImGui.Checkbox("Hide zone names in the train popout", ref hideZones))
@@ -192,6 +194,37 @@ public sealed partial class Plugin
         }
         ImGui.TextDisabled("How often marks are scanned for. Lower catches more while flying fast.");
         ImGui.Spacing();
+        DrawSettingsHeading("S-rank train watches");
+        var reminderOn = _config.SRankZoneReminderEnabled;
+        if (ImGui.Checkbox("Remind me on entering an S-rank zone", ref reminderOn))
+        {
+            _config.SRankZoneReminderEnabled = reminderOn;
+            _config.Save();
+        }
+
+        if (_config.SRankZoneReminderEnabled)
+        {
+            ImGui.SameLine();
+            var reminderSound = _config.SRankZoneReminderSound;
+            if (ImGui.Checkbox("with sound", ref reminderSound))
+            {
+                _config.SRankZoneReminderSound = reminderSound;
+                _config.Save();
+            }
+        }
+        ImGui.TextDisabled("Lakeland (Tyger), Ultima Thule (Narrow-rift), Elpis (Ophioneus), Yak T'el (Neyoozoteel). Only you see it.");
+
+        ImGui.Spacing();
+        var watchesInList = _config.ShowSRankWatchesInTrainList;
+        if (ImGui.Checkbox("Show these watches on the train list", ref watchesInList))
+        {
+            _config.ShowSRankWatchesInTrainList = watchesInList;
+            _config.Save();
+        }
+
+        ImGui.Spacing();
+
+
     }
 
     private void DrawCounterPreferences()
@@ -335,24 +368,6 @@ public sealed partial class Plugin
         ImGui.Separator();
         ImGui.Spacing();
         if (ImGui.CollapsingHeader("Player guides")) DrawPlayerGuideSettings();
-        ImGui.Spacing();
-    }
-
-    private void DrawAboutPreferences()
-    {
-        ImGui.TextDisabled($"Hunt Helper Evolved {ReleaseNotes.CurrentVersion}");
-        ImGui.Spacing();
-
-        // The notes are a window of their own and turn up on their own
-        // after an update, so this is the way back to them afterwards.
-        if (ImGui.Button("What's new"))
-            _releaseNotesVisible = true;
-
-        ImGui.SameLine();
-        ImGui.TextDisabled("Changes in this and previous versions, and who to thank.");
-        ImGui.Spacing();
-
-        ImGui.TextDisabled("IPC: this train is available through HuntHelperEvolved endpoints.");
         ImGui.Spacing();
     }
 

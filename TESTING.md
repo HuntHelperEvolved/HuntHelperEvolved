@@ -8,16 +8,26 @@ configuration before testing. Build and automated test instructions are in the
 
 - Load the plugin at the title screen: no HHE windows should appear. Log into a
   character: enabled update notes should open once for a newer version.
-- Logout with windows open: they should hide until login. Reloading the same
-  version should not reopen automatic update notes.
+- After the first login, Active Marks should remain open through DC travel and
+  character selection. Other windows should hide until login. Closing Active Marks
+  during travel must keep it closed. Reloading the same version should not reopen
+  automatic update notes.
 
 ## Settings and help
 
-- Check Scout contains report/credit controls and S Counters contains world selection,
-  spawn watches, local resets and shared counts. Verify `/hhc` still opens the popout.
+- Check /hh has Train, S Ranks, Settings and Help. Train has Route and Report
+  preview, one scout editor and one Shift-guarded report/reset footer. Collapse
+  controls and verify Undo reset remains accessible when a reset can be undone.
+- Check S Ranks has Timers & mapping and Counters; train watches live under Train. Verify /hhs
+  and /hhc still open their standalone windows and use the same data/filters.
+- Check Windows opens every popout, including A-rank timers, Active Marks and
+  lifetime tally. Dalamud's Open Main UI should open /hh, not the tally.
+- Check Help opens release notes. Settings > Train contains automatic death
+  marking; Settings > S Ranks contains counter preferences; train-watch preferences are in Settings > Train. No setting
+  values should change merely by switching tabs.
 - Visit each settings category at normal and narrow window sizes, with UI scaling.
   Check scrolling, category selection, template editors and saving after reload.
-- Verify Active Marks > Filters/settings opens Sharing, and `/hunttally config`
+- Verify Active Marks > Filters/settings opens Settings > Active Marks, and `/hunttally config`
   opens Tally. Connection controls, notification tests and Discord tests should
   remain reachable in their respective categories.
 - Search Help for colours, mapping, reset, travel and tally. Clear the search and
@@ -48,6 +58,13 @@ configuration before testing. Build and automated test instructions are in the
   retain their highlight. Manual spawn actions are still required.
 
 ## Standalone commands and IPC
+
+- In /xlplugins, HHE should list only /hh commands without Hunt Helper, and
+  only /htr commands with Hunt Helper installed, including when disabled.
+  /hhsa and /hunttally remain aliases but are hidden from the command list.
+- Uninstall Hunt Helper while HHE stays loaded: the list should switch to /hh
+  and any newly freed aliases should become available. Existing /htra retains
+  its next-aetheryte meaning; /htraw opens the A-rank timer board.
 
 - Check `/hh`, `/hht`, `/hhn`, `/hhna` and `/hhc` without Hunt Helper installed.
   Repeat with it installed but disabled; HHE shortcuts should still work.
@@ -115,11 +132,11 @@ configuration before testing. Build and automated test instructions are in the
   your own detection, and cross-DC alert filters.
 - Check map clicks and Lifestream travel from active marks and Ctrl-clicking timer
   names, including a spawn attempt without exact coordinates. One action should
-  complete world and aetheryte travel. Instance selection remains manual.
+  complete world, aetheryte and supported instance travel.
 
 ## Compatibility and reporting
 
-Sync uses protocol 4. Use server 0.3.13 or newer for acknowledged train completion
+Sync uses protocol 4. Use server 0.3.23 or newer for acknowledged train completion
 and the current feature set. Server address/password are supplied privately.
 Community reports do not establish live visibility or known HP. First-seen
 corpses do not establish exact kill times. Faloop integration can change upstream.
@@ -144,3 +161,39 @@ from logs and screenshots before posting.
 - Shared reporting on a disconnected or older server must be refused before
   Discord is posted. Upgrade every client that might submit reports: old builds
   cannot apply completion acknowledgements and may post obsolete local history.
+
+## Automatic train watches
+
+- Train > S-rank watches: enable Automatically follow spawn windows on the client
+  preparing the train. Only the four supported train checks in the actual route's
+  worlds/zones/instances should appear, and only with open windows. Unknown,
+  cooling-down, offline and already-up marks should not be added.
+- Confirmed mapping should supply a map position. Losing that confirmation should
+  remove the automatic position. No unconfirmed point should be guessed.
+- Unchecked automatic watches follow window changes; manual watches and completed
+  results survive. Disable automation to remove an automatic watch manually.
+- With a Mateus train, enter Yak T'el on Coeurl: no reminder. Enter the matching
+  world and instance: remind once after zoning settles. Completed watches should
+  not remind again, and automatic watches must not remind from disconnected data.
+- Verify scoped watches survive reconnects, partial report submission, undo reset
+  and server restart. Shared automation requires SupportsScopedTrainWatches on
+  server 0.3.22 or later.
+
+## Individual minion observations
+
+Requires server 0.3.23 and beta 16 plugins on both scouts and the viewer.
+Older plugins cannot supply actor identity, so their reports retain legacy grouping.
+
+- Two scouts fight separate identical SS minions in the same world/zone/instance:
+  verify separate Active Marks rows, HP, combat status, observers and map icons.
+- Both scouts observe one minion: verify one row with combined observer names.
+- Move a minion across another: movement must not create a new row or merge them.
+- Kill one: only its row becomes a corpse and its map icon disappears; the other
+  stays alive with its own HP. Withdraw one scout: only their observations expire.
+- Check ordinary A/B/S marks, S-rank clocks and shared train rows still behave as
+  before. Verify map clicks/row interactions target the intended minion.
+
+Validation: 182 plugin tests and 144 server tests passed. New regressions cover
+separate minions at identical coordinates, shared observers, movement, corpse
+isolation, scoped removal messages and actor identity serialization. In-game
+validation with multiple scouts remains outstanding.
