@@ -67,7 +67,8 @@ public sealed unsafe class HuntMapOverlay : IDisposable
     private float _lastPlayerRotation;
 
     private MapOverlayController? _overlay;
-    private bool _enabled;
+    private readonly MapOverlayActivation _activation = new();
+    private bool _disposed;
     private bool _needsRefresh = true;
     private readonly Dictionary<(uint, uint, uint, uint, uint), (MapMarkerNode Dot, MarkLabelMarker? Label)> _liveNodes = new();
     private uint _lastTerritory;
@@ -136,7 +137,7 @@ public sealed unsafe class HuntMapOverlay : IDisposable
 
         try
         {
-            _overlay = new MapOverlayController();
+            _overlay = new MapOverlayController { IsVisible = false };
             return true;
         }
         catch (Exception ex)
@@ -896,66 +897,27 @@ public sealed unsafe class HuntMapOverlay : IDisposable
 
     private void OnUpdate(IFramework framework)
     {
-        if (_faulted) return;
+        if (_faulted || _disposed) return;
 
         try
         {
-            // Nothing to do until the player is actually in the world.
-            if (!_clientState.IsLoggedIn) return;
-
-            unsafe
+            var territory = _clientState.TerritoryType;
+            // Short-circuit before reading native agents while logged out or outside hunt content.
+            var eligible = _clientState.IsLoggedIn && _config.AnyMapOverlayEnabled && IsHuntZone(territory)
+                && FFXIVClientStructs.FFXIV.Client.UI.Agent.AgentMap.Instance() != null;
+            var wasVisible = _activation.Visible;
+            if (!_activation.Update(eligible, StartOverlay, SetOverlayVisible))
             {
-                // Eureka guards this too — the map agent isn't there during
-                // loading screens, and touching the overlay then throws.
-                if (FFXIVClientStructs.FFXIV.Client.UI.Agent.AgentMap.Instance() == null)
-                    return;
-            }
-
-            if (!EnsureOverlay() || _overlay == null) return;
-
-            if (!_config.AnyMapOverlayEnabled)
-            {
-                if (_enabled)
-                {
-                    _overlay.RemoveAllMarkers();
-                    _liveNodes.Clear();
-                    _overlay.Disable();
-                    _enabled = false;
-                    Status = "Off.";
-                }
+                Status = !_config.AnyMapOverlayEnabled ? "Off." : !IsHuntZone(territory) ? "Not a hunt zone." : "Waiting for the map.";
                 return;
             }
+            if (_overlay is null) return;
+            if (!wasVisible) _needsRefresh = true;
 
-            if (!_enabled)
-            {
-                _overlay.Enable();
-                _enabled = true;
-                _needsRefresh = true;
-            }
-
-            var territory = _clientState.TerritoryType;
             if (territory != _lastTerritory)
             {
                 _lastTerritory = territory;
                 _needsRefresh = true;
-            }
-
-            // Nothing here draws anything worth seeing in a city or an
-            // instance. The ring and the path are the reason this matters:
-            // they follow the player rather than the zone's contents, so
-            // without a check they would happily sweep across Limsa.
-            if (!IsHuntZone(territory))
-            {
-                if (_enabled)
-                {
-                    _overlay.RemoveAllMarkers();
-                    _liveNodes.Clear();
-                    _overlay.Disable();
-                    _enabled = false;
-                }
-
-                Status = "Not a hunt zone.";
-                return;
             }
 
             // Changing instance is a different set of marks on the same map,
@@ -1191,27 +1153,34 @@ public sealed unsafe class HuntMapOverlay : IDisposable
             // This runs every frame, so log once and stand down rather than
             // filling /xllog with thousands of identical lines.
             var where = ex.StackTrace?.Split('\n').FirstOrDefault()?.Trim() ?? "unknown";
-            Status = $"Map overlay disabled after an error: {ex.GetType().Name} — {ex.Message} @ {where}";
-            _log.Error(ex, "Map overlay update failed; disabling it for this session.");
+            Status = $"Map overlay hidden after an error: {ex.GetType().Name} — {ex.Message} @ {where}";
+            _log.Error(ex, "Map overlay update failed; hiding it for this session.");
 
             _faulted = true;
             _needsRefresh = false;
 
-            try
-            {
-                _overlay?.RemoveAllMarkers();
-                _liveNodes.Clear();
-                _overlay?.Disable();
-            }
-            catch
-            {
-                // Already broken; nothing useful to do.
-            }
+            // IsVisible only changes managed state. Do not run native cleanup again
+            // from an error handler, where node validity may already be in doubt.
+            SetOverlayVisible(false);
         }
+    }
+
+    private bool StartOverlay()
+    {
+        if (!EnsureOverlay() || _overlay is null) return false;
+        _overlay.Enable();
+        return true;
+    }
+
+    private void SetOverlayVisible(bool visible)
+    {
+        if (_overlay is not null) _overlay.IsVisible = visible;
     }
 
     public void Dispose()
     {
+        if (_disposed) return;
+        _disposed = true;
         try
         {
             _framework.Update -= OnUpdate;
@@ -1219,10 +1188,10 @@ public sealed unsafe class HuntMapOverlay : IDisposable
 
             if (_overlay != null)
             {
-                _overlay.RemoveAllMarkers();
-                _liveNodes.Clear();
-                _overlay.Disable();
+                // Let the controller detach before disposing its owned markers.
+                // Avoid manually disposing its markers before controller finalization.
                 _overlay.Dispose();
+                _liveNodes.Clear();
                 _overlay = null;
             }
         }

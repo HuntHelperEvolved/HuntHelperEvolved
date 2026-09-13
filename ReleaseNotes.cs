@@ -34,6 +34,10 @@ public static class ReleaseNotes
 
     public static readonly Release[] All =
     {
+        new("0.5.0.17", "2026-09-13", "Hotfix for map overlay cleanup crashes outside hunt zones.",
+        [
+            new("Map", "Stops repeated native overlay attachment and teardown in cities and duties, including while the map is closed. The overlay now stays hidden outside hunt zones and returns when needed; its controller owns final cleanup. This addresses the reported frame-update crash in KamiToolKit node-focus cleanup.", Kihtli),
+        ]),
         new("0.5.0.16", "2026-09-12", "A tidier hunt workspace, reliable minion tracking and smarter train watches.",
         [
             new("Workspace", "The main /hh window now has Train, S Ranks, Settings and Help tabs. Train controls and reports are available together; shared controls and scouts can be collapsed. Use the Windows menu to open separate boards and tools.", Kihtli, 43),
