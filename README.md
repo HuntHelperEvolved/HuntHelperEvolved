@@ -29,7 +29,6 @@ This beta uses the existing main repository feed and remains testing-exclusive.
 If you already use that feed, update normally in `/xlplugins`; no repository change
 is needed. Keep a backup of your plugin configuration before updating.
 Hunt Helper is not required.
-See [TESTING.md](TESTING.md) for the current features and feedback checklist.
 
 If you cannot find it after adding the repository, step 2 is almost certainly
 why.
@@ -232,8 +231,7 @@ All password holders can edit, reorder and clear the shared train.
 
 Sync uses protocol 4; the current feature set requires server 0.3.13 or newer. Run
 `dotnet test tests/HuntHelperEvolved.Sync.Tests -c Release` for transport and
-timer tests. See [TESTING.md](TESTING.md) for in-game checks and
-[the development guide](docs/DEVELOPMENT.md) for source layout and validation.
+timer tests.
 
 ## Talking to other plugins
 

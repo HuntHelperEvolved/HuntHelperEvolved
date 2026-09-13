@@ -12,3 +12,11 @@ release-staging/
 # Generated test reports and process memory dumps
 **/TestResults/
 *.dmp
+
+# Internal notes stay outside the published repository.
+/TESTING.md
+/SYNC-REVIEW.md
+/docs/DEVELOPMENT.md
+/docs/NATIVE-LIFECYCLE-CHECKS.md
+/anti-slop/
+/RELEASE-NOTES.md
