@@ -226,175 +226,218 @@ public sealed partial class Plugin : IDalamudPlugin
         _objectTable = objectTable;
         _log = pluginLog;
 
-        // The LoadDirect step is not redundant. When Dalamud's loader resolves
-        // the file's "$type" to a previous, not-yet-collected copy of this
-        // assembly — which is what a dev-plugin reload does — the cast above
-        // fails silently and the old code went straight to a fresh
-        // Configuration, whose first Save wiped every setting on disk. Reading
-        // the file ourselves has no assembly resolution to get wrong.
-        // Third in the chain is the rename hand-over: this plugin was Hunt
-        // Train Relay, and Dalamud names a config file after the InternalName,
-        // so everything a returning user had configured is sitting under the
-        // old name. It is only read when there is no file under the new one.
-        var loaded = _pluginInterface.GetPluginConfig() as Configuration
-                     ?? Configuration.LoadDirect(_pluginInterface);
-
-        var migrated = false;
-        if (loaded is null)
-        {
-            loaded = Configuration.LoadFromPreviousName(_pluginInterface);
-            migrated = loaded is not null;
-        }
-
-        _config = loaded ?? new Configuration();
-        _config.ScanningPaused = true;
-        clientState.Login += PauseScoutingOnLogin;
-        _config.Initialize(_pluginInterface);
-
-        if (migrated)
-        {
-            // Write it out under the new name straight away, so the hand-over
-            // happens once rather than on every load until something else
-            // saves.
-            _config.Save();
-            _log.Information("Carried settings over from the Hunt Train Relay config file.");
-        }
-
-        _gameGui = gameGui;
-        _textureProvider = textureProvider;
-        _clientState = clientState;
-        _detector = new MarkDetector(objectTable, clientState, dataManager, _config);
-        _teleport = new TeleportHelper(_pluginInterface, _log, dataManager);
-        SyncBlacklist();
-        _watcher = new TrainWatcher(framework, _detector, _config, chatGui, _log);
-
-        // The tally reaches Dalamud through its own injected service class
-        // rather than this constructor's parameters, which is how it was built
-        // as a standalone plugin. Left that way on purpose: it keeps the merge
-        // to a wiring change, so the counting code that people's existing
-        // totals were built by is the same code, untouched.
-        _pluginInterface.Create<HuntTally.Service>();
-        DetectStandaloneTally();
-        _tallyConfig = TallyConfigStore.Load(_pluginInterface);
-
-        _characters = new CharacterContext(_tallyConfig);
-        _seeder = new AchievementSeeder(_tallyConfig, _characters);
-
-        // Constructed before the tracker: the tracker asks it on every poll
-        // whether the precise signal is available.
-        _damage = new DamageWatch();
-        _reward = new RewardWatch();
-
-        _tallyWindow = new MainWindow(_tallyConfig, _characters);
-        _tallyWindows.AddWindow(_tallyWindow);
-
-        _tracker = new KillTracker(_tallyConfig, _characters, _damage, _reward);
-        _tallySettings = new TallySettingsPanel(
-            _tallyConfig, _seeder, _characters, _damage, _reward, _tracker);
-        _tallyIpc = new IpcProvider(_tallyConfig);
-
-        if (_standaloneTallyPresent)
-        {
-            // Unhooks the tracker's framework and territory events, so it never
-            // polls and nothing is counted. Standing the tally down has to mean
-            // this and not just declining to save: left running it would print a
-            // second kill line for every mark alongside the standalone plugin's,
-            // and show totals in its window that were never going to be kept.
-            //
-            // Disposing again in Dispose is harmless — it only unsubscribes.
-            _tracker.Dispose();
-        }
-        else
-        {
-            // Subscribed separately from the chat notice: a kill should reach
-            // the train and any other listening plugin whether or not the user
-            // wants it printed.
-            _tracker.OnKill += _tallyIpc.PublishCredited;
-            _tracker.OnMarkDeath += _tallyIpc.PublishMarkDeath;
-            _tracker.OnKill += AnnounceTallyKill;
-
-            // Every death the tally sees, credited or not. An S rank dying in
-            // front of anyone in the group is how the group's clock for it
-            // starts.
-            _tracker.OnMarkDeath += OnAnyMarkDeath;
-
-            // Off the publisher rather than the tracker, so the train sees
-            // exactly the feed an external subscriber would have seen over IPC —
-            // including the tally's own switch between credited kills and every
-            // mark death. That is what the auto-mark behaviour was built
-            // against, and keeping the same source is what stops the merge
-            // quietly changing it.
-            _tallyIpc.KillPublished += OnTallyKillPublished;
-
-            HuntTally.Service.ClientState.Login += OnTallyLogin;
-            HuntTally.Service.ClientState.Logout += OnTallyLogout;
-            HuntTally.Service.Framework.Update += OnTallyFrameworkUpdate;
-
-            // Resolving walks the whole Achievement sheet. One tick later costs
-            // nothing and keeps it off the plugin-load path.
-            HuntTally.Service.Framework.RunOnTick(
-                _seeder.ResolveAll, TimeSpan.Zero, 0, _disposal.Token);
-
-            if (HuntTally.Service.ClientState.IsLoggedIn && _tallyConfig.AutoSeedOnLogin)
-                ScheduleTallySeed();
-        }
-
-        _notifier = new MarkNotifier(chatGui, flyTextGui, _log, _config);
-        _zoneReminder = new SRankZoneReminder(clientState, chatGui, _log, _config, _detector, framework, AutomaticWatchAvailable);
-        _counter = new HuntCounter(chatGui, clientState, objectTable, _config);
-        _spawnWatch = new SpawnWatchCounters(framework, clientState, objectTable, fateTable, _log);
-        _worldData = new WorldData(dataManager);
-
-        // Built before the map overlay, which draws what other members can
-        // see. Connects straight away if sync is on in the saved settings.
-        _sync = new SyncCoordinator(
-            framework, clientState, objectTable, _log, _config, _detector, _worldData,
-            typeof(Plugin).Assembly.GetName().Version?.ToString(4) ?? "0.0.0");
-        _counter.PersonalKill += _sync.RecordCounterKill;
-        _sync.RemoteTrainCleared += OnRemoteTrainCleared;
-        _sync.ReportedRemoval += OnReportedRemoval;
-        _sync.SRankSpawned += OnRemoteSRankSpawn;
-        _srankTravel = new LifestreamTravel(_pluginInterface, framework, _detector, _chatGui, _log);
-        _activeMarksWindow = new ActiveMarksWindow(_config, _sync, _worldData, _detector, _gameGui, _srankTravel, () => { _configWindowVisible=true; _selectActiveMarksSettings=true; });
-        _srankWindow = new SRankWindow(_config, _sync, _worldData, _detector, _srankTravel);
-        _arankWindow = new ARankWindow(_config, _sync, _worldData, _detector);
-        // After the detector exists, since the gates read straight off it.
-        _trainIpc = new TrainIpcProvider(_pluginInterface, _detector, _log);
-
-        // KamiToolKit needs one-time initialisation before any of its
-        // controllers can be enabled — without it, AddonController.Enable()
-        // throws a null reference on every frame.
+        var startup = new StartupTransaction();
+        startup.Add(_disposal.Dispose);
         try
         {
+            // The LoadDirect step is not redundant. When Dalamud's loader resolves
+            // the file's "$type" to a previous, not-yet-collected copy of this
+            // assembly — which is what a dev-plugin reload does — the cast above
+            // fails silently and the old code went straight to a fresh
+            // Configuration, whose first Save wiped every setting on disk. Reading
+            // the file ourselves has no assembly resolution to get wrong.
+            // Third in the chain is the rename hand-over: this plugin was Hunt
+            // Train Relay, and Dalamud names a config file after the InternalName,
+            // so everything a returning user had configured is sitting under the
+            // old name. It is only read when there is no file under the new one.
+            var loaded = Configuration.LoadDirect(_pluginInterface)
+                         ?? _pluginInterface.GetPluginConfig() as Configuration;
+
+            var migrated = false;
+            if (loaded is null)
+            {
+                loaded = Configuration.LoadFromPreviousName(_pluginInterface);
+                migrated = loaded is not null;
+            }
+
+            _config = loaded ?? new Configuration();
+            _config.ScanningPaused = true;
+            startup.Add(() => { clientState.Login -= PauseScoutingOnLogin; });
+            clientState.Login += PauseScoutingOnLogin;
+            _config.Initialize(_pluginInterface);
+
+            if (migrated)
+            {
+                // Write it out under the new name straight away, so the hand-over
+                // happens once rather than on every load until something else
+                // saves.
+                _config.Save();
+                _log.Information("Carried settings over from the Hunt Train Relay config file.");
+            }
+
+            _gameGui = gameGui;
+            _textureProvider = textureProvider;
+            _clientState = clientState;
+            _detector = new MarkDetector(objectTable, clientState, dataManager, _config);
+            _teleport = new TeleportHelper(_pluginInterface, _log, dataManager);
+            SyncBlacklist();
+            _watcher = new TrainWatcher(framework, _detector, _config, chatGui, _log);
+            startup.Add(_watcher.Dispose);
+
+            // The tally reaches Dalamud through its own injected service class
+            // rather than this constructor's parameters, which is how it was built
+            // as a standalone plugin. Left that way on purpose: it keeps the merge
+            // to a wiring change, so the counting code that people's existing
+            // totals were built by is the same code, untouched.
+            _pluginInterface.Create<HuntTally.Service>();
+            DetectStandaloneTally();
+            _tallyConfig = TallyConfigStore.Load(_pluginInterface);
+
+            _characters = new CharacterContext(_tallyConfig);
+            startup.Add(_characters.Dispose);
+            _seeder = new AchievementSeeder(_tallyConfig, _characters);
+            startup.Add(_seeder.Dispose);
+
+            // Constructed before the tracker: the tracker asks it on every poll
+            // whether the precise signal is available.
+            _damage = new DamageWatch();
+            startup.Add(_damage.Dispose);
+            _reward = new RewardWatch();
+            startup.Add(_reward.Dispose);
+
+            _tallyWindow = new MainWindow(_tallyConfig, _characters);
+            startup.Add(_tallyWindow.Dispose);
+            startup.Add(_tallyWindows.RemoveAllWindows);
+            _tallyWindows.AddWindow(_tallyWindow);
+
+            _tracker = new KillTracker(_tallyConfig, _characters, _damage, _reward);
+            startup.Add(_tracker.Dispose);
+            _tallySettings = new TallySettingsPanel(
+                _tallyConfig, _seeder, _characters, _damage, _reward, _tracker);
+            _tallyIpc = new IpcProvider(_tallyConfig);
+            startup.Add(_tallyIpc.Dispose);
+
+            if (_standaloneTallyPresent)
+            {
+                // Unhooks the tracker's framework and territory events, so it never
+                // polls and nothing is counted. Standing the tally down has to mean
+                // this and not just declining to save: left running it would print a
+                // second kill line for every mark alongside the standalone plugin's,
+                // and show totals in its window that were never going to be kept.
+                //
+                // Disposing again in Dispose is harmless — it only unsubscribes.
+                _tracker.Dispose();
+            }
+            else
+            {
+                // Subscribed separately from the chat notice: a kill should reach
+                // the train and any other listening plugin whether or not the user
+                // wants it printed.
+                startup.Add(() => { _tracker.OnKill -= _tallyIpc.PublishCredited; });
+                _tracker.OnKill += _tallyIpc.PublishCredited;
+                startup.Add(() => { _tracker.OnMarkDeath -= _tallyIpc.PublishMarkDeath; });
+                _tracker.OnMarkDeath += _tallyIpc.PublishMarkDeath;
+                startup.Add(() => { _tracker.OnKill -= AnnounceTallyKill; });
+                _tracker.OnKill += AnnounceTallyKill;
+
+                // Every death the tally sees, credited or not. An S rank dying in
+                // front of anyone in the group is how the group's clock for it
+                // starts.
+                startup.Add(() => { _tracker.OnMarkDeath -= OnAnyMarkDeath; });
+                _tracker.OnMarkDeath += OnAnyMarkDeath;
+
+                // Off the publisher rather than the tracker, so the train sees
+                // exactly the feed an external subscriber would have seen over IPC —
+                // including the tally's own switch between credited kills and every
+                // mark death. That is what the auto-mark behaviour was built
+                // against, and keeping the same source is what stops the merge
+                // quietly changing it.
+                startup.Add(() => { _tallyIpc.KillPublished -= OnTallyKillPublished; });
+                _tallyIpc.KillPublished += OnTallyKillPublished;
+
+                startup.Add(() => { HuntTally.Service.ClientState.Login -= OnTallyLogin; });
+                HuntTally.Service.ClientState.Login += OnTallyLogin;
+                startup.Add(() => { HuntTally.Service.ClientState.Logout -= OnTallyLogout; });
+                HuntTally.Service.ClientState.Logout += OnTallyLogout;
+                startup.Add(() => { HuntTally.Service.Framework.Update -= OnTallyFrameworkUpdate; });
+                HuntTally.Service.Framework.Update += OnTallyFrameworkUpdate;
+
+                // Resolving walks the whole Achievement sheet. One tick later costs
+                // nothing and keeps it off the plugin-load path.
+                HuntTally.Service.Framework.RunOnTick(
+                    _seeder.ResolveAll, TimeSpan.Zero, 0, _disposal.Token);
+
+                if (HuntTally.Service.ClientState.IsLoggedIn && _tallyConfig.AutoSeedOnLogin)
+                    ScheduleTallySeed();
+            }
+
+            _notifier = new MarkNotifier(chatGui, flyTextGui, _log, _config);
+            startup.Add(_notifier.Dispose);
+            _zoneReminder = new SRankZoneReminder(clientState, chatGui, _log, _config, _detector, framework, AutomaticWatchAvailable);
+            startup.Add(_zoneReminder.Dispose);
+            _counter = new HuntCounter(chatGui, clientState, objectTable, _config);
+            startup.Add(_counter.Dispose);
+            _spawnWatch = new SpawnWatchCounters(framework, clientState, objectTable, fateTable, _log);
+            startup.Add(_spawnWatch.Dispose);
+            _worldData = new WorldData(dataManager);
+
+            // Built before the map overlay, which draws what other members can
+            // see. Connects straight away if sync is on in the saved settings.
+            _sync = new SyncCoordinator(
+                framework, clientState, objectTable, _log, _config, _detector, _worldData,
+                typeof(Plugin).Assembly.GetName().Version?.ToString(4) ?? "0.0.0");
+            startup.Add(_sync.Dispose);
+            startup.Add(() => { _counter.PersonalKill -= _sync.RecordCounterKill; });
+            _counter.PersonalKill += _sync.RecordCounterKill;
+            startup.Add(() => { _sync.RemoteTrainCleared -= OnRemoteTrainCleared; });
+            _sync.RemoteTrainCleared += OnRemoteTrainCleared;
+            startup.Add(() => { _sync.ReportedRemoval -= OnReportedRemoval; });
+            _sync.ReportedRemoval += OnReportedRemoval;
+            startup.Add(() => { _sync.SRankSpawned -= OnRemoteSRankSpawn; });
+            _sync.SRankSpawned += OnRemoteSRankSpawn;
+            _srankTravel = new LifestreamTravel(_pluginInterface, framework, _detector, _chatGui, _log);
+            startup.Add(_srankTravel.Dispose);
+            _activeMarksWindow = new ActiveMarksWindow(_config, _sync, _worldData, _detector, _gameGui, _srankTravel, () => { _configWindowVisible=true; _selectActiveMarksSettings=true; });
+            _srankWindow = new SRankWindow(_config, _sync, _worldData, _detector, _srankTravel);
+            _arankWindow = new ARankWindow(_config, _sync, _worldData, _detector);
+            // After the detector exists, since the gates read straight off it.
+            _trainIpc = new TrainIpcProvider(_pluginInterface, _detector, _log);
+            startup.Add(_trainIpc.Dispose);
+
+            // KamiToolKit needs one-time initialisation before any of its
+            // controllers can be enabled — without it, AddonController.Enable()
+            // throws a null reference on every frame.
+            startup.Add(KamiToolKitLibrary.Dispose);
             KamiToolKitLibrary.Initialize(_pluginInterface, "Hunt Helper Evolved");
+
+            _ssEvent = new SsEventWatcher(chatGui, clientState, _log, _detector);
+            startup.Add(_ssEvent.Dispose);
+            _mapOverlay = new HuntMapOverlay(framework, clientState, objectTable, dataManager, addonLifecycle, gameGui, _log, _config, _detector, _ssEvent, _pluginInterface, _sync);
+            startup.Add(_mapOverlay.Dispose);
+            startup.Add(() => { _detector.OtherRankDetected -= OnSightingDetected; });
+            _detector.OtherRankDetected += OnSightingDetected;
+            startup.Add(() => { _clientState.TerritoryChanged -= _detector.ResetAnnouncements; });
+            _clientState.TerritoryChanged += _detector.ResetAnnouncements;
+            startup.Add(() => { _watcher.PersistRequested -= PersistTrain; });
+            _watcher.PersistRequested += PersistTrain;
+            RestoreSavedTrain();
+
+            startup.Add(UnregisterCommands);
+            RegisterCommands();
+            startup.Add(() => { _framework.Update -= OnPluginFrameworkUpdate; });
+            _framework.Update += OnPluginFrameworkUpdate;
+
+            startup.Add(() => { _pluginInterface.UiBuilder.Draw -= DrawUI; });
+            _pluginInterface.UiBuilder.Draw += DrawUI;
+            startup.Add(() => { _pluginInterface.UiBuilder.OpenConfigUi -= OnOpenConfigUi; });
+            _pluginInterface.UiBuilder.OpenConfigUi += OnOpenConfigUi;
+
+            // The tally's display window is the plugin's "main" UI, as it was when
+            // the tally was its own plugin. The gear opens settings, which are now
+            // a tab of this plugin's config window.
+            startup.Add(() => { _pluginInterface.UiBuilder.OpenMainUi -= OpenMainWindow; });
+            _pluginInterface.UiBuilder.OpenMainUi += OpenMainWindow;
+            startup.Commit();
         }
         catch (Exception ex)
         {
-            _log.Error(ex, "KamiToolKit failed to initialise; the map overlay will stay off.");
+            _disposed = true;
+            startup.Add(_disposal.Cancel);
+            throw startup.Rollback(ex);
         }
-
-        _ssEvent = new SsEventWatcher(chatGui, clientState, _log, _detector);
-        _mapOverlay = new HuntMapOverlay(framework, clientState, objectTable, dataManager, addonLifecycle, gameGui, _log, _config, _detector, _ssEvent, _pluginInterface, _sync);
-        _detector.OtherRankDetected += OnSightingDetected;
-        _clientState.TerritoryChanged += _detector.ResetAnnouncements;
-        _watcher.PersistRequested += PersistTrain;
-        RestoreSavedTrain();
-
-        RegisterCommands();
-        _framework.Update += OnPluginFrameworkUpdate;
-
-        _pluginInterface.UiBuilder.Draw += DrawUI;
-        _pluginInterface.UiBuilder.OpenConfigUi += OnOpenConfigUi;
-
-        // The tally's display window is the plugin's "main" UI, as it was when
-        // the tally was its own plugin. The gear opens settings, which are now
-        // a tab of this plugin's config window.
-        _pluginInterface.UiBuilder.OpenMainUi += OpenMainWindow;
     }
 
-    // ---------------------------------------------------------------------
     // Tally
-    // ---------------------------------------------------------------------
 
     private void OpenMainWindow() => _configWindowVisible = true;
 
@@ -462,10 +505,11 @@ public sealed partial class Plugin : IDalamudPlugin
     }
 
     /// <summary>Writes queued tally changes, at the interval Flush enforces.</summary>
-    private void OnTallyFrameworkUpdate(IFramework framework) => _tallyConfig.Flush();
+    private void OnTallyFrameworkUpdate(IFramework framework) { if (!_disposed) _tallyConfig.Flush(); }
 
     private void OnPluginFrameworkUpdate(IFramework framework)
     {
+        if (_disposed) return;
         if (_commandHelpDirty) RefreshCommandHelp();
         UpdateAutomaticTrainWatches();
         // During DC transfers the game hides its UI at character selection.
@@ -770,14 +814,9 @@ public sealed partial class Plugin : IDalamudPlugin
     /// </summary>
     private readonly TrainCompletionGuard _completion = new();
 
-    private string CompletionSnapshot() => Newtonsoft.Json.JsonConvert.SerializeObject(new
-    {
-        Generation = _detector.TrainGeneration,
-        Marks = _detector.Ordered(),
-        History = BuildCurrentMarks().OrderBy(m => m.WorldId).ThenBy(m => m.ModelId).ThenBy(m => m.Instance),
-        Flags = _config.Flags,
-        Shared = _config.SyncEnabled && _config.SyncShareTrain
-    });
+    private string CompletionSnapshot() => TrainCompletionSnapshot.Create(
+        _detector.TrainGeneration, _detector.Ordered(), BuildCurrentMarks(), _config.Flags,
+        _config.SyncEnabled && _config.SyncShareTrain);
 
     /// <summary>
     /// Whether partial-report support is available. Shared submission is refused
@@ -807,7 +846,7 @@ public sealed partial class Plugin : IDalamudPlugin
         { _lastPostResult = "Nothing to post — no marks were killed on this train."; return; }
 
         var (reportedWatches, keptWatches) = partial
-            ? TrainReport.SplitWatches(_config.Flags, TrainReport.ReportedExpansions(marks))
+            ? TrainReport.SplitWatches(_config.Flags, TrainReport.ReportedLegs(marks), marks.Select(m => m.WorldId))
             : (CloneWatches(_config.Flags), new List<FlagEntry>());
         var submitted = partial ? TrainReport.SubmittedMarks(marks) : marks.Where(m => m.Dead).ToList();
 
@@ -816,9 +855,7 @@ public sealed partial class Plugin : IDalamudPlugin
         var endedBy = _objectTable.LocalPlayer?.Name?.TextValue;
         var requiresServer = _config.SyncEnabled;
         var connectionId = _sync.ClientId;
-        var serverSubmission = requiresServer
-            ? _sync.PrepareFinish(marks, partial ? submitted.Select(m => m.Key) : null, keptWatches)
-            : null;
+        TrainFinishMessage? serverSubmission = null;
         try
         {
             var flags = Newtonsoft.Json.JsonConvert.DeserializeObject<List<FlagEntry>>(
@@ -833,9 +870,16 @@ public sealed partial class Plugin : IDalamudPlugin
                 _lastPostResult = message;
                 if (!success) { _chatGui.PrintError($"[Hunt Helper Evolved] Failed to post to Discord: {message}"); return; }
                 if (CompletionSnapshot() != snapshot)
-                { _chatGui.Print("[Hunt Helper Evolved] Report posted; train changed while sending and was kept."); return; }
+                {
+                    _lastPostResult = "Discord posted; train changed while sending and was kept.";
+                    _chatGui.Print("[Hunt Helper Evolved] " + _lastPostResult);
+                    return;
+                }
                 if (requiresServer)
                 {
+                    // Use the latest acknowledged revisions after Discord returns, while retaining
+                    // the exact report history and clear keys whose meaning was checked above.
+                    serverSubmission = _sync.PrepareFinish(marks, partial ? submitted.Select(m => m.Key) : null, keptWatches);
                     CaptureResetUndo("Report completed");
                     _ownResetPendingAt = DateTime.UtcNow;
                     serverTask = _sync.SubmitFinish(serverSubmission!, connectionId);
@@ -885,11 +929,13 @@ public sealed partial class Plugin : IDalamudPlugin
 
     private void DrawUI()
     {
+        if (_disposed) return;
         // Keep startup quiet, but preserve Active Marks after the first login
         // while DC travel passes through character selection.
         if (!_clientState.IsLoggedIn)
         {
-            if (_releaseNotesChecked) _activeMarksWindow.Draw();
+            if (_releaseNotesChecked)
+                _activeMarksWindow.Draw();
             return;
         }
         if (!_releaseNotesChecked)
@@ -898,14 +944,12 @@ public sealed partial class Plugin : IDalamudPlugin
             ShowReleaseNotesIfUpdated();
         }
 
-        // Cheap enough to check on a slow tick; counters age out in hours.
         _secondsSinceAutoResetCheck += ImGui.GetIO().DeltaTime;
         if (_secondsSinceAutoResetCheck >= 30)
         {
             _secondsSinceAutoResetCheck = 0;
             _counter.ApplyAutoResets();
         }
-
         ProcessPendingCustomRemovals();
         UpdateAutoAdvance();
         DrawTrainPopout();
@@ -916,9 +960,6 @@ public sealed partial class Plugin : IDalamudPlugin
         _arankWindow.Draw();
         DrawReleaseNotesWindow();
         DrawMapControlBar();
-
-        // Before the early return below: the tally's window is independent of
-        // the config window and has to keep drawing while that one is shut.
         _tallyWindows.Draw();
 
         if (!_configWindowVisible) return;
@@ -1004,23 +1045,7 @@ public sealed partial class Plugin : IDalamudPlugin
     /// The next live (not dead) mark after the current one, in list order.
     /// Falls back to the first live mark when there's no pointer yet.
     /// </summary>
-    private DetectedMark? NextLiveMark()
-    {
-        var ordered = _detector.Ordered();
-        if (ordered.Count == 0) return null;
-
-        var startIndex = 0;
-        if (_currentMark is { } key)
-        {
-            var idx = ordered.FindIndex(m => m.Key == key);
-            if (idx >= 0) startIndex = idx + 1;
-        }
-
-        for (var i = startIndex; i < ordered.Count; i++)
-            if (!ordered[i].Dead) return ordered[i];
-
-        return null;
-    }
+    private DetectedMark? NextLiveMark() => TrainNavigation.Next(_detector.Marks.Values, CurrentMark());
 
     /// <summary>
     /// Moves the pointer to a mark, optionally announcing it. Announcing echoes
@@ -1054,14 +1079,18 @@ public sealed partial class Plugin : IDalamudPlugin
     /// them. Marking them dead immediately on click was abrupt; this gives the
     /// row a moment to be seen before it goes.
     /// </summary>
+    private readonly List<(uint NameId, uint Instance, uint WorldId)> _dueCustomRemovals = new();
+
     private void ProcessPendingCustomRemovals()
     {
         if (_pendingCustomRemovals.Count == 0) return;
 
         var now = DateTime.UtcNow;
-        foreach (var (key, dueAt) in _pendingCustomRemovals.ToList())
+        _dueCustomRemovals.Clear();
+        foreach (var (key, dueAt) in _pendingCustomRemovals)
+            if (now >= dueAt) _dueCustomRemovals.Add(key);
+        foreach (var key in _dueCustomRemovals)
         {
-            if (now < dueAt) continue;
 
             if (_detector.Marks.TryGetValue(key, out var mark) && mark.IsCustom)
             {
@@ -1693,6 +1722,7 @@ public sealed partial class Plugin : IDalamudPlugin
         {
             DrawMapBarZoneRow();
             DrawMapBarPlayerRow();
+            DrawOccupiedSpawnPointSetting();
 
             _mapBarHeight = ImGui.GetWindowHeight();
         }
@@ -1969,12 +1999,12 @@ public sealed partial class Plugin : IDalamudPlugin
         if (ImGui.Checkbox("Hide dead", ref hideDead))
         {
             _config.HideDeadMarks = hideDead;
-            _config.Save();
+            _config.DeferWindowStateSave();
         }
 
-        TrainControlSameLine("Group by expansion");
+        TrainControlSameLine("Group expansions within worlds");
         var grouped = _config.GroupTrainByExpansion;
-        if (ImGui.Checkbox("Group by expansion", ref grouped))
+        if (ImGui.Checkbox("Group expansions within worlds", ref grouped))
         {
             _config.GroupTrainByExpansion = grouped;
             if (grouped) _detector.ApplyOrder(GroupByExpansion(_detector.Ordered()));
@@ -1992,7 +2022,7 @@ public sealed partial class Plugin : IDalamudPlugin
             if (ImGui.Checkbox("Open next automatically", ref autoExpand))
             {
                 _config.AutoExpandNextExpansion = autoExpand;
-                _config.Save();
+                _config.DeferWindowStateSave();
             }
 
         }
@@ -2013,13 +2043,26 @@ public sealed partial class Plugin : IDalamudPlugin
     /// payload; behaviour is the same, and it keeps to API already proven to
     /// compile in this project.
     /// </summary>
+    private readonly TrainGroupingState _trainGroupingState = new();
+    private readonly List<((uint WorldId, string Expansion) Block, bool Dead)> _trainProgressInput = new();
+    private readonly Dictionary<(uint WorldId, string Expansion), int> _trainExpansionCounts = new();
+    private readonly Dictionary<(uint WorldId, string Expansion), int> _trainExpansionUpCounts = new();
+    private readonly List<(uint WorldId, string Expansion)> _trainPresentExpansions = new();
+    private readonly List<DetectedMark> _trainVisibleMarks = new();
+
+    private void ResetTrainExpansionProgress()
+    {
+        _trainProgressInput.Clear();
+        _expansionProgress.Reset();
+    }
+
     private void DrawTrainList(bool showZones = true)
     {
         var allMarks = _detector.Ordered();
 
         if (allMarks.Count == 0)
         {
-            _expansionProgress.Reset();
+            ResetTrainExpansionProgress();
             ImGui.TextDisabled("No marks detected yet — fly near one and it'll appear here.");
             DrawSRankWatchRows();
             return;
@@ -2037,7 +2080,9 @@ public sealed partial class Plugin : IDalamudPlugin
         var grouping = _config.GroupTrainByExpansion;
         // Shared grouping follows the route's existing block order, so every scout
         // reaches the same order without applying conflicting local preferences.
-        if (grouping && _dragFromIndex == -1 && _dragExpansionFrom == -1)
+        if (_dragFromIndex == -1 && _dragExpansionFrom == -1
+            && _trainGroupingState.Changed(allMarks, grouping, _config.SyncEnabled && _config.SyncShareTrain,
+                _config.ExpansionOrder, _config.WorldExpansionOrder))
         {
             var grouped = GroupByExpansion(allMarks);
             if (!grouped.SequenceEqual(allMarks))
@@ -2053,13 +2098,17 @@ public sealed partial class Plugin : IDalamudPlugin
         if (grouping && _config.AutoExpandNextExpansion)
             AutoExpandNextExpansion(allMarks);
         else
-            _expansionProgress.Reset();
+            ResetTrainExpansionProgress();
 
         // What's shown may be a subset, but ordering maths always works against
         // the full list so hidden dead marks keep their place in the train.
-        var marks = _config.HideDeadMarks
-            ? allMarks.Where(m => !m.Dead).ToList()
-            : allMarks;
+        var marks = allMarks;
+        if (_config.HideDeadMarks)
+        {
+            _trainVisibleMarks.Clear();
+            foreach (var mark in allMarks) if (!mark.Dead) _trainVisibleMarks.Add(mark);
+            marks = _trainVisibleMarks;
+        }
 
         if (marks.Count == 0)
         {
@@ -2073,14 +2122,17 @@ public sealed partial class Plugin : IDalamudPlugin
         // heading goes too, rather than leaving an empty block behind. The list
         // is already sorted into blocks by now, so first-seen order here is
         // display order.
-        var expansionCounts = new Dictionary<string, int>();
-        var expansionUpCounts = new Dictionary<string, int>();
-        var presentExpansions = new List<string>();
+        var expansionCounts = _trainExpansionCounts;
+        expansionCounts.Clear();
+        var expansionUpCounts = _trainExpansionUpCounts;
+        expansionUpCounts.Clear();
+        var presentExpansions = _trainPresentExpansions;
+        presentExpansions.Clear();
         if (grouping)
         {
             foreach (var m in marks)
             {
-                var e = ExpansionData.ExpansionOf(m.NameId, m.ZoneName);
+                var e = TrainBlock(m);
                 if (!presentExpansions.Contains(e)) presentExpansions.Add(e);
 
                 // Custom flags are rally points and route notes, not quarry.
@@ -2101,7 +2153,9 @@ public sealed partial class Plugin : IDalamudPlugin
 
         (uint NameId, uint Instance, uint WorldId)? toRemove = null;
 
-        var rowHeight = (float)Math.Clamp(_config.TrainRowHeight, 14, 48);
+        var rowHeight = Math.Max(ImGui.GetFrameHeight(), (float)Math.Clamp(_config.TrainRowHeight, 14, 48));
+        var buttonSize = new Vector2(rowHeight);
+        var buttonStride = rowHeight + ImGui.GetStyle().ItemSpacing.X;
         const float leftPad = 6f;
         const float columnGap = 14f;
 
@@ -2122,7 +2176,7 @@ public sealed partial class Plugin : IDalamudPlugin
                 zoneColWidth = Math.Max(zoneColWidth, ImGui.CalcTextSize(measured).X);
             }
             nameColWidth = Math.Max(nameColWidth,
-                ImGui.CalcTextSize($"{m.Name}{ExpansionData.InstanceGlyph(m.Instance)}").X);
+                ImGui.CalcTextSize($"> {m.Name}{ExpansionData.InstanceGlyph(m.Instance)}").X);
         }
 
         // Room for the age label, sized off a worst case so it doesn't jitter
@@ -2132,21 +2186,32 @@ public sealed partial class Plugin : IDalamudPlugin
 
         // The remove button now sits at the far left, so every column shifts
         // right by its width.
-        const float removeColWidth = 22f;
+        var removeColWidth = Math.Max(22f, ImGui.CalcTextSize("x").X + 12f);
         var nameColumnX = leftPad + removeColWidth + zoneColWidth + columnGap;
         var buttonColumnX = nameColumnX + nameColWidth + columnGap;
 
-        var mouseXInWindow = ImGui.GetMousePos().X - ImGui.GetWindowPos().X;
+        var mouseXInWindow = ImGui.GetMousePos().X - ImGui.GetWindowPos().X + ImGui.GetScrollX();
         var dragging = _dragFromIndex != -1;
 
         // The block the loop is currently inside. Null rather than empty so the
         // very first mark always opens a block, even in the "Other" one.
         string? lastExpansion = null;
+        uint? lastWorld = null;
         var blockIsFolded = false;
 
         for (var i = 0; i < marks.Count; i++)
         {
             var mark = marks[i];
+
+            if (lastWorld != mark.WorldId)
+            {
+                lastWorld = mark.WorldId;
+                lastExpansion = null;
+                ImGui.Spacing();
+                ImGui.Separator();
+                ImGui.TextUnformatted(TrainWorldName(mark.WorldId, marks));
+                ImGui.Spacing();
+            }
 
             // A heading each time the expansion changes. The list is sorted
             // into blocks by this point, so a change is always the start of a
@@ -2158,11 +2223,11 @@ public sealed partial class Plugin : IDalamudPlugin
                 {
                     lastExpansion = blockExpansion;
                     blockIsFolded = DrawExpansionHeader(
-                        blockExpansion,
-                        presentExpansions.IndexOf(blockExpansion),
-                        expansionCounts.GetValueOrDefault(blockExpansion),
-                        expansionUpCounts.GetValueOrDefault(blockExpansion),
-                        rowHeight);
+                        TrainBlock(mark),
+                        presentExpansions.IndexOf(TrainBlock(mark)),
+                        expansionCounts.GetValueOrDefault(TrainBlock(mark)),
+                        expansionUpCounts.GetValueOrDefault(TrainBlock(mark)),
+                        rowHeight, presentExpansions);
                 }
 
                 // Skipped before anything is pushed, so a folded block leaves
@@ -2190,10 +2255,13 @@ public sealed partial class Plugin : IDalamudPlugin
 
             ImGui.SetCursorPosX(leftPad);
             ImGui.BeginGroup();
+            var rowY = ImGui.GetCursorPosY();
+            var textY = rowY + (rowHeight - ImGui.GetTextLineHeight()) / 2;
 
             // Remove button on the far left, well away from teleport so it
             // can't be hit by accident.
             ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, new Vector2(3, 0));
+            ImGui.SetCursorPosY(textY);
             if (ImGui.SmallButton("x"))
             {
                 toRemove = (mark.NameId, mark.Instance, mark.WorldId);
@@ -2206,26 +2274,22 @@ public sealed partial class Plugin : IDalamudPlugin
             ImGui.PushStyleVar(ImGuiStyleVar.ItemSpacing, Vector2.Zero);
             // Highlighted while it's the row being dragged.
             ImGui.SetCursorPosX(leftPad + removeColWidth);
-            // Say the world when it is not the one you are standing on. Marks
-            // are per-world now, so scouting across a world change genuinely
-            // produces two rows for the same name — which is correct, and
-            // unreadable without this.
-            var otherWorld = mark.WorldId != 0
-                             && mark.WorldId != _detector.CurrentWorldId()
-                             && !string.IsNullOrEmpty(mark.WorldName)
-                ? $" [{mark.WorldName}]"
-                : string.Empty;
-
             var zoneLabel = showZones
-                ? (mark.IsCustom ? $"⚑ 「{zone}」{otherWorld}" : $"「{zone}」{otherWorld}")
-                : otherWorld;
-            ImGui.Selectable(zoneLabel, _dragFromIndex == i, ImGuiSelectableFlags.None,
-                new Vector2(ImGui.GetWindowWidth(), rowHeight));
+                ? (mark.IsCustom ? $"⚑ 「{zone}」" : $"「{zone}」")
+                : string.Empty;
+            ImGui.SetCursorPosY(rowY);
+            var zonePosition = ImGui.GetCursorScreenPos() + new Vector2(0, textY - rowY);
+            var rowWidth = Math.Max(ImGui.GetContentRegionAvail().X,
+                buttonColumnX + buttonStride * (_config.ShowSpicing ? 3 : 2) + rowHeight - ImGui.GetCursorPosX());
+            ImGui.Selectable("##row", _dragFromIndex == i, ImGuiSelectableFlags.None,
+                new Vector2(rowWidth, rowHeight));
+            ImGui.GetWindowDrawList().AddText(zonePosition, ImGui.GetColorU32(ImGuiCol.Text), zoneLabel);
             ImGui.SetItemAllowOverlap();
             ImGui.PopStyleVar();
 
             ImGui.SameLine();
             ImGui.SetCursorPosX(nameColumnX);
+            ImGui.SetCursorPosY(textY);
             var ageSuffix = _config.ShowMarkAge ? $"  ({FormatAge(mark.LastSeenUtc)})" : string.Empty;
             var isCurrent = _currentMark is { } cur && cur == mark.Key;
             if (isCurrent)
@@ -2242,20 +2306,22 @@ public sealed partial class Plugin : IDalamudPlugin
 
             ImGui.SameLine();
             ImGui.SetCursorPosX(buttonColumnX);
+            ImGui.SetCursorPosY(rowY);
             // The game's own aetheryte crystal, pulled from its texture sheets
             // so it stays correct across patches and ships no assets. Falls back
             // to a text button if the icon can't be resolved.
-            var iconSize = new Vector2(rowHeight - 4, rowHeight - 4);
             var teleportPressed = false;
 
             if (_textureProvider.TryGetFromGameIcon(new GameIconLookup(AetheryteIconId), out var iconTex)
                 && iconTex.TryGetWrap(out var iconWrap, out _))
             {
-                teleportPressed = ImGui.ImageButton(iconWrap.Handle, iconSize);
+                teleportPressed = ImGui.Button("##teleport", buttonSize);
+                var iconMin = ImGui.GetItemRectMin() + new Vector2(2);
+                ImGui.GetWindowDrawList().AddImage(iconWrap.Handle, iconMin, iconMin + buttonSize - new Vector2(4));
             }
             else
             {
-                teleportPressed = ImGui.Button("tele", new Vector2(34f, rowHeight - 2));
+                teleportPressed = ImGui.Button("TP", buttonSize);
             }
 
             if (ImGui.IsItemHovered()) ImGui.SetTooltip("Teleport to the nearest aetheryte");
@@ -2287,7 +2353,8 @@ public sealed partial class Plugin : IDalamudPlugin
             if (_config.ShowSpicing)
             {
                 ImGui.SameLine();
-                ImGui.SetCursorPosX(buttonColumnX + 40);
+                ImGui.SetCursorPosX(buttonColumnX + buttonStride);
+                ImGui.SetCursorPosY(rowY);
                 // Capture the state BEFORE drawing the button. Testing
                 // mark.Spiced on both sides let the click flip it in between,
                 // so a push could go unmatched by its pop (or vice versa) —
@@ -2295,7 +2362,7 @@ public sealed partial class Plugin : IDalamudPlugin
                 var wasSpiced = mark.Spiced;
                 if (wasSpiced) ImGui.PushStyleColor(ImGuiCol.Text, new Vector4(1f, 0.35f, 0.35f, 1f));
 
-                if (ImGuiComponents.IconButton(FontAwesomeIcon.PepperHot))
+                if (TrainIconButton(FontAwesomeIcon.PepperHot, buttonSize))
                 {
                     mark.Spiced = !mark.Spiced;
                 }
@@ -2309,10 +2376,10 @@ public sealed partial class Plugin : IDalamudPlugin
             }
 
             ImGui.SameLine();
-            ImGui.SetCursorPosX(buttonColumnX + (_config.ShowSpicing ? 100 : 68));
+            ImGui.SetCursorPosX(buttonColumnX + buttonStride * (_config.ShowSpicing ? 2 : 1));
             ImGui.PushStyleVar(ImGuiStyleVar.FrameRounding, 99);
             ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, Vector2.Zero);
-            ImGui.SetCursorPosY(ImGui.GetCursorPosY() + 3);
+            ImGui.SetCursorPosY(textY);
             var dead = mark.Dead;
             ImGui.Checkbox("##dead", ref dead);
             ImGui.PopStyleVar(2);
@@ -2340,7 +2407,8 @@ public sealed partial class Plugin : IDalamudPlugin
             // one records only when the mark was found missing, which is all
             // that is actually known.
             ImGui.SameLine();
-            ImGui.SetCursorPosX(buttonColumnX + (_config.ShowSpicing ? 132 : 100));
+            ImGui.SetCursorPosX(buttonColumnX + buttonStride * (_config.ShowSpicing ? 3 : 2));
+            ImGui.SetCursorPosY(rowY);
 
             // Read before drawing, for the same reason the spicing button does:
             // the click flips it mid-row, and a push that went unmatched by its
@@ -2348,7 +2416,7 @@ public sealed partial class Plugin : IDalamudPlugin
             var wasSniped = mark.SnipedAtUtc != null;
             if (wasSniped) ImGui.PushStyleColor(ImGuiCol.Text, new Vector4(1f, 0.75f, 0.3f, 1f));
 
-            if (ImGuiComponents.IconButton(FontAwesomeIcon.Crosshairs))
+            if (TrainIconButton(FontAwesomeIcon.Crosshairs, buttonSize))
             {
                 if (mark.SnipedAtUtc != null)
                 {
@@ -2408,11 +2476,9 @@ public sealed partial class Plugin : IDalamudPlugin
             // expansion a mark belongs to is a fact about the mark rather than
             // an arrangement, so a drop that changed it would only be undone by
             // the next re-sort.
-            var droppableHere = !grouping
-                                || (_dragFromIndex >= 0 && _dragFromIndex < marks.Count
-                                    && ExpansionData.ExpansionOf(
-                                           marks[_dragFromIndex].NameId, marks[_dragFromIndex].ZoneName)
-                                       == ExpansionData.ExpansionOf(mark.NameId, mark.ZoneName));
+            var droppableHere = _dragFromIndex >= 0 && _dragFromIndex < marks.Count
+                                && marks[_dragFromIndex].WorldId == mark.WorldId
+                                && (!grouping || TrainBlock(marks[_dragFromIndex]) == TrainBlock(mark));
 
             if (dragging && ImGui.IsItemHovered() && droppableHere)
             {
@@ -2424,9 +2490,10 @@ public sealed partial class Plugin : IDalamudPlugin
             // into a pixel-hunt, and every row of a block means the same place.
             if (_dragExpansionFrom != -1 && ImGui.IsItemHovered())
             {
-                var over = presentExpansions.IndexOf(
-                    ExpansionData.ExpansionOf(mark.NameId, mark.ZoneName));
-                if (over >= 0) _dragExpansionTo = over;
+                var over = presentExpansions.IndexOf(TrainBlock(mark));
+                if (over >= 0 && _dragExpansionFrom < presentExpansions.Count
+                    && presentExpansions[_dragExpansionFrom].WorldId == mark.WorldId)
+                    _dragExpansionTo = over;
             }
 
             // --- click: a release with no drag in progress ---
@@ -2470,7 +2537,7 @@ public sealed partial class Plugin : IDalamudPlugin
         {
             var block = presentExpansions[_dragExpansionFrom];
             ImGui.BeginTooltip();
-            ImGui.TextUnformatted($"{block} ({expansionCounts.GetValueOrDefault(block)})");
+            ImGui.TextUnformatted($"{TrainWorldName(block.WorldId, marks)} / {block.Expansion} ({expansionCounts.GetValueOrDefault(block)})");
             ImGui.EndTooltip();
         }
 
@@ -2513,8 +2580,7 @@ public sealed partial class Plugin : IDalamudPlugin
             {
                 MoveExpansion(
                     presentExpansions[_dragExpansionFrom],
-                    presentExpansions[_dragExpansionTo],
-                    marks);
+                    presentExpansions[_dragExpansionTo]);
             }
 
             _dragExpansionFrom = -1;
@@ -2526,7 +2592,7 @@ public sealed partial class Plugin : IDalamudPlugin
         ImGui.Spacing();
         ImGui.TextDisabled(grouping
             ? "Click a mark to echo + flag it. Click a heading to fold it away, drag one to move the whole expansion."
-            : "Click a mark to echo + flag it. Drag a row and release where you want it.");
+            : "Click a mark to echo + flag it. Drag a row to reorder marks within its world.");
 
         DrawSRankWatchRows();
     }
@@ -2539,12 +2605,16 @@ public sealed partial class Plugin : IDalamudPlugin
     /// has finished drawing — see DrawTrainList for why that matters.
     /// </summary>
     private bool DrawExpansionHeader(
-        string expansion, int index, int count, int upCount, float rowHeight)
+        (uint WorldId, string Expansion) block, int index, int count, int upCount, float rowHeight,
+        List<(uint WorldId, string Expansion)> blocks)
     {
-        var collapsed = _config.CollapsedExpansions.Contains(expansion);
+        var expansion = block.Expansion;
+        var collapsed = _config.CollapsedExpansions.Contains(TrainBlockKey(block))
+                        || _config.CollapsedExpansions.Contains(expansion);
 
-        ImGui.PushID($"expansion_{expansion}");
+        ImGui.PushID($"expansion_{TrainBlockKey(block)}");
         ImGui.Spacing();
+        ImGui.SetCursorPosX(6f + Math.Max(22f, ImGui.CalcTextSize("x").X + 12f));
 
         // The up-count only earns its place while the block is shut, when the
         // rows that would have said it are not on screen.
@@ -2562,7 +2632,7 @@ public sealed partial class Plugin : IDalamudPlugin
 
         ImGui.PushStyleColor(ImGuiCol.Text, new Vector4(0.62f, 0.78f, 1f, 1f));
         ImGui.Selectable(label, _dragExpansionFrom == index,
-            ImGuiSelectableFlags.None, new Vector2(ImGui.GetWindowWidth(), rowHeight));
+            ImGuiSelectableFlags.None, new Vector2(0, rowHeight));
         ImGui.PopStyleColor();
 
         // Not decoration, and not optional. While an item is active — which a
@@ -2589,10 +2659,8 @@ public sealed partial class Plugin : IDalamudPlugin
             && ImGui.IsMouseReleased(ImGuiMouseButton.Left)
             && Math.Abs(ImGui.GetMouseDragDelta().Y) < 0.1f)
         {
-            if (collapsed) _config.CollapsedExpansions.Remove(expansion);
-            else _config.CollapsedExpansions.Add(expansion);
-
-            _config.Save();
+            SetTrainBlockCollapsed(block, !collapsed);
+            _config.DeferWindowStateSave();
             collapsed = !collapsed;
         }
 
@@ -2614,13 +2682,14 @@ public sealed partial class Plugin : IDalamudPlugin
             _dragExpansionFrom = index;
         }
 
-        if (_dragExpansionFrom != -1 && headerHovered)
+        if (_dragExpansionFrom >= 0 && _dragExpansionFrom < blocks.Count && headerHovered
+            && blocks[_dragExpansionFrom].WorldId == block.WorldId)
             _dragExpansionTo = index;
 
         if (_dragExpansionFrom == -1 && _dragFromIndex == -1 && headerHovered)
             ImGui.SetTooltip(collapsed
-                ? "Click to open this expansion. Drag to move it up or down the train."
-                : "Click to fold this expansion away. Drag to move it up or down the train.");
+                ? "Click to open this expansion. Drag to reorder expansions within this world."
+                : "Click to fold this expansion away. Drag to reorder expansions within this world.");
 
         ImGui.PopID();
         return collapsed;
@@ -2628,11 +2697,25 @@ public sealed partial class Plugin : IDalamudPlugin
 
     private void AutoExpandNextExpansion(List<DetectedMark> allMarks)
     {
+        var changed = _trainProgressInput.Count != allMarks.Count;
+        for (var i = 0; i < allMarks.Count; i++)
+        {
+            var state = (TrainBlock(allMarks[i]), allMarks[i].Dead);
+            if (i == _trainProgressInput.Count) _trainProgressInput.Add(state);
+            else { changed |= _trainProgressInput[i] != state; _trainProgressInput[i] = state; }
+        }
+        if (_trainProgressInput.Count > allMarks.Count)
+            _trainProgressInput.RemoveRange(allMarks.Count, _trainProgressInput.Count - allMarks.Count);
+        if (!changed) return;
         var opened = false;
-        foreach (var expansion in _expansionProgress.Update(allMarks.Select(mark =>
-            (ExpansionData.ExpansionOf(mark.NameId, mark.ZoneName), mark.Dead))))
-            opened |= _config.CollapsedExpansions.Remove(expansion);
-        if (opened) _config.Save();
+        var blocks = allMarks.Select(TrainBlock).Distinct().ToDictionary(TrainBlockKey);
+        foreach (var key in _expansionProgress.Update(allMarks.Select(mark =>
+            (TrainBlockKey(TrainBlock(mark)), mark.Dead))))
+        {
+            SetTrainBlockCollapsed(blocks[key], false);
+            opened = true;
+        }
+        if (opened) _config.DeferWindowStateSave();
     }
 
     /// <summary>
@@ -2644,12 +2727,14 @@ public sealed partial class Plugin : IDalamudPlugin
     /// </summary>
     private List<DetectedMark> GroupByExpansion(List<DetectedMark> marks)
     {
-        if (_config.SyncEnabled && _config.SyncShareTrain)
-            return Sync.SharedRouteGrouping.GroupInRouteOrder(marks, m => ExpansionData.ExpansionOf(m.NameId, m.ZoneName));
-        var order = ExpansionDisplayOrder(marks);
-        return marks
-            .OrderBy(m => order.IndexOf(ExpansionData.ExpansionOf(m.NameId, m.ZoneName)))
-            .ToList();
+        if (!_config.GroupTrainByExpansion || (_config.SyncEnabled && _config.SyncShareTrain))
+            return Sync.SharedRouteGrouping.GroupByWorldInRouteOrder(marks, m => m.WorldId,
+                m => ExpansionData.ExpansionOf(m.NameId, m.ZoneName), _config.GroupTrainByExpansion);
+        return marks.GroupBy(m => m.WorldId).SelectMany(world =>
+        {
+            var order = ExpansionDisplayOrder(world);
+            return world.OrderBy(m => order.IndexOf(ExpansionData.ExpansionOf(m.NameId, m.ZoneName)));
+        }).ToList();
     }
 
     /// <summary>
@@ -2674,7 +2759,8 @@ public sealed partial class Plugin : IDalamudPlugin
         var order = new List<string>();
 
         if (!_config.SyncEnabled || !_config.SyncShareTrain)
-            foreach (var name in _config.ExpansionOrder)
+            foreach (var name in _config.WorldExpansionOrder.GetValueOrDefault(
+                         marks.FirstOrDefault()?.WorldId ?? 0, _config.ExpansionOrder))
                 if (!order.Contains(name)) order.Add(name);
 
         foreach (var mark in marks)
@@ -2703,20 +2789,59 @@ public sealed partial class Plugin : IDalamudPlugin
     /// recording only the visible ones would let the rest drift about as marks
     /// were scouted.
     /// </summary>
-    private void MoveExpansion(string moving, string target, IEnumerable<DetectedMark> marks)
+    private void MoveExpansion((uint WorldId, string Expansion) moving,
+        (uint WorldId, string Expansion) target)
     {
-        var order = ExpansionDisplayOrder(marks);
-        var from = order.IndexOf(moving);
-        var to = order.IndexOf(target);
+        if (moving.WorldId != target.WorldId) return;
+        var allMarks = _detector.Ordered();
+        var order = ExpansionDisplayOrder(allMarks.Where(m => m.WorldId == moving.WorldId));
+        var from = order.IndexOf(moving.Expansion);
+        var to = order.IndexOf(target.Expansion);
         if (from < 0 || to < 0 || from == to) return;
 
         order.RemoveAt(from);
-        order.Insert(to, moving);
+        order.Insert(to, moving.Expansion);
 
-        _config.ExpansionOrder = order;
-        _detector.ApplyOrder(_detector.Ordered()
-            .OrderBy(m => order.IndexOf(ExpansionData.ExpansionOf(m.NameId, m.ZoneName))).ToList());
+        _config.WorldExpansionOrder[moving.WorldId] = order;
+        _detector.ApplyOrder(allMarks.GroupBy(m => m.WorldId).SelectMany(world =>
+            world.Key == moving.WorldId
+                ? world.OrderBy(m => order.IndexOf(ExpansionData.ExpansionOf(m.NameId, m.ZoneName))).ToList()
+                : world.ToList()).ToList());
         _config.Save();
+    }
+
+    private static (uint WorldId, string Expansion) TrainBlock(DetectedMark mark) =>
+        (mark.WorldId, ExpansionData.ExpansionOf(mark.NameId, mark.ZoneName));
+
+    private static string TrainBlockKey((uint WorldId, string Expansion) block) =>
+        $"{block.WorldId}:{block.Expansion}";
+
+    private string TrainWorldName(uint worldId, IEnumerable<DetectedMark> marks) =>
+        marks.FirstOrDefault(m => m.WorldId == worldId && !string.IsNullOrWhiteSpace(m.WorldName))?.WorldName
+        ?? (worldId == 0 ? "World not recorded" : _worldData.NameOf(worldId));
+
+    private void SetTrainBlockCollapsed((uint WorldId, string Expansion) block, bool collapsed)
+    {
+        // Convert the old expansion-wide preference without opening the same leg on other worlds.
+        if (_config.CollapsedExpansions.Remove(block.Expansion))
+            foreach (var other in _detector.Ordered().Select(TrainBlock).Distinct()
+                         .Where(other => other.Expansion == block.Expansion))
+            {
+                var otherKey = TrainBlockKey(other);
+                if (!_config.CollapsedExpansions.Contains(otherKey)) _config.CollapsedExpansions.Add(otherKey);
+            }
+        var key = TrainBlockKey(block);
+        if (collapsed)
+        {
+            if (!_config.CollapsedExpansions.Contains(key)) _config.CollapsedExpansions.Add(key);
+        }
+        else _config.CollapsedExpansions.Remove(key);
+    }
+
+    private static bool TrainIconButton(FontAwesomeIcon icon, Vector2 size)
+    {
+        using var font = ImRaii.PushFont(UiBuilder.IconFont);
+        return ImGui.Button(icon.ToIconString(), size);
     }
 
     /// <summary>
@@ -2809,7 +2934,7 @@ public sealed partial class Plugin : IDalamudPlugin
             ImGui.TextWrapped(_lastPostResult);
             ImGui.Separator();
         }
-        if (ImGui.BeginChild("Train workspace", new Vector2(0, -footerHeight), false))
+        if (ImGui.BeginChild("Train workspace", new Vector2(0, -footerHeight), false, ImGuiWindowFlags.HorizontalScrollbar))
         {
             if (ImGui.BeginTabBar("Train views"))
             {
@@ -2881,7 +3006,7 @@ public sealed partial class Plugin : IDalamudPlugin
             // the list scrolls underneath.
             ImGui.SetNextItemOpen(_config.TrainPopoutControlsExpanded, ImGuiCond.Always);
             var expanded = ImGui.CollapsingHeader("Train controls & scouts");
-            if (expanded != _config.TrainPopoutControlsExpanded) { _config.TrainPopoutControlsExpanded = expanded; _config.Save(); }
+            if (expanded != _config.TrainPopoutControlsExpanded) { _config.TrainPopoutControlsExpanded = expanded; _config.DeferWindowStateSave(); }
             if (expanded)
             {
                 DrawTrainScouts();
@@ -2892,7 +3017,7 @@ public sealed partial class Plugin : IDalamudPlugin
             // Reserve room at the bottom for the footer, so the list scrolls
             // between two fixed strips rather than under them.
             var footerHeight = TrainFooterHeight();
-            if (ImGui.BeginChild("trainScroll", new Vector2(0, -footerHeight), false))
+            if (ImGui.BeginChild("trainScroll", new Vector2(0, -footerHeight), false, ImGuiWindowFlags.HorizontalScrollbar))
             {
                 DrawTrainList(showZones: !_config.HideZonesInPopout);
             }
@@ -3412,9 +3537,9 @@ public sealed partial class Plugin : IDalamudPlugin
             ImGui.Separator();
             ImGui.Spacing();
             ImGui.TextWrapped("Assumed Sniped (not seen this train)");
-            foreach (var (expansion, names) in neverSeen)
+            foreach (var group in neverSeen)
             {
-                ImGui.TextWrapped($"{expansion}: {string.Join(", ", names)}");
+                ImGui.TextWrapped($"{group.WorldName} / {group.Expansion}: {string.Join(", ", group.Marks)}");
             }
         }
     }
@@ -3582,82 +3707,65 @@ public sealed partial class Plugin : IDalamudPlugin
             ? "Following every mark death, including ones killed by other people (Tally tab)."
             : "Following the marks you were credited with (Tally tab).";
 
+    private bool _disposed;
+
     public void Dispose()
     {
-        // The tally first: its tracker and seeder both run off framework
-        // events, and the cancellation token stops a queued seed starting up
-        // after everything it reads has been torn down.
-        _disposal.Cancel();
-
-        _tallyIpc.KillPublished -= OnTallyKillPublished;
-        _tracker.OnKill -= AnnounceTallyKill;
-        _tracker.OnMarkDeath -= OnAnyMarkDeath;
-        _tracker.OnKill -= _tallyIpc.PublishCredited;
-        _tracker.OnMarkDeath -= _tallyIpc.PublishMarkDeath;
-        _tracker.Dispose();
-        _tallyIpc.Dispose();
-
-        // After the tracker, which reads both on every poll.
-        _damage.Dispose();
-        _reward.Dispose();
-
-        _clientState.Login -= PauseScoutingOnLogin;
-        HuntTally.Service.ClientState.Login -= OnTallyLogin;
-        HuntTally.Service.ClientState.Logout -= OnTallyLogout;
-        HuntTally.Service.Framework.Update -= OnTallyFrameworkUpdate;
-        _seeder.Dispose();
-
-        _trainIpc.Dispose();
-
-        _pluginInterface.UiBuilder.OpenMainUi -= OpenMainWindow;
-        _tallyWindows.RemoveAllWindows();
-        _tallyWindow.Dispose();
-
-        // Saving is queued rather than immediate, so the last counts of the
-        // session only reach disk because of this. A no-op while the tally is
-        // stood down, which is the point of standing it down.
-        _tallyConfig.Flush(force: true);
-
-        _characters.Dispose();
-        _disposal.Dispose();
-
-        _watcher.Dispose();
-        _zoneReminder.Dispose();
-        _counter.PersonalKill -= _sync.RecordCounterKill;
-        _counter.Dispose();
-        _spawnWatch.Dispose();
-        _mapOverlay.Dispose();
-        _ssEvent.Dispose();
-        _sync.RemoteTrainCleared -= OnRemoteTrainCleared;
-        _sync.ReportedRemoval -= OnReportedRemoval;
-        _srankTravel.Dispose();
-        _sync.SRankSpawned -= OnRemoteSRankSpawn;
-        _sync.Dispose();
-
-        try
-        {
-            KamiToolKitLibrary.Dispose();
-        }
-        catch (Exception ex)
-        {
-            _log.Warning(ex, "KamiToolKit did not shut down cleanly.");
-        }
-        _detector.OtherRankDetected -= OnSightingDetected;
-        _clientState.TerritoryChanged -= _detector.ResetAnnouncements;
-        _watcher.PersistRequested -= PersistTrain;
-
-        // One last write, so anything since the last periodic save survives a
-        // clean unload too.
-        PersistTrain();
-        _pluginInterface.UiBuilder.Draw -= DrawUI;
-        _pluginInterface.UiBuilder.OpenConfigUi -= OnOpenConfigUi;
-        _framework.Update -= OnPluginFrameworkUpdate;
-        UnregisterCommands();
+        if (_disposed) return;
+        _disposed = true;
+        var cleanup = new CleanupSequence();
+        // Retire public callbacks first. Each resource gets a cleanup attempt even
+        // if an earlier component fails.
+        cleanup.Run("_pluginInterface.UiBuilder.Draw", () => { _pluginInterface.UiBuilder.Draw -= DrawUI; });
+        cleanup.Run("_pluginInterface.UiBuilder.OpenConfigUi", () => { _pluginInterface.UiBuilder.OpenConfigUi -= OnOpenConfigUi; });
+        cleanup.Run("_pluginInterface.UiBuilder.OpenMainUi", () => { _pluginInterface.UiBuilder.OpenMainUi -= OpenMainWindow; });
+        cleanup.Run("_framework.Update", () => { _framework.Update -= OnPluginFrameworkUpdate; });
+        cleanup.Run("HuntTally.Service.Framework.Update", () => { HuntTally.Service.Framework.Update -= OnTallyFrameworkUpdate; });
+        cleanup.Run("_clientState.Login", () => { _clientState.Login -= PauseScoutingOnLogin; });
+        cleanup.Run("HuntTally.Service.ClientState.Login", () => { HuntTally.Service.ClientState.Login -= OnTallyLogin; });
+        cleanup.Run("HuntTally.Service.ClientState.Logout", () => { HuntTally.Service.ClientState.Logout -= OnTallyLogout; });
+        cleanup.Run("_watcher.PersistRequested", () => { _watcher.PersistRequested -= PersistTrain; });
+        cleanup.Run("UnregisterCommands", () => { UnregisterCommands(); });
+        cleanup.Run("_disposal.Cancel", () => { _disposal.Cancel(); });
+        cleanup.Run("_tallyIpc.KillPublished", () => { _tallyIpc.KillPublished -= OnTallyKillPublished; });
+        cleanup.Run("_tracker.OnKill", () => { _tracker.OnKill -= AnnounceTallyKill; });
+        cleanup.Run("_tracker.OnMarkDeath", () => { _tracker.OnMarkDeath -= OnAnyMarkDeath; });
+        cleanup.Run("_tracker.OnKill", () => { _tracker.OnKill -= _tallyIpc.PublishCredited; });
+        cleanup.Run("_tracker.OnMarkDeath", () => { _tracker.OnMarkDeath -= _tallyIpc.PublishMarkDeath; });
+        cleanup.Run("_tracker.Dispose", () => { _tracker.Dispose(); });
+        cleanup.Run("_tallyIpc.Dispose", () => { _tallyIpc.Dispose(); });
+        cleanup.Run("_damage.Dispose", () => { _damage.Dispose(); });
+        cleanup.Run("_notifier.Dispose", () => _notifier.Dispose());
+        cleanup.Run("_reward.Dispose", () => { _reward.Dispose(); });
+        cleanup.Run("_seeder.Dispose", () => { _seeder.Dispose(); });
+        cleanup.Run("_trainIpc.Dispose", () => { _trainIpc.Dispose(); });
+        cleanup.Run("_tallyWindows.RemoveAllWindows", () => { _tallyWindows.RemoveAllWindows(); });
+        cleanup.Run("_tallyWindow.Dispose", () => { _tallyWindow.Dispose(); });
+        cleanup.Run("_tallyConfig.Flush", () => { _tallyConfig.Flush(force: true); });
+        cleanup.Run("_characters.Dispose", () => { _characters.Dispose(); });
+        cleanup.Run("_disposal.Dispose", () => { _disposal.Dispose(); });
+        cleanup.Run("_watcher.Dispose", () => { _watcher.Dispose(); });
+        cleanup.Run("_zoneReminder.Dispose", () => { _zoneReminder.Dispose(); });
+        cleanup.Run("_counter.PersonalKill", () => { _counter.PersonalKill -= _sync.RecordCounterKill; });
+        cleanup.Run("_counter.Dispose", () => { _counter.Dispose(); });
+        cleanup.Run("_spawnWatch.Dispose", () => { _spawnWatch.Dispose(); });
+        cleanup.Run("_mapOverlay.Dispose", () => { _mapOverlay.Dispose(); });
+        cleanup.Run("_ssEvent.Dispose", () => { _ssEvent.Dispose(); });
+        cleanup.Run("_sync.RemoteTrainCleared", () => { _sync.RemoteTrainCleared -= OnRemoteTrainCleared; });
+        cleanup.Run("_sync.ReportedRemoval", () => { _sync.ReportedRemoval -= OnReportedRemoval; });
+        cleanup.Run("_srankTravel.Dispose", () => { _srankTravel.Dispose(); });
+        cleanup.Run("_sync.SRankSpawned", () => { _sync.SRankSpawned -= OnRemoteSRankSpawn; });
+        cleanup.Run("_sync.Dispose", () => { _sync.Dispose(); });
+        cleanup.Run("KamiToolKitLibrary.Dispose", () => { KamiToolKitLibrary.Dispose(); });
+        cleanup.Run("_detector.OtherRankDetected", () => { _detector.OtherRankDetected -= OnSightingDetected; });
+        cleanup.Run("_clientState.TerritoryChanged", () => { _clientState.TerritoryChanged -= _detector.ResetAnnouncements; });
+        cleanup.Run("PersistTrain", () => { PersistTrain(); });
+        cleanup.Run("Window state", () => _config.FlushWindowStateSave());
+        try { cleanup.ThrowIfFailed(); }
+        catch (AggregateException ex) { _log.Error(ex, "Plugin cleanup encountered errors."); }
     }
 
-    // ---------------------------------------------------------------------
     // Sync
-    // ---------------------------------------------------------------------
 
     private void OnSRankCommand(string command, string args) => _srankWindow.Toggle();
 

@@ -310,24 +310,32 @@ public sealed class MainWindow : Window, IDisposable
         ImGui.TableSetupColumn("Last killed", ImGuiTableColumnFlags.WidthFixed, 130);
         ImGui.TableHeadersRow();
 
-        foreach (var record in marksRows)
+        var clipper = ImGui.ImGuiListClipper();
+        try
         {
-            ImGui.TableNextRow();
+            clipper.Begin(marksRows.Count);
+            while (clipper.Step())
+                for (var i = clipper.DisplayStart; i < clipper.DisplayEnd; i++)
+                {
+                    var record = marksRows[i];
+                    ImGui.TableNextRow();
 
-            ImGui.TableNextColumn();
-            ImGui.TextUnformatted(record.Name);
+                    ImGui.TableNextColumn();
+                    ImGui.TextUnformatted(record.Name);
 
-            ImGui.TableNextColumn();
-            ImGui.TextUnformatted(MarkData.RankLabel(record.Rank));
+                    ImGui.TableNextColumn();
+                    ImGui.TextUnformatted(MarkData.RankLabel(record.Rank));
 
-            ImGui.TableNextColumn();
-            ImGui.TextUnformatted(Num(record.Count));
+                    ImGui.TableNextColumn();
+                    ImGui.TextUnformatted(Num(record.Count));
 
-            ImGui.TableNextColumn();
-            ImGui.TextUnformatted(record.LastKill == default
-                ? "-"
-                : record.LastKill.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture));
+                    ImGui.TableNextColumn();
+                    ImGui.TextUnformatted(record.LastKill == default
+                        ? "-"
+                        : record.LastKill.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture));
+                }
         }
+        finally { clipper.Destroy(); }
 
         ImGui.EndTable();
     }

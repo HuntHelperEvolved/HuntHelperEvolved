@@ -66,8 +66,10 @@ public sealed partial class Plugin
 
     private void UnregisterCommands()
     {
-        _pluginInterface.ActivePluginsChanged -= OnCommandPluginsChanged;
-        foreach (var command in _ownedCommands.Keys) _commandManager.RemoveHandler(command);
-        _ownedCommands.Clear();
+        var cleanup = new CleanupSequence();
+        cleanup.Run("command help callback", () => _pluginInterface.ActivePluginsChanged -= OnCommandPluginsChanged);
+        foreach (var command in _ownedCommands.Keys.ToArray())
+            cleanup.Run("command " + command, () => { _commandManager.RemoveHandler(command); _ownedCommands.Remove(command); });
+        cleanup.ThrowIfFailed();
     }
 }

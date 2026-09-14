@@ -6,12 +6,8 @@ using FFXIVClientStructs.FFXIV.Client.Game.UI;
 namespace HuntTally;
 
 /// <summary>
-/// Reads achievement progress and uses it to raise category baselines, never
-/// to lower them.
-///
-/// An achievement reports one cumulative number with no per-mark breakdown, so
-/// the value is stored as a baseline that sits alongside counted kills rather
-/// than being distributed across the mark table.
+/// Achievement totals can only raise category baselines; they have no per-mark breakdown.
+/// Baselines are stored separately from counted kills.
 /// </summary>
 public sealed class AchievementSeeder : IDisposable
 {
@@ -49,7 +45,13 @@ public sealed class AchievementSeeder : IDisposable
         Service.Framework.Update += OnUpdate;
     }
 
-    public void Dispose() => Service.Framework.Update -= OnUpdate;
+    private bool disposed;
+    public void Dispose()
+    {
+        disposed = true;
+        running = false;
+        Service.Framework.Update -= OnUpdate;
+    }
 
     /// <summary>
     /// Resolves every definition's achievement id from its name prefix and
@@ -105,7 +107,7 @@ public sealed class AchievementSeeder : IDisposable
     /// </summary>
     public void Start()
     {
-        if (running)
+        if (disposed || running)
             return;
 
         if (config.ResolvedAchievements.Count == 0 || resolvedNames.Count == 0)
@@ -139,7 +141,7 @@ public sealed class AchievementSeeder : IDisposable
 
     private unsafe void OnUpdate(Dalamud.Plugin.Services.IFramework framework)
     {
-        if (!running)
+        if (disposed || !running)
             return;
 
         if (!Service.ClientState.IsLoggedIn)
@@ -147,6 +149,8 @@ public sealed class AchievementSeeder : IDisposable
             Abort("Not logged in.");
             return;
         }
+
+        if (!HuntHelperEvolved.GameReadiness.CanReadCharacters) return;
 
         // A run belongs to one character. If identity changed underneath us,
         // stop rather than write one character's progress onto another.
@@ -233,13 +237,8 @@ public sealed class AchievementSeeder : IDisposable
     }
 
     /// <summary>
-    /// Reads the reply for the outstanding request.
-    ///
-    /// The id is checked against the one we asked for. Serialising our own
-    /// requests is not enough on its own: the game's own achievement window and
-    /// any other plugin can request progress too, and reading someone else's
-    /// reply would write a wrong baseline that <see cref="Apply"/> can never
-    /// lower again.
+    /// Checks the reply ID because the game and other plugins can also request progress.
+    /// Accepting another request's reply could raise a baseline that <see cref="Apply"/> cannot lower.
     /// </summary>
     private unsafe bool TryReadProgress(Achievement* achievement, uint expectedId, out uint current)
     {

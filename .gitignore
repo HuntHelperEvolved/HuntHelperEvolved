@@ -13,6 +13,11 @@ release-staging/
 **/TestResults/
 *.dmp
 
+# Local validation artifacts
+**/__pycache__/
+audit.json
+HuntHelperEvolved-testing.zip
+
 # Internal notes stay outside the published repository.
 /TESTING.md
 /SYNC-REVIEW.md

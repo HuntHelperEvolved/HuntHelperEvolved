@@ -10,6 +10,9 @@ public static class SRankBoardFilter
         return now >= window.Start && now < window.End ? SRankNameState.Ready
             : OpensSoon(window.Start, now) ? SRankNameState.OpeningSoon : SRankNameState.ConditionsUnmet;
     }
+    public static bool MatchesConditions(bool hideUnmet, SRankPhase phase, bool timed, ConditionWindow? condition, System.DateTime now) =>
+        !hideUnmet || NameState(phase, timed, condition, now) != SRankNameState.ConditionsUnmet;
+
     public static bool OpensSoon(System.DateTime start, System.DateTime now) =>
         start > now && start - now < System.TimeSpan.FromMinutes(5);
     public static bool Available(SRankPhase phase) => phase is SRankPhase.Window or SRankPhase.Forced;

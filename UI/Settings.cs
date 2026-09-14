@@ -239,6 +239,18 @@ public sealed partial class Plugin
         ImGui.Spacing();
     }
 
+    private void DrawOccupiedSpawnPointSetting()
+    {
+        var hideOccupied = _config.HideOccupiedSpawnPoints;
+        if (ImGui.Checkbox("Hide occupied spawn points", ref hideOccupied))
+        {
+            _config.HideOccupiedSpawnPoints = hideOccupied;
+            _config.DeferWindowStateSave();
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Hide the nearest matching spawn point while a live mark is shown within 2 map coordinates. Ambiguous matches stay visible. The point returns when the mark moves away, dies or is no longer visible.");
+    }
+
     private void DrawMapPreferences()
     {
         var mapPoints = _config.ShowSpawnPointsOnMap;
@@ -248,6 +260,7 @@ public sealed partial class Plugin
             _config.Save();
         }
         ImGui.TextDisabled("Where a mark could be. A zone's B-rank points alone can run to sixty dots.");
+        DrawOccupiedSpawnPointSetting();
 
         var mapMarks = _config.ShowMarksOnMap;
         if (ImGui.Checkbox("Show live marks on the in-game map", ref mapMarks))
@@ -399,6 +412,10 @@ public sealed partial class Plugin
             _sync.ApplySettings();
         }
 
+        var plaintext = _config.SyncAllowPlaintext;
+        if (ImGui.Checkbox("Allow unencrypted development connections",ref plaintext))
+        { _config.SyncAllowPlaintext=plaintext;_config.Save();_sync.ApplySettings(); }
+        if (plaintext) ImGui.TextWrapped("ws:// exposes the group password and shared data. Use only on a trusted development network.");
         ImGui.SetNextItemWidth(Math.Min(360, Math.Max(100, ImGui.GetContentRegionAvail().X - 110)));
         var url = _config.SyncServerUrl;
         if (ImGui.InputTextWithHint("Server URL", "wss://hunts.example.com/ws", ref url, 512))

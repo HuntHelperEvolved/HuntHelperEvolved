@@ -43,14 +43,17 @@ public sealed class RewardWatch : IDisposable
         Service.Chat.LogMessage += OnLogMessage;
     }
 
+    private bool disposed;
+
     public void Dispose()
     {
+        disposed = true;
         Service.Chat.LogMessage -= OnLogMessage;
     }
 
     private void OnLogMessage(ILogMessage message)
     {
-        if (message.LogMessageId != RewardLogMessageId)
+        if (disposed || message.LogMessageId != RewardLogMessageId)
             return;
 
         Seen++;

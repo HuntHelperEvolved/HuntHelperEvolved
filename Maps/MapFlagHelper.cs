@@ -28,7 +28,8 @@ public static class MapFlagHelper
     public static bool FlagPosition(
         IGameGui gameGui, uint territoryId, uint mapId, uint instance, float mapX, float mapY)
     {
-        if (mapId == 0 || territoryId == 0) return false;
+        if (!GameReadiness.CanReadCharacters || mapId == 0 || territoryId == 0
+            || !float.IsFinite(mapX) || !float.IsFinite(mapY)) return false;
 
         var seString = SeString.CreateMapLinkWithInstance(
             territoryId,

@@ -7,43 +7,18 @@ using System.Numerics;
 namespace HuntHelperEvolved;
 
 /// <summary>
-/// A live mark's name and health, written on the map beside its dot.
-///
-/// Hunt Helper only ever puts this in a tooltip and in its priority-mob panel,
-/// so you have to go looking for it. The point of writing it on the map is that
-/// a scout can see at a glance which marks are up and which are already being
-/// pulled, without hovering each dot in turn.
-///
-/// The marker itself draws nothing. It is an anchor at the mark's position with
-/// a text node hung off it, and its own size is zero on purpose: MapMarkerNode
-/// hands its size to the image node it keeps for an icon, so zero is what keeps
-/// that icon — which we never set, and which defaults to id 0 — from drawing
-/// anything at all. Position then lands on the mark rather than on the corner
-/// of a box around it.
-///
-/// The offset that puts the text under the dot is in node space, not map
-/// coordinates, so it is scaled by exactly what scales the dot: the label stays
-/// the same distance from it at every zoom, instead of drifting away as you
-/// zoom in.
+/// Anchors a live name and health label with zero size to suppress the default icon.
+/// The text offset uses node space so it scales with the mark's dot at every zoom.
 /// </summary>
 public sealed class MarkLabelMarker : MapMarkerNode
 {
     private readonly TextNode _text;
 
-    // Native text layout is redone on assignment, so only assign when it would
-    // actually say something different. Health changes a few times a second at
-    // most; this runs every frame.
+    // Assign only changed text to avoid rebuilding native text layout every frame.
     private string _lastText = string.Empty;
 
     /// <summary>
-    /// What the label should say, asked afresh each frame.
-    ///
-    /// A provider rather than a fixed string for the same reason the player
-    /// guides use one for their position: health changes constantly, and
-    /// nothing else here would notice. Rebuilding every marker on the map each
-    /// time a mark took damage would blink the lot of them several times a
-    /// second, which is exactly what the guides stopped doing.
-    ///
+    /// Read each frame to update health without rebuilding markers and causing flicker.
     /// Returning null or empty hides the label without removing it.
     /// </summary>
     public Func<string?>? TextProvider { get; set; }
@@ -62,10 +37,7 @@ public sealed class MarkLabelMarker : MapMarkerNode
             TextColor = colour,
             TextOutlineColor = outlineColour,
 
-            // Two lines, the name over the health, anchored at the top centre
-            // of the box so the block stays centred on the dot however long
-            // the name is. Edge is the outline the game's own map labels carry,
-            // and without it white text vanishes over a pale map.
+            // Centre name and health over the dot; the outline keeps text legible on pale maps.
             AlignmentType = AlignmentType.Top,
             TextFlags = TextFlags.Edge | TextFlags.MultiLine,
 

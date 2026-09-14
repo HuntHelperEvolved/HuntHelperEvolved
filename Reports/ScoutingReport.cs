@@ -8,18 +8,8 @@ namespace HuntHelperEvolved;
 public static class ScoutingReport
 {
     /// <summary>
-    /// One block per expansion with at least one mark in the current scout (ARR ->
-    /// Dawntrail order): a bolded "N marks up" count, a "Down:" line for any
-    /// scouted marks that were already dead when found (sniped by someone else
-    /// before the scout got there), and a "Not yet scouted:" line naming any marks
-    /// from that expansion's known named roster that weren't encountered at all
-    /// this scout. The roster check is by mark name/ModelID only, not instance
-    /// count — it answers "was this mark seen anywhere," not "were every one of
-    /// its concurrent zone instances found," since the latter isn't knowable
-    /// without having actually walked all of them. Deliberately no "N/total"
-    /// fraction on the up-count itself: a fixed total would go stale the moment a
-    /// zone splits across extra instances, and a scout-only total reads as
-    /// misleadingly "complete."
+    /// Groups up, down and unscouted marks by expansion, checking the roster by model ID.
+    /// Omits a completion fraction because the total number of zone instances is unknown.
     /// </summary>
     public static string BuildSummary(List<TrainMobRecord> marks)
     {

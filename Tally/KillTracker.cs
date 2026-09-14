@@ -135,8 +135,12 @@ public sealed class KillTracker : IDisposable
         Service.ClientState.TerritoryChanged += OnTerritoryChanged;
     }
 
+    private bool _disposed;
+
     public void Dispose()
     {
+        if (_disposed) return;
+        _disposed = true;
         Service.Framework.Update -= OnUpdate;
         Service.ClientState.TerritoryChanged -= OnTerritoryChanged;
     }
@@ -154,6 +158,7 @@ public sealed class KillTracker : IDisposable
 
     private void OnUpdate(Dalamud.Plugin.Services.IFramework framework)
     {
+        if (_disposed) return;
         // Sampled every frame, not once per poll. Killing a mark in a single
         // hit holds a combat state for a few milliseconds at most; a 4Hz sample
         // never sees it, which is exactly why those kills went uncounted.
@@ -174,8 +179,8 @@ public sealed class KillTracker : IDisposable
         reward.Prune(now);
 
         // API 15 removed IClientState.LocalPlayer; it lives on the object table now.
-        var player = Service.Objects.LocalPlayer;
-        if (player is null || !Service.ClientState.IsLoggedIn)
+        var player = HuntHelperEvolved.GameReadiness.CanReadCharacters ? Service.Objects.LocalPlayer : null;
+        if (player is null)
         {
             // Between zones or logged out. Drop state rather than risk
             // counting a stale entry when the object table is repopulated.

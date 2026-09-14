@@ -210,6 +210,8 @@ public sealed class HuntCounter : IDisposable
     /// window. Measured from the last kill, so an active grind is never reset
     /// out from under the player.
     /// </summary>
+    private readonly List<string> _staleCounterKeys = new();
+
     public void ApplyAutoResets()
     {
         var now = DateTime.UtcNow;
@@ -224,13 +226,13 @@ public sealed class HuntCounter : IDisposable
 
             // Every world tracked for this mark, since a count on a world the
             // player has left should still age out.
-            var stale = _config.CounterLastKill
-                .Where(kv => kv.Key.EndsWith($":{def.MarkName}", StringComparison.Ordinal)
-                             && now - kv.Value >= window)
-                .Select(kv => kv.Key)
-                .ToList();
+            var suffix = ":" + def.MarkName;
+            _staleCounterKeys.Clear();
+            foreach (var (key, killedAt) in _config.CounterLastKill)
+                if (key.EndsWith(suffix, StringComparison.Ordinal) && now - killedAt >= window)
+                    _staleCounterKeys.Add(key);
 
-            foreach (var markKey in stale)
+            foreach (var markKey in _staleCounterKeys)
             {
                 var prefix = markKey[..(markKey.LastIndexOf(':') + 1)];
                 foreach (var mob in def.MobNames)

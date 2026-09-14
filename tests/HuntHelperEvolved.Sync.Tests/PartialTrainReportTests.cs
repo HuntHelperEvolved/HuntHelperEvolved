@@ -10,6 +10,41 @@ namespace HuntHelperEvolved.Tests;
 /// </summary>
 public class PartialTrainReportTests
 {
+    [Fact]
+    public void MateusDawntrailDoesNotReportOrConsumeDiabolosDawntrail()
+    {
+        var mateus = Killed(Dt); mateus.WorldId = 37; mateus.WorldName = "Mateus";
+        var diabolos = Alive(Dt); diabolos.WorldId = 62; diabolos.WorldName = "Diabolos";
+        var gone = Sniped(13362); gone.WorldId = 62; gone.WorldName = "Diabolos";
+        var marks = new List<TrackedMark> { mateus, diabolos, gone };
+        Assert.Equal(mateus.Key, Assert.Single(TrainReport.ForReport(marks)).Key);
+        Assert.Equal(mateus.Key, Assert.Single(TrainReport.SubmittedMarks(marks)).Key);
+        var watches = new[]
+        {
+            new FlagEntry { Label = "Neyoozoteel", WorldId = 37 },
+            new FlagEntry { Label = "Neyoozoteel", WorldId = 62 },
+            new FlagEntry { Label = "custom watch", WorldId = 62 },
+            new FlagEntry { Label = "legacy unscoped watch" }
+        };
+        var (reported, kept) = TrainReport.SplitWatches(watches, TrainReport.ReportedLegs(marks), marks.Select(m => m.WorldId));
+        Assert.Equal(37u, Assert.Single(reported).WorldId);
+        Assert.Equal(3, kept.Count);
+        var history = new TrainReportHistory(); history.Update(marks);
+        history.Forget(TrainReport.SubmittedMarks(marks).Select(m => m.Key));
+        Assert.Equal(2, history.Snapshot().Count);
+        Assert.All(history.Snapshot().Values, m => Assert.Equal(62u, m.WorldId));
+    }
+
+    [Fact]
+    public void AssumedSnipedIsCalculatedSeparatelyForEachWorld()
+    {
+        var first = Killed(Shb); first.WorldId = 37; first.WorldName = "Mateus";
+        var second = Killed(Shb2); second.WorldId = 62; second.WorldName = "Diabolos";
+        var groups = TrainReport.BuildSniped(TrainReport.ForReport(new() { first, second }));
+        Assert.Contains(Assert.Single(groups, g => g.WorldId == 37).Marks, name => name.Contains("Nariphon"));
+        Assert.Contains(Assert.Single(groups, g => g.WorldId == 62).Marks, name => name.Contains("Nuckelavee"));
+    }
+
     private static readonly DateTime Now = new(2026,9,7,12,0,0,DateTimeKind.Utc);
 
     private const uint Shb = 8906;   // Nuckelavee
@@ -106,7 +141,7 @@ public class PartialTrainReportTests
             new() { Label = "Tyger" },
         };
 
-        var (reported, kept) = TrainReport.SplitWatches(watches, new HashSet<string> { "Dawntrail" });
+        var (reported, kept) = TrainReport.SplitWatches(watches, new HashSet<(uint, string)> { (80, "Dawntrail") });
 
         Assert.Equal(new[] {"Neyoozoteel"}, reported.Select(w => w.Label));
         Assert.Equal(new[] {"Ophioneus","Tyger"}, kept.Select(w => w.Label));
@@ -117,8 +152,8 @@ public class PartialTrainReportTests
     {
         var watches = new List<FlagEntry> { new() { Label = "Narrow-rift — Spawn 3 (13.3, 10.4)" } };
 
-        Assert.Single(TrainReport.SplitWatches(watches, new HashSet<string> { "Endwalker" }).Reported);
-        Assert.Single(TrainReport.SplitWatches(watches, new HashSet<string> { "Dawntrail" }).Kept);
+        Assert.Single(TrainReport.SplitWatches(watches, new HashSet<(uint, string)> { (80, "Endwalker") }).Reported);
+        Assert.Single(TrainReport.SplitWatches(watches, new HashSet<(uint, string)> { (80, "Dawntrail") }).Kept);
     }
 
     [Fact]
@@ -127,7 +162,7 @@ public class PartialTrainReportTests
         // Nothing could ever clear it otherwise.
         var watches = new List<FlagEntry> { new() { Label = "something else entirely" } };
 
-        Assert.Single(TrainReport.SplitWatches(watches, new HashSet<string> { "Dawntrail" }).Reported);
+        Assert.Single(TrainReport.SplitWatches(watches, new HashSet<(uint, string)> { (80, "Dawntrail") }).Reported);
     }
 
     [Fact]

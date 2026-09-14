@@ -28,6 +28,7 @@ public sealed class SRankWindow
     private readonly MarkDetector _detector;
 
     private readonly Dictionary<(uint, DateTime?), ConditionWindow?> _conditionWindows = new();
+    private readonly BoardSnapshot<List<(Row Row, uint World)>> _board = new();
     private int _killedMinutesAgo;
     private int _maintenanceMinutesAgo;
 
@@ -53,8 +54,9 @@ public sealed class SRankWindow
         set
         {
             if (_config.SRankWindowOpen == value) return;
+            _board.Invalidate();
             _config.SRankWindowOpen = value;
-            _config.Save();
+            _config.DeferWindowStateSave();
         }
     }
 
@@ -112,6 +114,16 @@ public sealed class SRankWindow
         var available = _config.SRankWindowAvailableOnly;
         if (ImGui.Checkbox("Available to spawn only", ref available)) { _config.SRankWindowAvailableOnly = available; _config.Save(); }
 
+        var hideUnmet = _config.SRankWindowHideUnmetConditions;
+        if (ImGui.Checkbox("Hide unmet conditions", ref hideUnmet))
+        {
+            _config.SRankWindowHideUnmetConditions = hideUnmet;
+            _board.Invalidate();
+            _config.DeferWindowStateSave();
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Hide red condition states. Keep green (open) and yellow (opening soon) states. Grey states are unaffected.");
+
         ImGui.SameLine();
         var search = _config.SRankWindowSearch;
         ImGui.SetNextItemWidth(220);
@@ -122,11 +134,8 @@ public sealed class SRankWindow
             else ImGui.TextDisabled("Select exactly one world to record a maintenance reset.");
         }
         var now = DateTime.UtcNow;
-        var rows = worlds.SelectMany(world => BuildRows(world, now).Select(row => (Row:row, World:world)))
-            .OrderBy(r => r.Row.Window.Phase switch { SRankPhase.Up => 0, SRankPhase.Forced => 1, SRankPhase.Window => 2, SRankPhase.Uncertain => 3, SRankPhase.Cooldown => 4, _ => 5 })
-            .ThenByDescending(r => r.Row.SeenUp ? r.Row.Status?.SpawnedAt ?? now : DateTime.MinValue)
-            .ThenByDescending(r => r.Row.Window.Percent).ThenBy(r => r.Row.Window.OpensAtUtc ?? DateTime.MaxValue)
-            .ThenBy(r => r.Row.Timer.Name).ThenBy(r => _worldData.NameOf(r.World)).ToList();
+        var rows = _board.Get(worlds, _config.SRankWindowExpansions!, search, available, _sync.IsConnected,
+            System.Diagnostics.Stopwatch.GetTimestamp(), () => BuildBoardRows(worlds, now));
         ImGui.TextDisabled($"{rows.Count} marks across {worlds.Count} selected worlds. Server feed: {string.Join(", ", _sync.Faloop.DataCenters)}");
 
         ImGui.TextDisabled("Headers: click to sort, right-click for columns. Ctrl-click a mark name to travel.");
@@ -148,15 +157,28 @@ public sealed class SRankWindow
         ImGui.TableHeadersRow();
 
         rows=TimerTableUi.Sort(rows,(entry,column)=>SortValue(entry.Row,entry.World,column,now));
-        foreach (var row in rows)
-            DrawRow(row.Row, row.World, now);
+        // Keep submitting the owner row while a mapping popup is open.
+        if (ImGui.IsPopupOpen("", ImGuiPopupFlags.AnyPopupId | ImGuiPopupFlags.AnyPopupLevel))
+        {
+            foreach (var row in rows) DrawRow(row.Row, row.World, now);
+        }
+        else
+        {
+            var clipper = ImGui.ImGuiListClipper();
+            try
+            {
+                clipper.Begin(rows.Count);
+                while (clipper.Step())
+                    for (var i = clipper.DisplayStart; i < clipper.DisplayEnd; i++)
+                        DrawRow(rows[i].Row, rows[i].World, now);
+            }
+            finally { clipper.Destroy(); }
+        }
 
         ImGui.EndTable();
     }
 
-    // -----------------------------------------------------------------------
     // Header controls
-    // -----------------------------------------------------------------------
 
     private List<uint> DrawWorldPicker()
     {
@@ -231,13 +253,23 @@ public sealed class SRankWindow
             _sync.ReportMaintenance(worldId, DateTime.UtcNow.AddMinutes(-_maintenanceMinutesAgo));
     }
 
-    // -----------------------------------------------------------------------
     // Rows
-    // -----------------------------------------------------------------------
 
     private sealed record Row(SRankTimer Timer, uint Instance, SyncSRankStatus? Status, SRankCycle Window, bool SeenUp);
 
-    private List<Row> BuildRows(uint worldId, DateTime now)
+    private List<(Row Row, uint World)> BuildBoardRows(List<uint> worlds, DateTime now)
+    {
+        var selectedWorlds = worlds.ToHashSet();
+        var instancesByMark = _sync.SRankStatuses.Keys.Where(k => selectedWorlds.Contains(k.WorldId))
+            .ToLookup(k => (k.WorldId, k.NameId), k => k.Instance);
+        return worlds.SelectMany(world => BuildRows(world, now, instancesByMark).Select(row => (Row:row, World:world)))
+            .OrderBy(r => r.Row.Window.Phase switch { SRankPhase.Up => 0, SRankPhase.Forced => 1, SRankPhase.Window => 2, SRankPhase.Uncertain => 3, SRankPhase.Cooldown => 4, _ => 5 })
+            .ThenByDescending(r => r.Row.SeenUp ? r.Row.Status?.SpawnedAt ?? now : DateTime.MinValue)
+            .ThenByDescending(r => r.Row.Window.Percent).ThenBy(r => r.Row.Window.OpensAtUtc ?? DateTime.MaxValue)
+            .ThenBy(r => r.Row.Timer.Name).ThenBy(r => _worldData.NameOf(r.World)).ToList();
+    }
+
+    private List<Row> BuildRows(uint worldId, DateTime now, ILookup<(uint WorldId, uint NameId), uint> instancesByMark)
     {
         var rows = new List<Row>();
 
@@ -248,15 +280,13 @@ public sealed class SRankWindow
                 && !(timer.Name + " " + timer.Zone).Contains(_config.SRankWindowSearch, StringComparison.OrdinalIgnoreCase)) continue;
 
             // One row per instance the server knows about, else instance 0.
-            var instances = _sync.SRankStatuses.Keys
-                .Where(k => k.NameId == timer.NameId && k.WorldId == worldId)
-                .Select(k => k.Instance)
+            var instances = instancesByMark[(worldId, timer.NameId)]
                 .OrderBy(i => i)
                 .ToList();
             if (worldId == _detector.CurrentWorldId() && timer.TerritoryId == _detector.CurrentTerritoryId
                 && !instances.Contains(MarkDetector.GetCurrentInstance()))
                 instances.Add(MarkDetector.GetCurrentInstance());
-            instances = _sync.Faloop.CurrentInstances(timer.TerritoryId, instances);
+            instances = _sync.Faloop.CurrentInstancesInPlace(timer.TerritoryId, instances);
             if (instances.Count == 0) instances.Add(0);
 
             foreach (var instance in instances)
@@ -266,7 +296,10 @@ public sealed class SRankWindow
                 seenUp |= status is not null && ActiveSRankFilter.Status(status,seenUp,now) is not null;
                 var cycle = SRankTimerData.Compute(timer, status, now, seenUp);
                 if (_config.SRankWindowAvailableOnly && (_sync.Faloop.IsOffline(_worldData.NameOf(worldId)) || !seenUp && !SRankBoardFilter.Available(cycle.Phase))) continue;
-                rows.Add(new Row(timer, instance, status, cycle, seenUp));
+                var row = new Row(timer, instance, status, cycle, seenUp);
+                if (_config.SRankWindowHideUnmetConditions && !_sync.Faloop.IsOffline(_worldData.NameOf(worldId))
+                    && !SRankBoardFilter.MatchesConditions(true, cycle.Phase, SpawnConditionData.HasTimedCondition(timer.Name), ConditionFor(row, now), now)) continue;
+                rows.Add(row);
             }
         }
 
@@ -331,7 +364,7 @@ public sealed class SRankWindow
         var timer = row.Timer;
         var window = row.Window;
         ImGui.PushID($"{worldId}_{timer.NameId}_{row.Instance}");
-        ImGui.TableNextRow();
+        ImGui.TableNextRow(ImGuiTableRowFlags.None, ImGui.GetFrameHeight() + 2 * ImGui.GetStyle().CellPadding.Y);
         var offline = _sync.Faloop.IsOffline(_worldData.NameOf(worldId));
         if (row.SeenUp && !offline)
             ImGui.TableSetBgColor(ImGuiTableBgTarget.RowBg0, ImGui.ColorConvertFloat4ToU32(new Vector4(0.65f,0.08f,0.08f,0.65f)));
@@ -597,9 +630,7 @@ public sealed class SRankWindow
         if (!connected) ImGui.PopStyleVar();
     }
 
-    // -----------------------------------------------------------------------
     // Formatting
-    // -----------------------------------------------------------------------
 
     private static string FaloopFreshness(SyncFaloopStatus faloop)
     {

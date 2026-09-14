@@ -95,16 +95,35 @@ public class TrainWatcher : IDisposable
         _chatGui = chatGui;
         _log = log;
 
-        _framework.Update += OnUpdate;
-        _chatGui.ChatMessage += OnChatMessage;
-        _detector.MarkObservedDead += OnMarkObservedDead;
-        _detector.Removing += CaptureHistory;
-        _detector.Cleared += ClearHistory;
-        _history.Restore(config.ReportHistory);
+        var startup = new StartupTransaction();
+        try
+        {
+            startup.Add(() => { _framework.Update -= OnUpdate; });
+            _framework.Update += OnUpdate;
+            startup.Add(() => { _chatGui.ChatMessage -= OnChatMessage; });
+            _chatGui.ChatMessage += OnChatMessage;
+            startup.Add(() => { _detector.MarkObservedDead -= OnMarkObservedDead; });
+            _detector.MarkObservedDead += OnMarkObservedDead;
+            startup.Add(() => { _detector.Removing -= CaptureHistory; });
+            _detector.Removing += CaptureHistory;
+            startup.Add(() => { _detector.Cleared -= ClearHistory; });
+            _detector.Cleared += ClearHistory;
+            _history.Restore(config.ReportHistory);
+            startup.Commit();
+        }
+        catch (Exception ex)
+        {
+            _disposed = true;
+            throw startup.Rollback(ex);
+        }
     }
+
+    private bool _disposed;
 
     public void Dispose()
     {
+        if (_disposed) return;
+        _disposed = true;
         _framework.Update -= OnUpdate;
         _chatGui.ChatMessage -= OnChatMessage;
         _detector.MarkObservedDead -= OnMarkObservedDead;
@@ -211,6 +230,7 @@ public class TrainWatcher : IDisposable
 
     private void OnUpdate(IFramework framework)
     {
+        if (_disposed) return;
         _detector.RefreshNearbyPlayers();
         // Periodic save so a crash mid-train doesn't lose kill times. Ten
         // seconds keeps writes cheap while bounding the worst case loss.

@@ -36,8 +36,11 @@ public sealed class CharacterContext : IDisposable
         Service.ClientState.TerritoryChanged += OnTerritoryChanged;
     }
 
+    private bool disposed;
     public void Dispose()
     {
+        disposed = true;
+        Invalidate();
         Service.ClientState.Login -= Invalidate;
         Service.ClientState.Logout -= OnLogout;
         Service.ClientState.TerritoryChanged -= OnTerritoryChanged;
@@ -50,9 +53,9 @@ public sealed class CharacterContext : IDisposable
         {
             // Cheap enough to check every time, and it is the common reason the
             // answer becomes null.
-            if (!Service.ClientState.IsLoggedIn)
+            if (disposed || !HuntHelperEvolved.GameReadiness.CanReadCharacters)
             {
-                cached = null;
+                Invalidate();
                 return null;
             }
 

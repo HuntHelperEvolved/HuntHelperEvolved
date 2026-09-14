@@ -6,7 +6,7 @@ namespace HuntHelperEvolved;
 /// Reads the player's currently-placed map flag (the one Ctrl+Right-Click
 /// sets) from AgentMap. A single documented struct field rather than anything
 /// resembling a live scan, but still ClientStructs rather than a first-class
-/// Dalamud service — so every call is guarded and failure just means "no flag".
+/// Dalamud service — with loading/null guards. These cannot establish native pointer validity.
 /// </summary>
 public static unsafe class FlagCapture
 {
@@ -19,6 +19,7 @@ public static unsafe class FlagCapture
 
         try
         {
+            if (!GameReadiness.CanReadCharacters) return false;
             var agentMap = AgentMap.Instance();
             if (agentMap == null) return false;
             if (agentMap->FlagMarkerCount == 0) return false;

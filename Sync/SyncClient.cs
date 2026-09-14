@@ -17,8 +17,24 @@ public sealed class SyncClient : IDisposable
     private const int MaxMessageBytes = 4 * 1024 * 1024;
     private readonly IPluginLog _log;
     private readonly object _gate = new();
-    private readonly ConcurrentQueue<(string Type, JObject Payload)> _inbox = new();
-    private Channel<string>? _outbox;
+    private readonly ByteBudgetQueue<(string Type, JObject Payload)> _inbox = new(128, 8 * 1024 * 1024);
+    private sealed class OutgoingQueue
+    {
+        private readonly Channel<string> _channel=Channel.CreateBounded<string>(128);
+        private long _bytes;
+        public ChannelWriter<string> Writer=>_channel.Writer;
+        public ChannelReader<string> Reader=>_channel.Reader;
+        public bool TryWrite(string json)
+        {
+            var bytes=Encoding.UTF8.GetByteCount(json);
+            if(bytes>1024*1024)return false;
+            if(Interlocked.Add(ref _bytes,bytes)>8*1024*1024 || !Writer.TryWrite(json))
+            { Interlocked.Add(ref _bytes,-bytes);return false; }
+            return true;
+        }
+        public void Received(string json)=>Interlocked.Add(ref _bytes,-Encoding.UTF8.GetByteCount(json));
+    }
+    private OutgoingQueue? _outbox;
     private CancellationTokenSource? _cts;
     private CancellationTokenSource? _connection;
     private int _generation;
@@ -60,7 +76,7 @@ public sealed class SyncClient : IDisposable
             State = ConnectionState.Off;
             StatusText = "Off.";
             ConnectedAtUtc = null;
-            while (_inbox.TryDequeue(out _)) { }
+            _inbox.Clear();
         }
     }
 
@@ -77,7 +93,8 @@ public sealed class SyncClient : IDisposable
         lock (_gate)
         {
             if (!IsConnected || _outbox is null) return;
-            if (!_outbox.Writer.TryWrite(SyncProtocol.Serialize(message))) _connection?.Cancel();
+            var json=SyncProtocol.Serialize(message);
+            if (!_outbox.TryWrite(json)) _connection?.Cancel();
         }
     }
 
@@ -94,8 +111,7 @@ public sealed class SyncClient : IDisposable
             using var socket = new ClientWebSocket();
             using var connection = CancellationTokenSource.CreateLinkedTokenSource(ct);
             var token = connection.Token;
-            var queue = Channel.CreateBounded<string>(new BoundedChannelOptions(2048)
-            { SingleReader = true, FullMode = BoundedChannelFullMode.Wait });
+            var queue = new OutgoingQueue();
             Task? writer = null;
             var fatal = false;
             Publish(generation, () => { State = ConnectionState.Connecting; StatusText = $"Connecting to {uri.Host}…"; _connection = connection; });
@@ -113,8 +129,9 @@ public sealed class SyncClient : IDisposable
                 {
                     using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
                     timeout.CancelAfter(TimeSpan.FromSeconds(welcomed ? 90 : 15));
-                    var payload = await ReadAsync(socket, timeout.Token).ConfigureAwait(false);
-                    if (payload is null) break;
+                    var received = await ReadAsync(socket, timeout.Token).ConfigureAwait(false);
+                    if (received is null) break;
+                    var (payload, receivedBytes)=received.Value;
                     var type = payload.Value<string>("type") ?? string.Empty;
                     if (type == ServerMessageTypes.Error && payload.Value<string>("code") is "auth" or "protocol")
                     {
@@ -133,8 +150,8 @@ public sealed class SyncClient : IDisposable
                         throw new InvalidOperationException("Server did not send a welcome.");
                     Publish(generation, () =>
                     {
-                        if (_inbox.Count >= 4096) connection.Cancel();
-                        else _inbox.Enqueue((type, payload));
+                        if (!_inbox.TryEnqueue((type,payload),receivedBytes))
+                        { _inbox.Clear(); StatusText="Sync backlog exceeded; reconnecting for a fresh snapshot…"; connection.Cancel(); }
                     });
                     if (fatal) break;
                 }
@@ -151,7 +168,7 @@ public sealed class SyncClient : IDisposable
                 queue.Writer.TryComplete();
                 if (writer is not null) { try { await writer.ConfigureAwait(false); } catch { } }
                 socket.Abort();
-                Publish(generation, () => { _outbox = null; _connection = null; ConnectedAtUtc = null; State = ConnectionState.Failed; });
+                Publish(generation, () => { _outbox = null; _connection = null; ConnectedAtUtc = null; State = ConnectionState.Failed; _inbox.Clear(); });
             }
             if (fatal || ct.IsCancellationRequested) return;
             Publish(generation, () => StatusText = "Disconnected; reconnecting…");
@@ -161,17 +178,20 @@ public sealed class SyncClient : IDisposable
         }
     }
 
-    private static async Task WriteAsync(ClientWebSocket socket, Channel<string> queue, CancellationTokenSource connection)
+    private static async Task WriteAsync(ClientWebSocket socket, OutgoingQueue queue, CancellationTokenSource connection)
     {
         try
         {
             await foreach (var json in queue.Reader.ReadAllAsync(connection.Token).ConfigureAwait(false))
+            {
+                queue.Received(json);
                 await socket.SendAsync(Encoding.UTF8.GetBytes(json), WebSocketMessageType.Text, true, connection.Token).ConfigureAwait(false);
+            }
         }
         finally { connection.Cancel(); }
     }
 
-    private static async Task<JObject?> ReadAsync(ClientWebSocket socket, CancellationToken ct)
+    private static async Task<(JObject Payload,int Bytes)?> ReadAsync(ClientWebSocket socket, CancellationToken ct)
     {
         var buffer = new byte[16384];
         using var message = new System.IO.MemoryStream();
@@ -184,7 +204,8 @@ public sealed class SyncClient : IDisposable
             message.Write(buffer, 0, result.Count);
             if (result.EndOfMessage) break;
         }
-        return JObject.Parse(Encoding.UTF8.GetString(message.GetBuffer(), 0, (int)message.Length));
+        using var reader = new LimitedJsonReader(new System.IO.StringReader(Encoding.UTF8.GetString(message.GetBuffer(),0,(int)message.Length))) { MaxDepth=32 };
+        return (JObject.Load(reader), (int)message.Length);
     }
     public void Dispose() => Stop();
 }

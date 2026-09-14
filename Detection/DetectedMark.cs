@@ -4,9 +4,7 @@ using System.Numerics;
 namespace HuntHelperEvolved;
 
 /// <summary>
-/// One mark detected by our own scanning. Position is stored in in-game map
-/// coordinates (the 1-42ish numbers shown on the map), not raw world position,
-/// so it can be handed straight to a map link or an aetheryte distance check.
+/// A locally detected mark. Position uses in-game map coordinates for map links and aetheryte checks.
 /// </summary>
 public class DetectedMark
 {
@@ -17,8 +15,7 @@ public class DetectedMark
     public uint Instance;
 
     /// <summary>
-    /// The world it was seen on. Part of a mark's identity, not decoration: the
-    /// same mark is up on every world at once, and they are different marks.
+    /// Part of the identity: the same mark on another world is a separate entry.
     /// </summary>
     public uint WorldId;
     public string WorldName = string.Empty;
@@ -29,16 +26,12 @@ public class DetectedMark
     public DateTime? DeathObservedAtUtc;
 
     /// <summary>
-    /// Position in the train. Assigned incrementally as marks are first spotted,
-    /// so the default order is simply the order they were scouted — and it can
-    /// be rewritten freely by drag-and-drop reordering.
+    /// Defaults to scouting order; drag-and-drop can reorder it.
     /// </summary>
     public int Order;
 
     /// <summary>
-    /// A conductor-placed flag rather than a detected mark. Behaves like any
-    /// other row (teleport, dead, drag, auto-advance) but is left out of the
-    /// final train report.
+    /// A conductor-placed flag with normal row controls, excluded from the final report.
     /// </summary>
     public bool IsCustom;
 
@@ -49,21 +42,13 @@ public class DetectedMark
     public bool Spiced;
 
     /// <summary>
-    /// When the train arrived to find this mark already gone — killed by
-    /// somebody else after it was scouted.
-    ///
-    /// Not a kill time, and deliberately not stored as one. All this says is
-    /// when the mark was found missing, which is the LATEST it can have died;
-    /// the earliest is LastSeenUtc, when it was last seen standing there. The
-    /// truth is somewhere between the two, and the report says so rather than
-    /// picking one and calling it the kill.
+    /// When the mark was found missing, giving the latest possible death time.
+    /// LastSeenUtc gives the earliest bound; neither is a witnessed kill time.
     /// </summary>
     public DateTime? SnipedAtUtc;
 
     /// <summary>
-    /// What makes this mark this mark. Compare against it rather than picking
-    /// fields off by hand — the same mark is up on every world at once, and a
-    /// comparison that forgets to say which one silently matches the wrong row.
+    /// Compare the full key to avoid matching a mark on another world or instance.
     /// </summary>
     public (uint NameId, uint Instance, uint WorldId) Key => (NameId, Instance, WorldId);
 }

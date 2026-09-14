@@ -3,6 +3,17 @@ namespace HuntHelperEvolved.Tests;
 public class TrainExpansionProgressTests
 {
     [Fact]
+    public void FinishingAnExpansionOpensTheSameExpansionOnTheNextWorld()
+    {
+        var tracker = new TrainExpansionProgress();
+        tracker.Update(new[] { ("63:Dawntrail", false), ("37:Dawntrail", false), ("37:Endwalker", false) });
+        Assert.Equal(new[] { "37:Dawntrail" }, tracker.Update(new[]
+            { ("63:Dawntrail", true), ("37:Dawntrail", false), ("37:Endwalker", false) }));
+        Assert.Equal(new[] { "37:Endwalker" }, tracker.Update(new[]
+            { ("63:Dawntrail", true), ("37:Dawntrail", true), ("37:Endwalker", false) }));
+    }
+
+    [Fact]
     public void OpensOnceAndSkipsFinishedLegsInRouteOrder()
     {
         var tracker = new TrainExpansionProgress();

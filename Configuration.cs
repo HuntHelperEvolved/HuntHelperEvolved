@@ -9,14 +9,6 @@ using System.Numerics;
 
 namespace HuntHelperEvolved;
 
-[Serializable]
-public class WebhookEntry
-{
-    public bool Enabled { get; set; } = true;
-    public string Label { get; set; } = string.Empty;
-    public string Url { get; set; } = string.Empty;
-}
-
 /// <summary>
 /// A train row as written to disk, so a crash or reload doesn't lose kill
 /// times. Deliberately its own type rather than reusing the export shape:
@@ -267,7 +259,7 @@ public class Configuration : IPluginConfiguration
     /// export code and the end-of-train report did not follow would be a
     /// different list from the one on screen.
     /// </summary>
-    public bool GroupTrainByExpansion { get; set; } = false;
+    public bool GroupTrainByExpansion { get; set; } = true;
 
     /// <summary>
     /// Expansion names in the order the conductor has dragged them into, most
@@ -279,6 +271,9 @@ public class Configuration : IPluginConfiguration
     /// different expansion the moment one was added.
     /// </summary>
     public List<string> ExpansionOrder { get; set; } = new();
+
+    /// <summary>Per-world drag order; worlds without an entry inherit the legacy ExpansionOrder.</summary>
+    public Dictionary<uint, List<string>> WorldExpansionOrder { get; set; } = new();
 
     /// <summary>
     /// Expansion blocks folded away in the train list. Kept because a
@@ -308,6 +303,7 @@ public class Configuration : IPluginConfiguration
     /// on a third-party library, so it's off by default.
     /// </summary>
     public bool ShowSpawnPointsOnMap { get; set; } = false;
+    public bool HideOccupiedSpawnPoints { get; set; }
 
     /// <summary>
     /// Map icon ids for spawn points. Configurable because there's no reliable
@@ -595,9 +591,7 @@ public class Configuration : IPluginConfiguration
     /// </summary>
     public List<string> AdditionalScouts { get; set; } = new() { string.Empty };
 
-    // ------------------------------------------------------------------
     // Sync — sharing with a group through their own server
-    // ------------------------------------------------------------------
 
     /// <summary>
     /// Connect to a sync server. Everything below it is inert until this is
@@ -619,6 +613,7 @@ public class Configuration : IPluginConfiguration
     /// setting rather than a constant on purpose: each group of friends
     /// runs its own server and shares with each other, not with the world.
     /// </summary>
+    public bool SyncAllowPlaintext { get; set; } = false;
     public string SyncServerUrl { get; set; } = string.Empty;
 
     /// <summary>
@@ -677,6 +672,7 @@ public class Configuration : IPluginConfiguration
     public List<uint> SRankWindowWorlds { get; set; } = new();
     public List<string>? SRankWindowExpansions { get; set; }
     public bool SRankWindowAvailableOnly { get; set; }
+    public bool SRankWindowHideUnmetConditions { get; set; }
     public string SRankWindowSearch { get; set; } = "";
 
     [NonSerialized]
@@ -800,8 +796,19 @@ public class Configuration : IPluginConfiguration
         }
     }
 
+    [JsonIgnore] private bool _windowStateSavePending;
+
+    // Visibility changes do not justify serializing hunt history in the draw callback.
+    public void DeferWindowStateSave() => _windowStateSavePending = true;
+
+    public void FlushWindowStateSave()
+    {
+        if (_windowStateSavePending) Save();
+    }
+
     public void Save()
     {
         _pluginInterface?.SavePluginConfig(this);
+        _windowStateSavePending = false;
     }
 }

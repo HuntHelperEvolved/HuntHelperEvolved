@@ -226,6 +226,24 @@ public sealed class SyncFaloopStatus
         return observed.Distinct().OrderBy(i => i).ToList();
     }
 
+    // The boards own these lists; update them without allocating another copy.
+    internal List<uint> CurrentInstancesInPlace(uint territory, List<uint> instances)
+    {
+        if (MetadataAt is not null && ZoneInstances.TryGetValue(territory, out var count) && count >= 1 && count <= 9)
+        {
+            instances.Clear();
+            if (count == 1) instances.Add(0);
+            else for (uint instance = 1; instance <= count; instance++) instances.Add(instance);
+            return instances;
+        }
+        instances.Sort();
+        var unique = 0;
+        for (var i = 0; i < instances.Count; i++)
+            if (unique == 0 || instances[i] != instances[unique - 1]) instances[unique++] = instances[i];
+        if (unique < instances.Count) instances.RemoveRange(unique, instances.Count - unique);
+        return instances;
+    }
+
     public DateTime? LastLiveMessageAt { get; set; }
     public DateTime? LastAlertAt { get; set; }
     public bool LiveConnected { get; set; }
@@ -236,9 +254,7 @@ public sealed class SyncFaloopStatus
     public List<string> DataCenters { get; set; } = new();
 }
 
-// ---------------------------------------------------------------------------
 // Client -> server. Each carries its own "type" so serialising is one call.
-// ---------------------------------------------------------------------------
 
 public sealed class HelloMessage
 {
@@ -280,9 +296,7 @@ public sealed class PingMessage { public string Type => "ping"; }
 
 public interface ISyncTyped { string Type { get; } }
 
-// ---------------------------------------------------------------------------
 // Server -> client
-// ---------------------------------------------------------------------------
 
 public static class ServerMessageTypes
 {

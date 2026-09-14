@@ -34,6 +34,16 @@ public static class ReleaseNotes
 
     public static readonly Release[] All =
     {
+        new("0.5.0.18", "2026-09-14", "Lower window draw overhead, clearer train lists and optional visibility filters.",
+        [
+            new("Performance", "Reduced draw overhead and memory allocations across the A-rank and S-rank boards, Active Marks, train list and tally. Window and display preferences no longer trigger a full configuration save on each change.", Kihtli),
+            new("Train", "Marks are grouped by world, then expansion, with folding and ordering within each world. World names no longer crowd mark names, and Teleport and status buttons have consistent sizing and alignment.", Kihtli),
+            new("Reports", "End Train Now scopes reports and cleanup to each world and expansion, preserving unrun worlds and their watches. Fixed routine sighting updates preventing train and scout cleanup after a report was sent. Shared completion requires server 0.3.24 or later.", Kihtli),
+            new("S ranks", "Added Hide unmet conditions to /hhs. It hides red condition states while keeping green open windows and yellow opening-soon windows visible. Grey states are unaffected. Off by default.", Kihtli),
+            new("Map", "Added Hide occupied spawn points to /hhm and Settings > Map. It hides the nearest matching spawn point while a live mark is shown within two map coordinates. Ambiguous matches stay visible; the point returns when the mark moves away, dies or disappears. Off by default.", Kihtli),
+            new("Stability", "Improved map marker handling during map updates and loading transitions, cleanup after failed startup or plugin unload, and speech resource cleanup.", Kihtli),
+            new("Sharing", "Added limits for incoming data, queued messages and train imports. Unencrypted sharing connections now require explicit opt-in in settings.", Kihtli),
+        ]),
         new("0.5.0.17", "2026-09-13", "Hotfix for map overlay cleanup crashes outside hunt zones.",
         [
             new("Map", "Stops repeated native overlay attachment and teardown in cities and duties, including while the map is closed. The overlay now stays hidden outside hunt zones and returns when needed; its controller owns final cleanup. This addresses the reported frame-update crash in KamiToolKit node-focus cleanup.", Kihtli),

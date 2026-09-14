@@ -13,12 +13,14 @@ public sealed class ARankWindow
     private readonly WorldData _worldData;
     private readonly MarkDetector _detector;
     private DateTime _nextCapture;
+    private readonly BoardSnapshot<List<Row>> _board = new();
     private sealed record Row(uint NameId, uint World, uint Instance, MarkInfo Info, ARankKill? Kill,
         DateTime? Opens, DateTime? Ends, bool Up, bool AfterMaintenance, int State, double Percent);
+    private static readonly KeyValuePair<uint, MarkInfo>[] OrderedMarks = ExpansionData.ModelIdToMark.OrderBy(e => e.Value.Order).ThenBy(e => e.Value.ZoneOrder).ToArray();
     private static readonly string[] Expansions = ExpansionData.ModelIdToMark.Values.OrderBy(m => m.Order).Select(m => m.Expansion).Distinct().ToArray();
     public ARankWindow(Configuration config, SyncCoordinator sync, WorldData worlds, MarkDetector detector)
     { _config = config; _sync = sync; _worldData = worlds; _detector = detector; }
-    public void Toggle() { _config.ARankWindowOpen = !_config.ARankWindowOpen; _config.Save(); }
+    public void Toggle() { _board.Invalidate(); _config.ARankWindowOpen = !_config.ARankWindowOpen; _config.DeferWindowStateSave(); }
 
     public void Draw()
     {
@@ -27,25 +29,24 @@ public sealed class ARankWindow
         if (now >= _nextCapture)
         {
             _nextCapture = now.AddSeconds(1);
-            var changed = false;
+            var captured = new List<ARankKill>();
             foreach (var mark in _detector.Marks.Values)
             {
                 if (!mark.Dead || mark.IsCustom || ExpansionData.Lookup(mark.NameId) is null) continue;
                 var at = mark.SnipedAtUtc ?? mark.DeathObservedAtUtc;
                 if (at is null || mark.WorldId == 0 || now - at.Value > TimeSpan.FromDays(14)) continue;
-                changed |= ARankHistory.Merge(_config.ARankKills, new[] { new ARankKill { NameId = mark.NameId,
-                    WorldId = mark.WorldId, Instance = mark.Instance, At = at.Value, LastAliveAt = mark.SnipedAtUtc is not null ? mark.LastSeenUtc : null, Uncertain = mark.SnipedAtUtc is not null } }, now);
+                captured.Add(new ARankKill { NameId = mark.NameId,
+                    WorldId = mark.WorldId, Instance = mark.Instance, At = at.Value, LastAliveAt = mark.SnipedAtUtc is not null ? mark.LastSeenUtc : null, Uncertain = mark.SnipedAtUtc is not null });
             }
-            if (_config.ARankKills.RemoveAll(k => now - k.At > TimeSpan.FromDays(14)) > 0) changed = true;
-            if (changed) _config.Save();
+            if (ARankHistory.Merge(_config.ARankKills, captured, now)) _config.Save();
         }
-        if (!_config.ARankWindowOpen) return;
+        if (!_config.ARankWindowOpen) { _board.Invalidate(); return; }
         var open = true;
         ImGui.SetNextWindowSize(new Vector2(880,520), ImGuiCond.FirstUseEver);
         ImGui.SetNextWindowSizeConstraints(new Vector2(520,240),new Vector2(float.MaxValue,float.MaxValue));
         if (ImGui.Begin("A Ranks", ref open)) DrawContents(now);
         ImGui.End();
-        if (!open) { _config.ARankWindowOpen = false; _config.Save(); }
+        if (!open) { _config.ARankWindowOpen = false; _config.DeferWindowStateSave(); }
     }
     private void DrawContents(DateTime now)
     {
@@ -58,44 +59,8 @@ public sealed class ARankWindow
         if (ImGui.InputTextWithHint("##asearch", "Search mark or zone", ref search,100)) { _config.ARankWindowSearch = search; _config.Save(); }
         if (ImGui.CollapsingHeader("Timer information"))
             ImGui.TextWrapped("Each world and instance has its own timer. Sniped ranges run from last seen alive to found missing; missing evidence stays unknown. Elapsed windows do not confirm a spawn. No community A-rank kill feed.");
-        var rows = new List<Row>();
-        foreach (var world in worlds)
-        foreach (var entry in ExpansionData.ModelIdToMark.OrderBy(e => e.Value.Order).ThenBy(e => e.Value.ZoneOrder))
-        {
-            var info = entry.Value;
-            if (!_config.ARankWindowExpansions.Contains(info.Expansion) || (!string.IsNullOrWhiteSpace(search) && !(info.Name+" "+info.Location).Contains(search,StringComparison.OrdinalIgnoreCase))) continue;
-            var kills = _config.ARankKills.Where(k => k.NameId == entry.Key && k.WorldId == world).ToList();
-            // Instances belong to the zone, not just a mark currently in sight.
-            // Include living train rows so scouting I1/I2 creates both timers before kills.
-            var zoneMarks = ExpansionData.ModelIdToMark.Where(e => e.Value.Location == info.Location)
-                .Select(e => e.Key).ToHashSet();
-            var zoneTerritories = SRankTimerData.All.Where(s => s.Zone == info.Location).Select(s => s.TerritoryId).ToHashSet();
-            var zoneInstances = _detector.Marks.Values.Where(m => m.WorldId == world && zoneMarks.Contains(m.NameId)).Select(m => m.Instance)
-                .Concat(_config.ARankKills.Where(k => k.WorldId == world && zoneMarks.Contains(k.NameId)).Select(k => k.Instance))
-                .Concat(_detector.OtherRanks.Values.Concat(_sync.RemoteSightings.Values)
-                    .Where(s => s.WorldId == world && (zoneMarks.Contains(s.NameId) || zoneTerritories.Contains(s.TerritoryId))).Select(s => s.Instance))
-                .Concat(_sync.SRankStatuses.Values.Where(s => s.WorldId == world && zoneTerritories.Contains(s.TerritoryId)).Select(s => s.Instance));
-            if (world == _detector.CurrentWorldId() && zoneTerritories.Contains(_detector.CurrentTerritoryId))
-                zoneInstances = zoneInstances.Append(MarkDetector.GetCurrentInstance());
-            var instances = ARankInstances.Resolve(zoneInstances, kills.Select(k => k.Instance));
-            var territory = zoneTerritories.FirstOrDefault();
-            instances = _sync.Faloop.CurrentInstances(territory, instances);
-            foreach (var instance in instances)
-            {
-                var kill = kills.FirstOrDefault(k => k.Instance == instance);
-                var up = _sync.IsSeenUp(entry.Key,world,instance);
-                var restart = _sync.SRankStatuses.Values.Where(s => s.WorldId == world && s.Maintenance).Select(s => s.KilledAt).Max();
-                var (opens, end) = ARankHistory.Window(kill, info.MinHours, info.MaxHours, restart);
-                var known = opens is not null;
-                if (available && (_sync.Faloop.IsOffline(_worldData.NameOf(world)) || up || opens is null || now < opens)) continue;
-                var afterMaintenance=restart is not null && (kill is null || kill.At <= restart || kill.LastAliveAt <= restart);
-                var state=up ? 0 : !known ? 5 : now >= end ? 1 : now >= opens ? 2 : 4;
-                var percent=known ? Math.Clamp((now-opens!.Value).TotalSeconds/(end!.Value-opens.Value).TotalSeconds*100,0,100) : 0;
-                rows.Add(new(entry.Key,world,instance,info,kill,opens,end,up,afterMaintenance,state,percent));
-            }
-        }
-        rows=rows.OrderBy(r=>r.State).ThenByDescending(r=>r.Percent).ThenBy(r=>r.Opens??DateTime.MaxValue)
-            .ThenBy(r=>r.Info.Name).ThenBy(r=>r.World).ThenBy(r=>r.Instance).ToList();
+        var rows = _board.Get(worlds, _config.ARankWindowExpansions, search, available, _sync.IsConnected,
+            System.Diagnostics.Stopwatch.GetTimestamp(), () => BuildRows(worlds, search, available, now));
         ImGui.TextDisabled($"{rows.Count} marks across {worlds.Count} selected worlds.");
         ImGui.TextDisabled("Headers: click to sort, right-click for columns. A third click restores automatic order.");
         var showInstances = rows.Any(row => row.Instance > 0);
@@ -117,13 +82,70 @@ public sealed class ARankWindow
             3=>row.Info.Location, 4=>row.Info.Order, 5=>(row.State,-row.Percent),
             6=>row.Opens, 7=>row.Ends, 8=>row.Kill?.At, _=>null
         });
-        foreach (var row in rows) DrawRow(row,now);
+        var clipper = ImGui.ImGuiListClipper();
+        try
+        {
+            clipper.Begin(rows.Count);
+            while (clipper.Step())
+                for (var i = clipper.DisplayStart; i < clipper.DisplayEnd; i++)
+                    DrawRow(rows[i], now);
+        }
+        finally { clipper.Destroy(); }
         ImGui.EndTable();
     }
+    private List<Row> BuildRows(List<uint> worlds, string search, bool available, DateTime now)
+    {
+        var selectedWorlds = worlds.ToHashSet();
+        var killsByMark = _config.ARankKills.Where(k => selectedWorlds.Contains(k.WorldId)).ToLookup(k => (k.WorldId, k.NameId));
+        var restarts = _sync.SRankStatuses.Values.Where(s => s.Maintenance && selectedWorlds.Contains(s.WorldId))
+            .GroupBy(s => s.WorldId).ToDictionary(g => g.Key, g => g.Max(s => s.KilledAt));
+        var zoneInstances = new ARankZoneInstances();
+        foreach (var mark in _detector.Marks.Values)
+            if (selectedWorlds.Contains(mark.WorldId)) zoneInstances.Add(mark.NameId, 0, mark.WorldId, mark.Instance);
+        foreach (var kill in _config.ARankKills)
+            if (selectedWorlds.Contains(kill.WorldId)) zoneInstances.Add(kill.NameId, 0, kill.WorldId, kill.Instance);
+        foreach (var sighting in _detector.OtherRanks.Values)
+            if (selectedWorlds.Contains(sighting.WorldId)) zoneInstances.Add(sighting.NameId, sighting.TerritoryId, sighting.WorldId, sighting.Instance);
+        foreach (var sighting in _sync.RemoteSightings.Values)
+            if (selectedWorlds.Contains(sighting.WorldId)) zoneInstances.Add(sighting.NameId, sighting.TerritoryId, sighting.WorldId, sighting.Instance);
+        foreach (var status in _sync.SRankStatuses.Values)
+            if (selectedWorlds.Contains(status.WorldId)) zoneInstances.Add(0, status.TerritoryId, status.WorldId, status.Instance);
+        var currentWorld = _detector.CurrentWorldId();
+        if (selectedWorlds.Contains(currentWorld))
+            zoneInstances.Add(0, _detector.CurrentTerritoryId, currentWorld, MarkDetector.GetCurrentInstance());
+        var rows = new List<Row>();
+        foreach (var world in worlds)
+        foreach (var entry in OrderedMarks)
+        {
+            var info = entry.Value;
+            if (!_config.ARankWindowExpansions.Contains(info.Expansion) || (!string.IsNullOrWhiteSpace(search) && !(info.Name+" "+info.Location).Contains(search,StringComparison.OrdinalIgnoreCase))) continue;
+            var kills = killsByMark[(world, entry.Key)];
+            // A sighting of either mark supplies instances for both marks in its zone.
+            var instances = ARankInstances.Resolve(zoneInstances.Get(world, info.Location), kills.Select(k => k.Instance));
+            var territory = ARankZoneInstances.ZoneTerritories.TryGetValue(info.Location, out var territories) ? territories[0] : 0;
+            instances = _sync.Faloop.CurrentInstancesInPlace(territory, instances);
+            foreach (var instance in instances)
+            {
+                var kill = kills.FirstOrDefault(k => k.Instance == instance);
+                var up = _sync.IsSeenUp(entry.Key,world,instance);
+                var restart = restarts.GetValueOrDefault(world);
+                var (opens, end) = ARankHistory.Window(kill, info.MinHours, info.MaxHours, restart);
+                var known = opens is not null;
+                if (available && (_sync.Faloop.IsOffline(_worldData.NameOf(world)) || up || opens is null || now < opens)) continue;
+                var afterMaintenance=restart is not null && (kill is null || kill.At <= restart || kill.LastAliveAt <= restart);
+                var state=up ? 0 : !known ? 5 : now >= end ? 1 : now >= opens ? 2 : 4;
+                var percent=known ? Math.Clamp((now-opens!.Value).TotalSeconds/(end!.Value-opens.Value).TotalSeconds*100,0,100) : 0;
+                rows.Add(new(entry.Key,world,instance,info,kill,opens,end,up,afterMaintenance,state,percent));
+            }
+        }
+        return rows.OrderBy(r=>r.State).ThenByDescending(r=>r.Percent).ThenBy(r=>r.Opens??DateTime.MaxValue)
+            .ThenBy(r=>r.Info.Name).ThenBy(r=>r.World).ThenBy(r=>r.Instance).ToList();
+    }
+
     private void DrawRow(Row row,DateTime now)
     {
         ImGui.PushID($"{row.World}_{row.NameId}_{row.Instance}");
-        ImGui.TableNextRow(); // A-rank UP rows intentionally keep the normal alternating background.
+        ImGui.TableNextRow(ImGuiTableRowFlags.None, ImGui.GetTextLineHeight() + 2 * ImGui.GetStyle().CellPadding.Y);
         ImGui.TableNextColumn();
         var offline = _sync.Faloop.IsOffline(_worldData.NameOf(row.World));
         ImGui.TextColored(!offline && (row.Up || row.Opens <= now) ? TimerTableUi.Up : TimerTableUi.Cooldown,

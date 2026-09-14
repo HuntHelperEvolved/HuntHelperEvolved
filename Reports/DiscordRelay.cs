@@ -178,7 +178,7 @@ public static class DiscordRelay
         if (neverSeen.Count > 0)
         {
             sb.Append("\n**Assumed Sniped** (not seen this train)\n");
-            sb.Append(string.Join("\n", neverSeen.Select(s => $"**{s.Expansion}**: {string.Join(", ", s.Marks)}")));
+            sb.Append(string.Join("\n", neverSeen.Select(s => $"**{s.WorldName} / {s.Expansion}**: {string.Join(", ", s.Marks)}")));
             sb.Append('\n');
         }
 

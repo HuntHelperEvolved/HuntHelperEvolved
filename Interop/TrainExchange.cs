@@ -44,6 +44,19 @@ public class ExchangeMob
 /// </summary>
 public static class TrainExchange
 {
+    public const int MaxEncodedChars=1024*1024;
+    public const int MaxDecodedBytes=1024*1024;
+    public const int MaxRows=512;
+    private static bool Valid(ExchangeMob? m) => m is not null
+        && m.Name is not null && m.Name.Length<=128
+        && m.ZoneName is not null && m.ZoneName.Length<=128
+        && m.WorldName is not null && m.WorldName.Length<=64
+        && m.MapName is not null && m.MapName.Length<=128
+        && m.MobID!=0 && m.WorldId<=65535 && m.Instance<=9
+        && m.TerritoryID<=65535 && m.MapID<=65535
+        && float.IsFinite(m.Position.X) && float.IsFinite(m.Position.Y)
+        && m.Position.X is >=0 and <=100 && m.Position.Y is >=0 and <=100;
+
     public static string Export(IEnumerable<DetectedMark> marks)
     {
         var payload = marks.Select(m => new ExchangeMob
@@ -87,14 +100,31 @@ public static class TrainExchange
     {
         try
         {
+            if (code is null || code.Length>MaxEncodedChars) return null;
             var bytes = Convert.FromBase64String(code.Trim());
             using var input = new MemoryStream(bytes);
             using var gzip = new GZipStream(input, CompressionMode.Decompress);
-            using var reader = new StreamReader(gzip, Encoding.UTF8);
-            var json = reader.ReadToEnd();
-
-            var mobs = JsonConvert.DeserializeObject<List<ExchangeMob>>(json);
-            if (mobs == null) return null;
+            using var decoded = new MemoryStream();
+            var buffer = new byte[8192];
+            int read;
+            while ((read=gzip.Read(buffer,0,Math.Min(buffer.Length,MaxDecodedBytes+1-(int)decoded.Length)))>0)
+            {
+                if(decoded.Length+read>MaxDecodedBytes) return null;
+                decoded.Write(buffer,0,read);
+            }
+            var json = new UTF8Encoding(false,true).GetString(decoded.GetBuffer(),0,(int)decoded.Length);
+            using var jsonReader=new JsonTextReader(new StringReader(json)) { MaxDepth=16 };
+            if(!jsonReader.Read() || jsonReader.TokenType!=JsonToken.StartArray)return null;
+            var serializer=JsonSerializer.CreateDefault();
+            var mobs=new List<ExchangeMob>();
+            while(jsonReader.Read() && jsonReader.TokenType!=JsonToken.EndArray)
+            {
+                if(mobs.Count>=MaxRows)return null;
+                var mob=serializer.Deserialize<ExchangeMob>(jsonReader);
+                if(!Valid(mob))return null;
+                mobs.Add(mob!);
+            }
+            if(jsonReader.TokenType!=JsonToken.EndArray || jsonReader.Read())return null;
 
             return mobs.Select(m => new DetectedMark
             {

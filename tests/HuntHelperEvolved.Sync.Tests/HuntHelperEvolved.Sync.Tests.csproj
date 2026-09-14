@@ -15,12 +15,22 @@
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.1" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <Compile Include="../../Lifecycle/StartupTransaction.cs" Link="StartupTransaction.cs" />
+    <Compile Include="../../Lifecycle/SpeechAnnouncements.cs" Link="SpeechAnnouncements.cs" />
+    <Compile Include="../../Lifecycle/CleanupSequence.cs" Link="CleanupSequence.cs" />
     <Compile Include="../../Maps/MapOverlayActivation.cs" Link="MapOverlayActivation.cs" />
+    <Compile Include="../../Maps/SpawnPointVisibility.cs" Link="SpawnPointVisibility.cs" />
     <Compile Include="../../Maps/MapBarPlacement.cs" Link="MapBarPlacement.cs" />
     <Compile Include="../../Detection/MarkAnnouncementDebounce.cs" Link="MarkAnnouncementDebounce.cs" />
+    <Compile Include="../../Reports/DiscordRelay.cs" Link="DiscordRelay.cs" />
+    <Compile Include="../../Reports/ScoutingReport.cs" Link="ScoutingReport.cs" />
+    <Compile Include="../../Interop/TrainMobRecord.cs" Link="TrainMobRecord.cs" />
+    <Compile Include="../../Reports/WebhookEntry.cs" Link="WebhookEntry.cs" />
     <Compile Include="../../ReleaseNotes.cs" Link="ReleaseNotes.cs" />
     <Compile Include="../../Sync/SharedCounter.cs" Link="SharedCounter.cs" />
     <Compile Include="../../Sync/SpawnConditionData.cs" Link="SpawnConditionData.cs" />
+    <Compile Include="../../Sync/BoardSnapshot.cs" Link="BoardSnapshot.cs" />
+    <Compile Include="../../Sync/ARankZoneInstances.cs" Link="ARankZoneInstances.cs" />
     <Compile Include="../../Sync/ARankHistory.cs" Link="ARankHistory.cs" />
     <Compile Include="../../Sync/TimerTableSort.cs" Link="TimerTableSort.cs" />
     <Compile Include="../../Sync/ARankInstances.cs" Link="ARankInstances.cs" />
@@ -32,6 +42,10 @@
     <Compile Include="../../Sync/TravelHandoff.cs" Link="TravelHandoff.cs" />
     <Compile Include="../../Sync/SpawnAlertFilter.cs" Link="SpawnAlertFilter.cs" />
     <Compile Include="../../Sync/SyncProtocol.cs" Link="SyncProtocol.cs" />
+    <Compile Include="../../Sync/LimitedJsonReader.cs" Link="LimitedJsonReader.cs" />
+    <Compile Include="../../Sync/ByteBudgetQueue.cs" Link="ByteBudgetQueue.cs" />
+    <Compile Include="../../Sync/SyncEndpoint.cs" Link="SyncEndpoint.cs" />
+    <Compile Include="../../Sync/SyncConnectionPolicy.cs" Link="SyncConnectionPolicy.cs" />
     <Compile Include="../../Sync/SyncClient.cs" Link="SyncClient.cs" />
     <Compile Include="../../Sync/SRankTimerData.cs" Link="SRankTimerData.cs" />
     <Compile Include="../../Sync/SpawnMapping.cs" Link="SpawnMapping.cs" />
@@ -49,7 +63,10 @@
     <Compile Include="../../GameData/ExpansionData.cs" Link="ExpansionData.cs" />
     <Compile Include="../../Detection/MarkDeathEvidence.cs" Link="MarkDeathEvidence.cs" />
     <Compile Include="../../Train/TrainCompletionGuard.cs" Link="TrainCompletionGuard.cs" />
+    <Compile Include="../../Train/TrainCompletionSnapshot.cs" Link="TrainCompletionSnapshot.cs" />
     <Compile Include="../../Interop/NativeTrainRecord.cs" Link="NativeTrainRecord.cs" />
+    <Compile Include="../../Train/TrainNavigation.cs" Link="TrainNavigation.cs" />
+    <Compile Include="../../Train/TrainGroupingState.cs" Link="TrainGroupingState.cs" />
     <Compile Include="../../Train/TrainExpansionProgress.cs" Link="TrainExpansionProgress.cs" />
     <Compile Include="../../GameData/SpawnPointData.cs" Link="SpawnPointData.cs" />
     <Compile Include="../../Sync/TrainResetRecovery.cs" Link="TrainResetRecovery.cs" />

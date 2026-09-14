@@ -22,12 +22,14 @@ namespace HuntHelperEvolved;
 /// Everything here is local. Chat goes through IChatGui.Print, which cannot
 /// reach another player, and fly text is drawn on your own screen.
 /// </summary>
-public sealed class MarkNotifier
+public sealed class MarkNotifier : IDisposable
 {
     private readonly IChatGui _chatGui;
     private readonly IFlyTextGui _flyText;
     private readonly IPluginLog _log;
     private readonly Configuration _config;
+    private readonly SpeechAnnouncements _speech;
+    private bool _disposed;
 
     // Hunt Helper's chat palette.
     private const ushort AColour = 12;   // pinkish red
@@ -63,6 +65,14 @@ public sealed class MarkNotifier
         _flyText = flyText;
         _log = log;
         _config = config;
+        _speech = new SpeechAnnouncements(() => new SystemSpeechVoice(_config, _log),
+            ex =>
+            {
+                SpeechUnavailable = true;
+                SpeechStatus = "Speech disabled after a cleanup failure; reload the plugin before retrying.";
+                _log.Warning(ex, "Speech completion cleanup failed.");
+            });
+        HuntTally.Service.Framework.Update += UpdateSpeech;
     }
 
     /// <summary>
@@ -72,6 +82,7 @@ public sealed class MarkNotifier
     /// </summary>
     public void Announce(OtherRankSighting sighting)
     {
+        if (_disposed) return;
         SendChat(sighting);
         SendFlyText(sighting);
         Speak(sighting);
@@ -306,35 +317,31 @@ public sealed class MarkNotifier
     /// </summary>
     public void Speak(string message)
     {
-        if (string.IsNullOrWhiteSpace(message)) return;
-
+        if (_disposed || SpeechUnavailable || string.IsNullOrWhiteSpace(message)) return;
         try
         {
-            var tts = new System.Speech.Synthesis.SpeechSynthesizer();
-
-            if (!string.IsNullOrWhiteSpace(_config.TtsVoiceName))
-            {
-                // A voice that has since been uninstalled must not take the
-                // message down with it; the default voice still says it.
-                try { tts.SelectVoice(_config.TtsVoiceName); }
-                catch (Exception ex) { _log.Warning(ex, $"TTS voice '{_config.TtsVoiceName}' is unavailable; using the default."); }
-            }
-
-            tts.Volume = Math.Clamp(_config.TtsVolume, 0, 100);
-            tts.SpeakAsync(message);
-            tts.SpeakCompleted += (_, _) => tts.Dispose();
-
-            SpeechUnavailable = false;
-            SpeechStatus = "Working.";
+            _speech.Drain();
+            if (SpeechUnavailable) return;
+            SpeechStatus = _speech.Start(message) ? "Working." : "Speech busy; this alert was not spoken.";
         }
         catch (Exception ex)
         {
-            // Almost always "not Windows". Stand down rather than throwing once
-            // per mark for the rest of the session.
             SpeechUnavailable = true;
             SpeechStatus = $"Speech is unavailable here ({ex.GetType().Name}). Chat and fly text still work.";
             _log.Warning(ex, "Speech synthesis is unavailable; the spoken announcement is off for this session.");
         }
+    }
+
+    private void UpdateSpeech(IFramework _) { if (!_disposed) _speech.Drain(); }
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        var cleanup = new CleanupSequence();
+        cleanup.Run("speech framework callback", () => HuntTally.Service.Framework.Update -= UpdateSpeech);
+        cleanup.Run("speech announcements", _speech.Dispose);
+        cleanup.ThrowIfFailed();
     }
 
     /// <summary>

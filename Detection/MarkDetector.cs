@@ -86,6 +86,7 @@ public sealed class MarkDetector
     // framework tick, with last-known positions retained for this zone session.
     public unsafe void RefreshNearbyPlayers()
     {
+        if (!GameReadiness.CanReadCharacters) { ClearNearbyPlayers(); return; }
         var world = CurrentWorldId();
         var territory = _clientState.TerritoryType;
         if (_objectTable.LocalPlayer is null || world == 0 || territory == 0)
@@ -256,6 +257,13 @@ public sealed class MarkDetector
     /// </summary>
     public void Scan(bool recordNew = true)
     {
+        if (!GameReadiness.CanReadCharacters)
+        {
+            ClearNearbyPlayers();
+            _otherRanks.Clear(); _visibleCorpses.Clear();
+            _announcements.Clear(); _deathEvidence.Clear();
+            return;
+        }
         var territoryId = _clientState.TerritoryType;
         if (territoryId == 0) { _announcements.Clear(); _deathEvidence.Clear(); _otherRanks.Clear(); _visibleCorpses.Clear(); Scanned?.Invoke(); return; }
 

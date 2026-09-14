@@ -8,16 +8,8 @@ using System.Numerics;
 namespace HuntHelperEvolved.Sync;
 
 /// <summary>
-/// Joins this client's hunt to the group's.
-///
-/// Local state stays where it is — the train in MarkDetector, sightings in
-/// its store — and this class sits beside it, diffing what changed since
-/// it last looked and sending that, and applying what the server says
-/// happened elsewhere. The rest of the plugin never has to know a mark
-/// came from someone else; it just appears, the way an imported one does.
-///
-/// Everything runs on the framework thread. The socket parks frames in a
-/// queue and this drains it once per tick, so nothing here needs a lock.
+/// Diffs local hunt state and applies remote updates on the framework thread.
+/// The socket only queues frames; draining them here keeps game state off the socket thread.
 /// </summary>
 public sealed partial class SyncCoordinator : IDisposable
 {
@@ -74,7 +66,7 @@ public sealed partial class SyncCoordinator : IDisposable
 
     private List<SyncWorld>? _worlds;
     private HelloMessage _hello = new();
-    private string _appliedSettings = string.Empty;
+    private readonly SyncConnectionPolicy _connectionPolicy = new();
     private bool _applying;
     private List<SyncMark> _localTrainBackup = new();
     public int LocalBackupCount => _localTrainBackup.Count;
@@ -192,16 +184,35 @@ public sealed partial class SyncCoordinator : IDisposable
         _pluginVersion = pluginVersion;
         _client = new SyncClient(log);
 
-        _framework.Update += OnUpdate;
-        _detector.Cleared += OnDetectorCleared;
-        _detector.Scanned += OnScanned;
-        _detector.SightingObservedDead += OnSightingDeath;
+        var startup = new StartupTransaction();
+        startup.Add(_client.Dispose);
+        try
+        {
+            startup.Add(() => { _framework.Update -= OnUpdate; });
+            _framework.Update += OnUpdate;
+            startup.Add(() => { _detector.Cleared -= OnDetectorCleared; });
+            _detector.Cleared += OnDetectorCleared;
+            startup.Add(() => { _detector.Scanned -= OnScanned; });
+            _detector.Scanned += OnScanned;
+            startup.Add(() => { _detector.SightingObservedDead -= OnSightingDeath; });
+            _detector.SightingObservedDead += OnSightingDeath;
 
-        ApplySettings();
+            ApplySettings();
+            startup.Commit();
+        }
+        catch (Exception ex)
+        {
+            _disposed = true;
+            throw startup.Rollback(ex);
+        }
     }
+
+    private bool _disposed;
 
     public void Dispose()
     {
+        if (_disposed) return;
+        _disposed = true;
         _framework.Update -= OnUpdate;
         _detector.Cleared -= OnDetectorCleared;
         _detector.Scanned -= OnScanned;
@@ -209,9 +220,7 @@ public sealed partial class SyncCoordinator : IDisposable
         _client.Dispose();
     }
 
-    // -----------------------------------------------------------------------
     // Settings and status
-    // -----------------------------------------------------------------------
 
     /// <summary>
     /// Reads the sync settings and (re)connects if they changed. Called by
@@ -219,24 +228,12 @@ public sealed partial class SyncCoordinator : IDisposable
     /// </summary>
     public void ApplySettings(bool force = false)
     {
-        var wanted = $"{_config.SyncEnabled}|{_config.SyncServerUrl}|{_config.SyncPassword}|{_config.SyncDisplayName}|{_config.SyncShareTrain}";
-        if (!force && wanted == _appliedSettings) return;
-        _appliedSettings = wanted;
-
-        _client.Stop();
-        ForgetRemoteState();
-        LastError = string.Empty;
-
-        if (!_config.SyncEnabled) return;
-
-        if (!TryBuildUri(_config.SyncServerUrl, out var uri, out var problem))
-        {
-            LastError = problem;
-            return;
-        }
-
-        RefreshHello();
-        _client.Start(uri, () => _hello);
+        var wanted = new SyncConnectionPolicy.Settings(_config.SyncEnabled, _config.SyncServerUrl,
+            _config.SyncPassword, _config.SyncDisplayName, _config.SyncShareTrain, _config.SyncAllowPlaintext);
+        _connectionPolicy.Apply(wanted, force,
+            () => { _client.Stop(); ForgetRemoteState(); },
+            error => LastError = error,
+            uri => { RefreshHello(); _client.Start(uri, () => _hello); });
     }
 
     public string Status
@@ -260,53 +257,14 @@ public sealed partial class SyncCoordinator : IDisposable
     /// Turns what someone typed into a WebSocket URL: adds the scheme if it
     /// is missing, swaps http for ws, and points a bare host at /ws.
     /// </summary>
-    public static bool TryBuildUri(string raw, out Uri uri, out string problem)
-    {
-        uri = null!;
-        problem = string.Empty;
+    public static bool TryBuildUri(string raw, out Uri uri, out string problem, bool allowPlaintext = false) =>
+        SyncEndpoint.TryBuild(raw,out uri,out problem,allowPlaintext);
 
-        raw = (raw ?? string.Empty).Trim();
-        if (raw.Length == 0)
-        {
-            problem = "No server URL set.";
-            return false;
-        }
-
-        if (!raw.Contains("://", StringComparison.Ordinal)) raw = "wss://" + raw;
-
-        if (!Uri.TryCreate(raw, UriKind.Absolute, out var parsed))
-        {
-            problem = "That server URL could not be read.";
-            return false;
-        }
-
-        var scheme = parsed.Scheme.ToLowerInvariant() switch
-        {
-            "http" => "ws",
-            "https" => "wss",
-            "ws" => "ws",
-            "wss" => "wss",
-            _ => null,
-        };
-
-        if (scheme is null)
-        {
-            problem = "The server URL needs to start with wss:// (or ws:// for a LAN).";
-            return false;
-        }
-
-        var builder = new UriBuilder(parsed) { Scheme = scheme };
-        if (string.IsNullOrEmpty(builder.Path) || builder.Path == "/") builder.Path = "/ws";
-        uri = builder.Uri;
-        return true;
-    }
-
-    // -----------------------------------------------------------------------
     // Framework tick
-    // -----------------------------------------------------------------------
 
     private void OnUpdate(IFramework framework)
     {
+        if (_disposed) return;
         if (!_config.SyncEnabled) return;
 
         try
@@ -356,7 +314,8 @@ public sealed partial class SyncCoordinator : IDisposable
 
     private void DrainInbox()
     {
-        while (_client.TryDequeue(out var type, out var payload))
+        var budget=System.Diagnostics.Stopwatch.StartNew();
+        for (var processed=0; processed<16 && budget.ElapsedMilliseconds<3 && _client.TryDequeue(out var type,out var payload); processed++)
         {
             try
             {
@@ -369,9 +328,7 @@ public sealed partial class SyncCoordinator : IDisposable
         }
     }
 
-    // -----------------------------------------------------------------------
     // Remote -> local
-    // -----------------------------------------------------------------------
 
     private void Apply(string type, JObject payload)
     {
@@ -772,9 +729,7 @@ public sealed partial class SyncCoordinator : IDisposable
 
     private void Bump() => RemoteVersion++;
 
-    // -----------------------------------------------------------------------
     // Local -> remote
-    // -----------------------------------------------------------------------
 
     private void DiffTrain()
     {
@@ -879,9 +834,7 @@ public sealed partial class SyncCoordinator : IDisposable
         _client.Send(new PresenceUpdateMessage { WorldId = here.Item1, TerritoryId = here.Item2, Instance = here.Item3 });
     }
 
-    // -----------------------------------------------------------------------
     // Kills, from the tally or by hand
-    // -----------------------------------------------------------------------
 
     /// <summary>
     /// A mark died in front of this client. Any rank: its sighting comes
@@ -960,9 +913,7 @@ public sealed partial class SyncCoordinator : IDisposable
         _client.Send(new SpawnResetMessage { TerritoryId = territoryId, WorldId = worldId, Instance = instance });
     }
 
-    // -----------------------------------------------------------------------
     // Lookups for the UI and the map
-    // -----------------------------------------------------------------------
 
     public SyncSpawnZone? ZoneFor(uint territoryId, uint worldId, uint instance) =>
         _zones.TryGetValue((territoryId, worldId, instance), out var z) ? z : null;
@@ -1002,9 +953,7 @@ public sealed partial class SyncCoordinator : IDisposable
         return "Anonymous";
     }
 
-    // -----------------------------------------------------------------------
     // Helpers
-    // -----------------------------------------------------------------------
 
     private void RefreshHello()
     {

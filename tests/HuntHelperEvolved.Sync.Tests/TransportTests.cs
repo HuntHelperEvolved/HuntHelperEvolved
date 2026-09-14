@@ -15,6 +15,39 @@ public class TransportTests
         while (!predicate()) await Task.Delay(20, timeout.Token);
     }
     [Fact]
+    public async Task PlaintextPolicyStopsTheSocketAndItsAutomaticReconnectLoop()
+    {
+        var builder=WebApplication.CreateBuilder();builder.WebHost.UseUrls("http://127.0.0.1:0");builder.Logging.ClearProviders();
+        await using var app=builder.Build();app.UseWebSockets();
+        var hellos=0;
+        app.Map("/ws",async context=>
+        {
+            using var socket=await context.WebSockets.AcceptWebSocketAsync();
+            try
+            {
+                var buffer=new byte[8192];
+                await socket.ReceiveAsync(buffer,context.RequestAborted);
+                Interlocked.Increment(ref hellos);
+                await socket.SendAsync(Encoding.UTF8.GetBytes("{\"type\":\"welcome\",\"protocol\":4}"),WebSocketMessageType.Text,true,context.RequestAborted);
+                while(socket.State==WebSocketState.Open)await socket.ReceiveAsync(buffer,context.RequestAborted);
+            }
+            catch(Exception ex)when(ex is WebSocketException or OperationCanceledException){}
+        });
+        await app.StartAsync();
+        using var client=new SyncClient(new TestLog());
+        var policy=new SyncConnectionPolicy();
+        var settings=new SyncConnectionPolicy.Settings(true,app.Urls.Single(),"test-secret","scout",true,true);
+        void Apply()=>policy.Apply(settings,false,client.Stop,_=>{},uri=>client.Start(uri,()=>new(){Password="test-secret"}));
+        Apply();await WaitFor(()=>client.IsConnected);
+        settings=settings with{AllowPlaintext=false};Apply();
+        Assert.Equal(SyncClient.ConnectionState.Off,client.State);
+        await Task.Delay(2300); // Beyond the first automatic reconnect backoff.
+        Assert.Equal(1,Volatile.Read(ref hellos));Assert.False(client.IsConnected);
+        settings=settings with{AllowPlaintext=true};Apply();await WaitFor(()=>client.IsConnected);
+        Assert.Equal(2,Volatile.Read(ref hellos));
+        client.Stop();await app.StopAsync();
+    }
+    [Fact]
     public async Task RapidServerSwitchCannotDeliverOldFramesOrStopNewConnection()
     {
         var builder = WebApplication.CreateBuilder(); builder.WebHost.UseUrls("http://127.0.0.1:0"); builder.Logging.ClearProviders();

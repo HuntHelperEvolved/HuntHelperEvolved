@@ -10,9 +10,10 @@ public sealed class ActiveMarksWindow(Configuration config, SyncCoordinator sync
     MarkDetector detector, IGameGui gameGui, LifestreamTravel travel, Action openSettings)
 {
     private readonly ActiveMarkGrace _localGrace = new();
+    private static readonly string[] RankTabs = { "All", "S", "A", "B" };
     private (uint Zone, uint World, uint Instance) _localScope;
     private string _search = string.Empty;
-    public void Toggle() { config.ActiveSRankWindowOpen = !config.ActiveSRankWindowOpen; config.Save(); }
+    public void Toggle() { config.ActiveSRankWindowOpen = !config.ActiveSRankWindowOpen; config.DeferWindowStateSave(); }
     public void Draw()
     {
         if (!sync.IsConnected) _localGrace.Clear();
@@ -33,14 +34,14 @@ public sealed class ActiveMarksWindow(Configuration config, SyncCoordinator sync
                 if (!sync.SupportsVisibleMarks) ImGui.TextWrapped("Update the server to 0.3.11 for live A/B/S observations, health and combat state.");
                 if (ImGui.BeginTabBar("activeMarkRanks"))
                 {
-                    foreach(var tab in new[] {"All","S","A","B"})
+                    foreach(var tab in RankTabs)
                         if(ImGui.BeginTabItem(tab)) { DrawRows(tab); ImGui.EndTabItem(); }
                     ImGui.EndTabBar();
                 }
             }
         }
         ImGui.End();
-        if (!open) { config.ActiveSRankWindowOpen=false; config.Save(); }
+        if (!open) { config.ActiveSRankWindowOpen=false; config.DeferWindowStateSave(); }
     }
     private void DrawRows(string tab)
     {
@@ -75,14 +76,14 @@ public sealed class ActiveMarksWindow(Configuration config, SyncCoordinator sync
             }
         }
         else _localGrace.Clear();
-        var rows=ActiveMarkRows.Merge(visible.Values,sync.SRankStatuses.Values,now).Select(row =>
+        var rows=ActiveMarkRows.Merge(visible.Values,sync.SRankStatuses,now).Select(row =>
         {
             var dc=worlds.LocateWorld(row.Mark.WorldId) is { } loc ? worlds.DataCenters[loc.DcIndex] : default;
             var expansion=SRankTimerData.ForTerritory(row.Mark.TerritoryId)?.Expansion ?? "Unknown";
             return (Row:row,Dc:dc,Expansion:expansion,World:worlds.NameOf(row.Mark.WorldId),Zone:detector.GetZoneName(row.Mark.TerritoryId));
         }).Where(r => !sync.Faloop.IsOffline(r.World) && sync.Faloop.CurrentInstances(r.Row.Mark.TerritoryId, new[] { r.Row.Mark.Instance }).Contains(r.Row.Mark.Instance))
           .Where(r => ActiveMarkRows.MatchesTab(r.Row.Mark.Rank,tab) && ActiveMarkRows.Matches(r.Row,config.VisibleMarkFilters,sync.ClientId,now,r.Dc.Id,r.Expansion))
-          .Where(r => (r.Row.Mark.Name+" "+r.World+" "+r.Zone+" "+r.Dc.Name+" "+string.Join(" ",r.Row.Visible?.Observers??new List<string>())).Contains(_search,StringComparison.OrdinalIgnoreCase))
+          .Where(r => string.IsNullOrEmpty(_search) || (r.Row.Mark.Name+" "+r.World+" "+r.Zone+" "+r.Dc.Name+" "+string.Join(" ",r.Row.Visible?.Observers??new List<string>())).Contains(_search,StringComparison.OrdinalIgnoreCase))
           .OrderBy(r => r.Row.HealthKnown && r.Row.Mark.HpPercent==0).ThenByDescending(r => r.Row.Mark.InCombat==true)
           .ThenBy(r => r.World).ThenBy(r => r.Zone).ThenBy(r => r.Row.Mark.Name).ThenBy(r => r.Row.Mark.Instance).ToList();
         if(rows.Count==0) { ImGui.TextDisabled("No matching marks."); return; }

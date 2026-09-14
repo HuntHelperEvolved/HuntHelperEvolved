@@ -51,10 +51,16 @@ public sealed unsafe class DamageWatch : IDisposable
     private readonly Dictionary<uint, DateTime> damaged = new();
     private readonly List<uint> staleBuffer = new();
 
+    private readonly object gate = new();
     private Hook<ActionEffectHandler.Delegates.Receive>? hook;
+    private ActionEffectHandler.Delegates.Receive? original;
+    private volatile uint localPlayerId;
+    private volatile bool stopping;
+    private bool active;
+
 
     /// <summary>True when the damage signal is live and can be trusted.</summary>
-    public bool IsActive => hook is not null;
+    public bool IsActive => active && !stopping;
 
     /// <summary>
     /// Actions by the local player seen so far. Surfaced in settings purely so
@@ -70,13 +76,23 @@ public sealed unsafe class DamageWatch : IDisposable
         {
             hook = Service.Interop.HookFromAddress<ActionEffectHandler.Delegates.Receive>(
                 (nint)ActionEffectHandler.MemberFunctionPointers.Receive, ReceiveDetour);
+            // Capture the trampoline before Enable can invoke our callback.
+            original = hook.Original;
+            Service.Framework.Update += UpdatePlayerIdentity;
             hook.Enable();
+            active = true;
             Status = "Active.";
             Service.Log.Information("Damage detection active; using action effects for kill credit.");
         }
         catch (Exception ex)
         {
-            hook = null;
+            stopping = true;
+            var cleanup = new HuntHelperEvolved.CleanupSequence();
+            cleanup.Run("damage identity callback", () => Service.Framework.Update -= UpdatePlayerIdentity);
+            cleanup.Run("failed damage hook disable", () => hook?.Disable());
+            cleanup.Run("failed damage hook dispose", () => { hook?.Dispose(); hook = null; });
+            try { cleanup.ThrowIfFailed(); }
+            catch (Exception cleanupError) { Service.Log.Error(cleanupError, "Failed to roll back damage hook startup."); }
             Status = "Unavailable - falling back to combat detection.";
             Service.Log.Error(ex, "Could not hook ActionEffectHandler.Receive. "
                                   + "Kill credit falls back to the combat heuristic.");
@@ -85,31 +101,57 @@ public sealed unsafe class DamageWatch : IDisposable
 
     public void Dispose()
     {
-        hook?.Disable();
-        hook?.Dispose();
-        hook = null;
+        stopping = true;
+        localPlayerId = 0;
+        var cleanup = new HuntHelperEvolved.CleanupSequence();
+        cleanup.Run("damage identity callback", () => Service.Framework.Update -= UpdatePlayerIdentity);
+        cleanup.Run("damage hook disable", () => hook?.Disable());
+        // Disable first, then wait for a running observation/original call before
+        // releasing its trampoline. Do not replace the hook under its callback.
+        lock (gate)
+        {
+            cleanup.Run("damage hook dispose", () => { hook?.Dispose(); hook = null; });
+            damaged.Clear();
+            active = false;
+        }
+        cleanup.ThrowIfFailed();
+    }
+
+    private void UpdatePlayerIdentity(Dalamud.Plugin.Services.IFramework framework)
+    {
+        if (stopping) return;
+        var id = HuntHelperEvolved.GameReadiness.CanReadCharacters
+            ? Service.Objects.LocalPlayer?.EntityId ?? 0 : 0;
+        lock (gate)
+        {
+            if (localPlayerId != id) damaged.Clear();
+            localPlayerId = id;
+        }
     }
 
     /// <summary>Whether the local player's action has resolved against this entity recently.</summary>
-    public bool WasDamagedByPlayer(uint entityId) => damaged.ContainsKey(entityId);
+    public bool WasDamagedByPlayer(uint entityId) { lock (gate) return damaged.ContainsKey(entityId); }
 
     public void Prune(DateTime now)
     {
-        if (damaged.Count == 0)
-            return;
-
-        staleBuffer.Clear();
-        foreach (var (id, seen) in damaged)
+        lock (gate)
         {
-            if ((now - seen).TotalSeconds > RememberSeconds)
-                staleBuffer.Add(id);
-        }
+            if (damaged.Count == 0)
+                return;
 
-        foreach (var id in staleBuffer)
-            damaged.Remove(id);
+            staleBuffer.Clear();
+            foreach (var (id, seen) in damaged)
+            {
+                if ((now - seen).TotalSeconds > RememberSeconds)
+                    staleBuffer.Add(id);
+            }
+
+            foreach (var id in staleBuffer)
+                damaged.Remove(id);
+        }
     }
 
-    public void Clear() => damaged.Clear();
+    public void Clear() { lock (gate) damaged.Clear(); }
 
     private void ReceiveDetour(
         uint casterEntityId,
@@ -119,18 +161,23 @@ public sealed unsafe class DamageWatch : IDisposable
         ActionEffectHandler.TargetEffects* effects,
         GameObjectId* targetEntityIds)
     {
-        // Observation must never be able to break the game's own handling, so
-        // it is wrapped and the original is called unconditionally.
-        try
+        lock (gate)
         {
-            Observe(casterEntityId, header, targetEntityIds);
+            // Observation failures (including logging failures) cannot skip forwarding.
+            try
+            {
+                if (!stopping) Observe(casterEntityId, header, targetEntityIds);
+            }
+            catch (Exception ex)
+            {
+                try { Service.Log.Error(ex, "Failed to read an action effect."); }
+                catch { /* Logging must not interrupt the game callback. */ }
+            }
+            finally
+            {
+                original!(casterEntityId, casterPtr, targetPos, header, effects, targetEntityIds);
+            }
         }
-        catch (Exception ex)
-        {
-            Service.Log.Error(ex, "Failed to read an action effect.");
-        }
-
-        hook!.Original(casterEntityId, casterPtr, targetPos, header, effects, targetEntityIds);
     }
 
     private void Observe(uint casterEntityId, ActionEffectHandler.Header* header, GameObjectId* targetEntityIds)
@@ -138,8 +185,8 @@ public sealed unsafe class DamageWatch : IDisposable
         if (header is null || targetEntityIds is null)
             return;
 
-        var player = Service.Objects.LocalPlayer;
-        if (player is null || casterEntityId != player.EntityId)
+        // Game objects are sampled on the framework thread, never from this hook.
+        if (localPlayerId is 0 or 0xE0000000 || casterEntityId != localPlayerId)
             return;
 
         EventsSeen++;

@@ -71,6 +71,8 @@ public sealed unsafe class HuntMapOverlay : IDisposable
     private bool _disposed;
     private bool _needsRefresh = true;
     private readonly Dictionary<(uint, uint, uint, uint, uint), (MapMarkerNode Dot, MarkLabelMarker? Label)> _liveNodes = new();
+    private readonly HashSet<int> _occupiedPoints = new();
+    private readonly HashSet<int> _nextOccupiedPoints = new();
     private uint _lastTerritory;
 
     // Instance and world are part of "which map am I looking at" just as much
@@ -115,7 +117,7 @@ public sealed unsafe class HuntMapOverlay : IDisposable
         try
         {
             _addonLifecycle.RegisterListener(AddonEvent.PostRefresh, "AreaMap", OnMapRefresh);
-            _framework.Update += OnUpdate;
+            _addonLifecycle.RegisterListener(AddonEvent.PreUpdate, "AreaMap", OnMapUpdate);
             Status = "Waiting to start.";
         }
         catch (Exception ex)
@@ -435,8 +437,9 @@ public sealed unsafe class HuntMapOverlay : IDisposable
         };
     }
 
-    private static bool IsLeftMapClick()
+    private bool IsLeftMapClick()
     {
+        if (_disposed || _faulted || !_activation.Visible || !GameReadiness.CanReadCharacters) return false;
         // KamiToolKit invokes OnClick for every native MouseDown, including right-click.
         // Use the native pressed button rather than ImGui's previous-frame state.
         var module = FFXIVClientStructs.FFXIV.Client.UI.UIModule.Instance();
@@ -539,6 +542,7 @@ public sealed unsafe class HuntMapOverlay : IDisposable
     /// </summary>
     private float MarkerPositionScaling()
     {
+        if (_disposed || _faulted || !GameReadiness.CanReadCharacters) return 1f;
         try
         {
             var addon = (FFXIVClientStructs.FFXIV.Client.UI.AddonAreaMap*)
@@ -893,7 +897,11 @@ public sealed unsafe class HuntMapOverlay : IDisposable
         }
     }
 
-    private void OnMapRefresh(AddonEvent type, AddonArgs args) => _needsRefresh = true;
+    private void OnMapRefresh(AddonEvent type, AddonArgs args) { if (!_disposed) _needsRefresh = true; }
+
+    // Mutate nodes only while AreaMap is being updated, not from an arbitrary
+    // framework tick during its teardown. Upstream still owns attach/finalize.
+    private void OnMapUpdate(AddonEvent type, AddonArgs args) => OnUpdate(_framework);
 
     private void OnUpdate(IFramework framework)
     {
@@ -903,7 +911,8 @@ public sealed unsafe class HuntMapOverlay : IDisposable
         {
             var territory = _clientState.TerritoryType;
             // Short-circuit before reading native agents while logged out or outside hunt content.
-            var eligible = _clientState.IsLoggedIn && _config.AnyMapOverlayEnabled && IsHuntZone(territory)
+            var eligible = GameReadiness.CanReadCharacters && _config.AnyMapOverlayEnabled && IsHuntZone(territory)
+                && _gameGui.GetAddonByName("AreaMap").IsVisible
                 && FFXIVClientStructs.FFXIV.Client.UI.Agent.AgentMap.Instance() != null;
             var wasVisible = _activation.Visible;
             if (!_activation.Update(eligible, StartOverlay, SetOverlayVisible))
@@ -1034,6 +1043,30 @@ public sealed unsafe class HuntMapOverlay : IDisposable
                 return;
             }
 
+            var points = SpawnPointData.For(territory);
+            _nextOccupiedPoints.Clear();
+            if (_config.HideOccupiedSpawnPoints && _config.ShowSpawnPointsOnMap && _config.ShowMarksOnMap)
+            {
+                foreach (var sighting in live)
+                {
+                    var rank = sighting.Rank switch
+                    {
+                        HuntRank.A when _config.ShowARankMarks => SpawnRanks.A,
+                        HuntRank.B when _config.ShowBRankMarks => SpawnRanks.B,
+                        HuntRank.S when _config.ShowSRankMarks => SpawnRanks.S,
+                        _ => SpawnRanks.None,
+                    };
+                    if (SpawnPointVisibility.OccupiedPoint(points, sighting.MapPosition, rank, sighting.HealthPercent) is { } occupied)
+                        _nextOccupiedPoints.Add(occupied);
+                }
+            }
+            if (!_occupiedPoints.SetEquals(_nextOccupiedPoints))
+            {
+                _occupiedPoints.Clear();
+                _occupiedPoints.UnionWith(_nextOccupiedPoints);
+                _needsRefresh = true;
+            }
+
             if (!_needsRefresh)
             {
                 if (_dotPaths is not null) DrawLiveMarks(mapId, _dotPaths, _config.ShowMarksOnMap ? live : Enumerable.Empty<OtherRankSighting>());
@@ -1058,8 +1091,6 @@ public sealed unsafe class HuntMapOverlay : IDisposable
             var guides = DrawPlayerGuides(mapId, dots, out var guidesWaiting);
             if (guidesWaiting) _needsRefresh = true;
 
-            var points = SpawnPointData.For(territory);
-
             var placed = 0;
 
             // Only the points are behind this switch. Marks are drawn below
@@ -1068,6 +1099,7 @@ public sealed unsafe class HuntMapOverlay : IDisposable
             // showing where one is.
             for (var pointIndex = 0; _config.ShowSpawnPointsOnMap && pointIndex < points.Length; pointIndex++)
             {
+                if (_occupiedPoints.Contains(pointIndex)) continue;
                 var point = points[pointIndex];
 
                 // Only draw points that can host a rank the player wants shown.
@@ -1181,23 +1213,13 @@ public sealed unsafe class HuntMapOverlay : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
-        try
-        {
-            _framework.Update -= OnUpdate;
-            _addonLifecycle.UnregisterListener(AddonEvent.PostRefresh, "AreaMap", OnMapRefresh);
-
-            if (_overlay != null)
-            {
-                // Let the controller detach before disposing its owned markers.
-                // Avoid manually disposing its markers before controller finalization.
-                _overlay.Dispose();
-                _liveNodes.Clear();
-                _overlay = null;
-            }
-        }
-        catch (Exception ex)
-        {
-            _log.Warning(ex, "Map overlay did not shut down cleanly.");
-        }
+        var cleanup = new CleanupSequence();
+        cleanup.Run("map update callback", () => _addonLifecycle.UnregisterListener(AddonEvent.PreUpdate, "AreaMap", OnMapUpdate));
+        cleanup.Run("map refresh callback", () => _addonLifecycle.UnregisterListener(AddonEvent.PostRefresh, "AreaMap", OnMapRefresh));
+        // The upstream controller owns its nodes; never manually dispose them first.
+        cleanup.Run("map overlay", () => _overlay?.Dispose());
+        _liveNodes.Clear();
+        _overlay = null;
+        cleanup.ThrowIfFailed();
     }
 }

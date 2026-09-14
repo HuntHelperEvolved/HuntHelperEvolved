@@ -44,12 +44,9 @@ public record TrainReportEntry(
         MaxHours == null ? null : KillTimeUtc.AddHours(MaxHours.Value);
 }
 
-/// <summary>
-/// Builds the kill-ordered entry list and Assumed Sniped groups from a set of
-/// tracked marks. Pure data — no Discord formatting and no ImGui — so both the
-/// webhook message and the in-game "Marks Slain" preview read from exactly the
-/// same computation and can never show different results.
-/// </summary>
+public sealed record AssumedSnipedGroup(uint WorldId, string WorldName, string Expansion, List<string> Marks);
+
+/// <summary>Shared report selection and kill-window calculations for Discord and the preview.</summary>
 public static class TrainReport
 {
     /// <summary>
@@ -86,7 +83,10 @@ public static class TrainReport
     /// for a later train rather than being reported and cleared here.
     /// </summary>
     public static HashSet<string> ReportedExpansions(List<TrackedMark> marks) =>
-        marks.Where(IsObservedKill).Select(ExpansionOf).ToHashSet();
+        ReportedLegs(marks).Select(leg => leg.Expansion).ToHashSet();
+
+    public static HashSet<(uint WorldId, string Expansion)> ReportedLegs(IEnumerable<TrackedMark> marks) =>
+        marks.Where(IsObservedKill).Select(m => (m.WorldId, ExpansionOf(m))).ToHashSet();
 
     /// <summary>
     /// The subset of the train a report covers - every mark, dead or alive,
@@ -95,12 +95,12 @@ public static class TrainReport
     /// Alive marks are kept rather than dropped because the report's own
     /// "Unfinished / still alive" section is worth having for a leg that WAS
     /// run: it says which of that leg's marks the train did not get to. The
-    /// filter is per expansion, never per mark.
+    /// filter is per world and expansion, so an unrun world stays out of the report.
     /// </summary>
     public static List<TrackedMark> ForReport(List<TrackedMark> marks)
     {
-        var reported = ReportedExpansions(marks);
-        return marks.Where(m => reported.Contains(ExpansionOf(m))).ToList();
+        var reported = ReportedLegs(marks);
+        return marks.Where(m => reported.Contains((m.WorldId, ExpansionOf(m)))).ToList();
     }
 
     /// <summary>
@@ -124,21 +124,23 @@ public static class TrainReport
     /// alternative - clearing the lot - throws away a check somebody is still
     /// actively sitting on.
     ///
-    /// A label that resolves to no known S rank is treated as belonging to
-    /// this report. It is reported and cleared, which is what every watch did
-    /// before this split existed; the alternative would strand a watch that no
-    /// report could ever clear.
+    /// Unknown labels follow their world's reported leg. Legacy watches with no
+    /// world can be assigned only when the train contains a single world.
     /// </summary>
     public static (List<FlagEntry> Reported, List<FlagEntry> Kept) SplitWatches(
-        IEnumerable<FlagEntry>? watches, HashSet<string> reportedExpansions)
+        IEnumerable<FlagEntry>? watches, HashSet<(uint WorldId, string Expansion)> reportedLegs,
+        IEnumerable<uint>? trainWorlds = null)
     {
         var reported = new List<FlagEntry>();
         var kept = new List<FlagEntry>();
 
+        var worlds = (trainWorlds ?? reportedLegs.Select(leg => leg.WorldId)).Distinct().ToList();
         foreach (var watch in watches ?? Enumerable.Empty<FlagEntry>())
         {
             var expansion = SRankData.ExpansionOfWatch(watch.Label);
-            if (expansion == null || reportedExpansions.Contains(expansion)) reported.Add(watch);
+            var world = watch.WorldId == 0 && worlds.Count == 1 ? worlds[0] : watch.WorldId;
+            if (expansion == null ? reportedLegs.Any(leg => leg.WorldId == world)
+                : reportedLegs.Contains((world, expansion))) reported.Add(watch);
             else kept.Add(watch);
         }
 
@@ -182,28 +184,25 @@ public static class TrainReport
     /// these have nothing to measure from and are named only so nobody assumes
     /// the train simply forgot them.
     /// </summary>
-    public static List<(string Expansion, List<string> Marks)> BuildSniped(List<TrackedMark> marks)
+    public static List<AssumedSnipedGroup> BuildSniped(List<TrackedMark> marks)
     {
-        var seenModelIds = marks.Select(m => m.ModelId).ToHashSet();
-        var touchedExpansions = marks
-            .Select(m => ExpansionData.Lookup(m.ModelId)?.Expansion)
-            .Where(e => e != null)
-            .Select(e => e!)
-            .Distinct();
-
-        var result = new List<(string, List<string>)>();
-        foreach (var expansion in touchedExpansions)
+        var result = new List<AssumedSnipedGroup>();
+        foreach (var world in marks.GroupBy(m => m.WorldId))
         {
-            var sniped = ExpansionData.ModelIdToMark
-                .Where(kv => kv.Value.Expansion == expansion && !seenModelIds.Contains(kv.Key))
-                .OrderBy(kv => kv.Value.ZoneOrder)
-                .Select(kv => $"{kv.Value.Name} ({kv.Value.Location})")
-                .ToList();
-
-            if (sniped.Count > 0)
-                result.Add((expansion, sniped));
+            var seen = world.Select(m => m.ModelId).ToHashSet();
+            var expansions = world.Select(m => ExpansionData.Lookup(m.ModelId)?.Expansion)
+                .OfType<string>().Distinct();
+            var worldName = world.Select(m => m.WorldName).FirstOrDefault(name => !string.IsNullOrEmpty(name))
+                            ?? $"World {world.Key}";
+            foreach (var expansion in expansions)
+            {
+                var missing = ExpansionData.ModelIdToMark
+                    .Where(kv => kv.Value.Expansion == expansion && !seen.Contains(kv.Key))
+                    .OrderBy(kv => kv.Value.ZoneOrder)
+                    .Select(kv => $"{kv.Value.Name} ({kv.Value.Location})").ToList();
+                if (missing.Count > 0) result.Add(new(world.Key, worldName, expansion, missing));
+            }
         }
-
         return result;
     }
 

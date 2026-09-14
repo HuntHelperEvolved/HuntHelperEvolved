@@ -7,34 +7,8 @@ using Newtonsoft.Json.Linq;
 namespace HuntTally;
 
 /// <summary>
-/// Loads and saves the tally from Hunt Tally's own configuration file, not
-/// Hunt Helper Evolved's.
-///
-/// The tally used to be a separate plugin, so its data already sits in
-/// pluginConfigs/HuntTally.json — hundreds of kilobytes of per-character kill
-/// history for anyone who has been running it. Keeping that file as the store
-/// is what makes upgrading to the merged plugin lossless: there is no
-/// migration step to get wrong, and nothing to import.
-///
-/// It also keeps the two configurations at their natural write rates. The
-/// relay saves its in-progress train every ten seconds; folding a multi-
-/// megabyte kill history into that file would mean rewriting the whole thing
-/// on every one of those saves.
-///
-/// Dalamud's own loader is bypassed because it only ever reads the config file
-/// named after the plugin. That costs us its serialiser settings, which are
-/// reproduced here:
-///
-///   Reading  — type metadata is ignored outright. The file on disk names the
-///              types as "HuntTally.Configuration, HuntTally", and the HuntTally
-///              assembly no longer exists. The target type is known statically
-///              anyway, so resolving it from the file was never needed.
-///
-///   Writing  — the root $type is written back exactly as Dalamud would have
-///              written it, so a user who decides to go back to the standalone
-///              plugin finds a file it can still load. Nested values are left
-///              bare: their declared types are concrete, so Dalamud resolves
-///              them without the hint.
+/// Reuses pluginConfigs/HuntTally.json to preserve existing counts without migration.
+/// Keeping it separate avoids rewriting kill history on each train save.
 /// </summary>
 public static class TallyConfigStore
 {
@@ -42,24 +16,14 @@ public static class TallyConfigStore
     public const string FileName = "HuntTally.json";
 
     /// <summary>
-    /// What the standalone plugin's assembly wrote for the root object. Dalamud
-    /// deserialises the root as IPluginConfiguration, so this line is the only
-    /// thing that makes the file loadable by it.
+    /// Preserves the root type needed by Dalamud to load this file in standalone Hunt Tally.
     /// </summary>
     private const string RootTypeName = "HuntTally.Configuration, HuntTally";
 
     private static readonly JsonSerializerSettings ReadSettings = new()
     {
-        // The file names its types as "HuntTally.Configuration, HuntTally", and
-        // that assembly no longer exists. None makes Newtonsoft skip resolving
-        // them: the target type is known statically here, so the hints were
-        // never needed.
-        //
-        // MetadataPropertyHandling stays at its default on purpose. Setting it
-        // to Ignore also stops $type being recognised as metadata, and inside a
-        // dictionary it then becomes an ordinary key - so Characters, keyed by
-        // content id, fails on "could not convert '$type' to System.UInt64" and
-        // takes the whole load down with it.
+        // Skip legacy assembly resolution; the target type is known.
+        // Keep default metadata handling so $type is not parsed as a numeric character ID.
         TypeNameHandling = TypeNameHandling.None,
     };
 
@@ -79,15 +43,7 @@ public static class TallyConfigStore
     public static string? SuspendedReason => suspendedReason;
 
     /// <summary>
-    /// Stops this plugin writing the tally file at all.
-    ///
-    /// Used when the standalone Hunt Tally plugin turns out to still be
-    /// installed. Both would then be counting the same kills into the same
-    /// file on their own timers, and each save would overwrite whatever the
-    /// other had written since it last read — so the two would not merely
-    /// disagree, they would destroy each other's counts. Standing down is the
-    /// only safe move: the plugin that has been keeping the file up to now
-    /// keeps it, intact, until the user removes one of the two.
+    /// Stops writes when standalone Hunt Tally is installed, preventing competing saves from losing counts.
     /// </summary>
     public static void SuspendWrites(string reason)
     {
@@ -96,11 +52,7 @@ public static class TallyConfigStore
     }
 
     /// <summary>
-    /// Reads the tally, or returns a fresh one when there is nothing to read.
-    ///
-    /// A file that exists but cannot be parsed is never silently replaced with
-    /// an empty tally — it is moved aside first, so a bad read costs the user
-    /// their session's counts rather than their entire history.
+    /// Reads the tally or starts a fresh one. Unreadable files are moved aside before replacement.
     /// </summary>
     public static Configuration Load(IDalamudPluginInterface pluginInterface)
     {
@@ -181,9 +133,7 @@ public static class TallyConfigStore
     {
         var root = JObject.FromObject(config, JsonSerializer.Create(WriteSettings));
 
-        // AddFirst so it leads the object, matching what Dalamud produces.
-        // Newtonsoft does not require the position, but a file that diffs
-        // cleanly against the old one is easier to reason about.
+        // Match Dalamud's metadata order to keep diffs against standalone saves readable.
         root.AddFirst(new JProperty("$type", RootTypeName));
 
         return root.ToString(Formatting.Indented);

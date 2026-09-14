@@ -1,0 +1,24 @@
+name: Verify plugin
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  plugin:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Get official Dalamud development assemblies
+        shell: pwsh
+        run: |
+          Invoke-WebRequest https://goatcorp.github.io/dalamud-distrib/latest.zip -OutFile "$env:RUNNER_TEMP/dalamud.zip"
+          Expand-Archive "$env:RUNNER_TEMP/dalamud.zip" "$env:RUNNER_TEMP/dalamud"
+          "DALAMUD_HOME=$env:RUNNER_TEMP/dalamud" >> $env:GITHUB_ENV
+      - run: dotnet test tests/HuntHelperEvolved.Sync.Tests -c Release
+      - run: dotnet build HuntHelperEvolved.csproj -c Release
+      - shell: bash
+        run: dotnet list HuntHelperEvolved.csproj package --vulnerable --include-transitive --format json > audit.json
+      - run: python scripts/check-audit.py audit.json
+      - run: python scripts/package-testing.py bin/Release/HuntHelperEvolved/latest.zip HuntHelperEvolved-testing.zip
