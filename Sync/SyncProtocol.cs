@@ -19,7 +19,10 @@ public static class SyncProtocol
 
     public static readonly JsonSerializerSettings Json = new()
     {
-        ContractResolver = new CamelCasePropertyNamesContractResolver(),
+        ContractResolver = new DefaultContractResolver
+        {
+            NamingStrategy = new CamelCaseNamingStrategy(processDictionaryKeys: false, overrideSpecifiedNames: true),
+        },
         NullValueHandling = NullValueHandling.Ignore,
         DateTimeZoneHandling = DateTimeZoneHandling.Utc,
         DateFormatHandling = DateFormatHandling.IsoDateFormat,
