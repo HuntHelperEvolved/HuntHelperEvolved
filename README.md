@@ -229,9 +229,7 @@ configuration for explicit upload from Settings → Sharing. Shared-row edits ma
 offline are replaced by server state. Blank display aliases send Anonymous.
 All password holders can edit, reorder and clear the shared train.
 
-Sync uses protocol 4; shared train presets require server 0.3.26 or newer. Run
-`dotnet test tests/HuntHelperEvolved.Sync.Tests -c Release` for transport and
-timer tests.
+Sync uses protocol 4; shared train presets require server 0.3.26 or newer.
 
 ## Talking to other plugins
 

@@ -19,6 +19,7 @@ audit.json
 HuntHelperEvolved-testing.zip
 
 # Internal notes stay outside the published repository.
+/tests/
 /TESTING.md
 /SYNC-REVIEW.md
 /docs/DEVELOPMENT.md

@@ -7,6 +7,11 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Check that local tests are not published
+        shell: pwsh
+        run: |
+          $localTests = @(git ls-files -- tests/)
+          if ($localTests.Count -gt 0) { throw "Keep the test suite local; do not publish tests/." }
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
@@ -16,7 +21,6 @@ jobs:
           Invoke-WebRequest https://goatcorp.github.io/dalamud-distrib/latest.zip -OutFile "$env:RUNNER_TEMP/dalamud.zip"
           Expand-Archive "$env:RUNNER_TEMP/dalamud.zip" "$env:RUNNER_TEMP/dalamud"
           "DALAMUD_HOME=$env:RUNNER_TEMP/dalamud" >> $env:GITHUB_ENV
-      - run: dotnet test tests/HuntHelperEvolved.Sync.Tests -c Release
       - run: dotnet build HuntHelperEvolved.csproj -c Release
       - shell: bash
         run: dotnet list HuntHelperEvolved.csproj package --vulnerable --include-transitive --format json > audit.json
