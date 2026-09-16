@@ -34,6 +34,15 @@ public static class ReleaseNotes
 
     public static readonly Release[] All =
     {
+        new("0.5.0.19", "2026-09-16", "Reusable conductor presets, shared rally stops and manual route adjustments.",
+        [
+            new("Presets", "Select a conductor preset in /hht > Train controls & scouts before scouting. Incoming marks follow its expansion and zone order, with instances starting at i1. Presets stay selected for future trains. Strict zones use a saved mark order; other zones use estimated travel distance.", Kihtli),
+            new("Rallies", "Add aetheryte rally stops on entry to numbered instances and selected expansion changes. Choose an aetheryte per zone or let the route planner choose. Stops use existing custom flags, with their usual teleport and removal controls.", Kihtli),
+            new("Sharing", "Save presets locally or share them through the server. Selecting a shared preset updates the route for everyone as marks are scouted. Shared presets require server 0.3.26 or later; older plugins still receive the ordered train and rally flags.", Kihtli),
+            new("Manual order", "Dragging a mark or expansion pauses automatic ordering and preserves the rest of the route. New scouts append while paused. The pause survives resets and future trains until you reselect a preset; the saved preset is unchanged.", Kihtli),
+            new("Travel", "Garlemald route estimates and teleport recommendations account for the required flight north from Tertium to (31.5, 12.7) before heading to a mark.", Kihtli),
+            new("Counters", "Fixed Reset shared counts requests losing trigger-mob name casing. Resets remain scoped to the selected world, zone and instance, with stale attempts unable to clear newer counts.", Kihtli),
+        ]),
         new("0.5.0.18", "2026-09-14", "Lower window draw overhead, clearer train lists and optional visibility filters.",
         [
             new("Performance", "Reduced draw overhead and memory allocations across the A-rank and S-rank boards, Active Marks, train list and tally. Window and display preferences no longer trigger a full configuration save on each change.", Kihtli),

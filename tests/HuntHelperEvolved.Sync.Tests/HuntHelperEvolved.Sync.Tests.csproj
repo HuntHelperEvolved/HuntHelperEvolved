@@ -7,6 +7,11 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="../../Train/Presets/TrainPreset.cs" Link="TrainPreset.cs" />
+    <Compile Include="../../Train/Presets/PresetRallies.cs" Link="PresetRallies.cs" />
+    <Compile Include="../../Train/Presets/PresetEditing.cs" Link="PresetEditing.cs" />
+    <Compile Include="../../Sync/TrainPresetMessages.cs" Link="TrainPresetMessages.cs" />
+    <EmbeddedResource Include="../../Train/Presets/RouteCatalog.json" LogicalName="TrainPresets.RouteCatalog.json" />
     <EmbeddedResource Include="faloop-timings.json" LogicalName="faloop-timings.json" />
     <EmbeddedResource Include="condition-reference.json" LogicalName="condition-reference.json" />
     <EmbeddedResource Include="../../Sync/SpawnConditions.json" LogicalName="HuntHelperEvolved.Sync.SpawnConditions.json" />

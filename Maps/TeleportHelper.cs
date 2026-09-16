@@ -3,6 +3,7 @@ using Dalamud.Plugin.Ipc;
 using Dalamud.Plugin.Services;
 using Lumina.Excel.Sheets;
 using System;
+using HuntHelperEvolved.TrainPresets;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
@@ -224,7 +225,7 @@ public sealed class TeleportHelper
         IdCorrections.TryGetValue(tableId, out var corrected) ? corrected : tableId;
 
     /// <summary>
-    /// The closest aetheryte to a point in a zone, or null if that zone has
+    /// The aetheryte with the shortest estimated flight to a point, or null if that zone has
     /// none known. Used both for teleporting and for naming the next stop.
     /// </summary>
     public static AetheryteData? NearestTo(uint territoryId, Vector2 mapPosition)
@@ -248,13 +249,16 @@ public sealed class TeleportHelper
         // meaningless — just take the first allowed aetheryte there.
         if (searchTerritory != territoryId) return allowed[0];
 
+        RouteCatalog.ByTerritory.TryGetValue(territoryId, out var routeZone);
         return allowed
-            .OrderBy(a => Vector2.DistanceSquared(a.Position, mapPosition))
+            .OrderBy(a => routeZone?.Aetherytes.FirstOrDefault(entry => entry.Id == a.AetheryteId) is { } entry
+                ? RouteDistance.FromAetheryte(entry, mapPosition.X, mapPosition.Y)
+                : Vector2.Distance(a.Position, mapPosition))
             .First();
     }
 
     /// <summary>
-    /// Finds the closest aetheryte in the same zone and teleports there.
+    /// Finds the aetheryte with the shortest estimated flight and teleports there.
     /// Returns false (with LastError set) if the zone has no known aetheryte or
     /// the Teleporter plugin isn't installed.
     /// </summary>

@@ -270,6 +270,7 @@ public sealed partial class SyncCoordinator : IDisposable
         try
         {
             DrainInbox();
+            CheckPresetRequest();
             ExpireRemote();
             var dt = framework.UpdateDelta.TotalSeconds;
 
@@ -334,6 +335,9 @@ public sealed partial class SyncCoordinator : IDisposable
     {
         switch (type)
         {
+            case "train.presets":
+                ApplyPresets(SyncProtocol.Deserialize<TrainPresetsBroadcast>(payload)!);
+                break;
             case "marks.visible":
                 var visible = SyncProtocol.Deserialize<VisibleMarksBroadcast>(payload)!;
                 foreach (var mark in visible.Marks) { _visibleMarks[mark.Mark.LiveKey] = mark; _activeMarkGrace.Update(mark, DateTime.UtcNow); }
@@ -439,6 +443,12 @@ public sealed partial class SyncCoordinator : IDisposable
 
     private void ApplyWelcome(WelcomeMessage welcome)
     {
+        SupportsTrainPresets = welcome.SupportsTrainPresets;
+        TrainPresets = welcome.TrainPresets;
+        PendingPresetRequest = null;
+        AcceptedPresetRevision = null;
+        CompletedPresetRequest = null;
+        PresetStatus = "";
         ResetCompletionConnection();
         SupportsTrainFinish=welcome.SupportsTrainFinish; SupportsPartialFinish=welcome.SupportsPartialFinish && welcome.SupportsReportedHistory;
         _trainScouts=welcome.TrainScouts;
@@ -497,6 +507,7 @@ public sealed partial class SyncCoordinator : IDisposable
 
         Bump();
         _log.Information($"Sync: connected to server {welcome.ServerVersion}; {welcome.Marks.Count} shared marks, {welcome.Clients.Count} online.");
+        _trainSnapshotConnectionAt = _client.ConnectedAtUtc;
     }
 
     private void ApplyMarks(List<SyncMark> marks)
@@ -711,6 +722,13 @@ public sealed partial class SyncCoordinator : IDisposable
 
     private void ForgetRemoteState()
     {
+        _trainSnapshotConnectionAt = null;
+        SupportsTrainPresets = false;
+        TrainPresets = new();
+        PendingPresetRequest = null;
+        AcceptedPresetRevision = null;
+        CompletedPresetRequest = null;
+        PresetStatus = "";
         ResetCompletionConnection();
         _visibleMarks.Clear(); _activeMarkGrace.Clear(); ClientId = string.Empty; SupportsVisibleMarks = false; SupportsManualMapping = false; SupportsScopedTrainWatches = false;
         _counterServerId = string.Empty; _counterReady = false; _sharedCounters.Clear();
@@ -733,7 +751,7 @@ public sealed partial class SyncCoordinator : IDisposable
 
     private void DiffTrain()
     {
-        if (!_config.SyncShareTrain) return;
+        if (!_config.SyncShareTrain || !HasCurrentTrainSnapshot) return;
 
         var watches = ReadLocalWatches();
         var watchJson = SyncProtocol.Serialize(watches);
@@ -768,7 +786,7 @@ public sealed partial class SyncCoordinator : IDisposable
         if (newlyDead.Count > 0) _client.Send(new SightingsRemoveMessage { Keys = newlyDead });
 
         var order = _detector.Ordered().Select(m => m.Key).ToList();
-        if (!order.SequenceEqual(_lastSentOrder))
+        if (TrainPresets.ActivePresetId is null && !order.SequenceEqual(_lastSentOrder))
         {
             _lastSentOrder = order;
             _client.Send(new TrainOrderMessage { Keys = order.Select(SyncKey.From).ToList() });

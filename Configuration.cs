@@ -62,6 +62,11 @@ public class CounterSettings
 [Serializable]
 public class Configuration : IPluginConfiguration
 {
+    public List<TrainPresets.TrainPreset> TrainPresets { get; set; } = new();
+    public string? ActiveTrainPresetId { get; set; }
+    public bool TrainPresetOrderingPaused { get; set; }
+    public TrainPresets.RallyProgress LocalPresetRallies { get; set; } = new();
+    public TrainPresets.RallyProgress ResetUndoPresetRallies { get; set; } = new();
     public int Version { get; set; } = 4;
 
     /// <summary>

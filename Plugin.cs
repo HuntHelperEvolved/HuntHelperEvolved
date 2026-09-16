@@ -179,6 +179,8 @@ public sealed partial class Plugin : IDalamudPlugin
     // Drag state for the train list. Both are -1 when no drag is in progress.
     private int _dragFromIndex = -1;
     private int _dragToIndex = -1;
+    private (uint NameId, uint Instance, uint WorldId)? _dragMarkKey;
+    private (uint NameId, uint Instance, uint WorldId)? _dragTargetKey;
 
     // The same, for dragging whole expansion blocks around when the train is
     // grouped. Kept separate from the mark drag rather than overloaded onto it:
@@ -187,6 +189,8 @@ public sealed partial class Plugin : IDalamudPlugin
     // mark move. Indices are into the expansions actually present in the list.
     private int _dragExpansionFrom = -1;
     private int _dragExpansionTo = -1;
+    private (uint WorldId, string Expansion)? _dragExpansionBlock;
+    private (uint WorldId, string Expansion)? _dragExpansionTargetBlock;
 
     private readonly TrainExpansionProgress _expansionProgress = new();
 
@@ -512,6 +516,7 @@ public sealed partial class Plugin : IDalamudPlugin
         if (_disposed) return;
         if (_commandHelpDirty) RefreshCommandHelp();
         UpdateAutomaticTrainWatches();
+        ApplyLocalTrainPreset();
         // During DC transfers the game hides its UI at character selection.
         // Only Active Marks is drawn there; normal hide preferences apply in game.
         _pluginInterface.UiBuilder.DisableUserUiHide = _releaseNotesChecked
@@ -953,6 +958,7 @@ public sealed partial class Plugin : IDalamudPlugin
         ProcessPendingCustomRemovals();
         UpdateAutoAdvance();
         DrawTrainPopout();
+        DrawPresetEditor();
         DrawCounterPopout();
         DrainPendingSpawnAlerts();
         _activeMarksWindow.Draw();
@@ -1242,6 +1248,7 @@ public sealed partial class Plugin : IDalamudPlugin
     /// <summary>Drops the saved train. Only Reset and a posted train do this.</summary>
     private void ClearSavedTrain()
     {
+        _config.LocalPresetRallies = new();
         _config.SavedTrain.Clear();
         _config.SavedTrainAtUtc = null;
         _config.SavedCurrentNameId = null;
@@ -1906,6 +1913,7 @@ public sealed partial class Plugin : IDalamudPlugin
 
     private void DrawTrainControls()
     {
+        DrawPresetControls();
 
         // Row 1: scanning state.
         if (_config.ScanningPaused)
@@ -2062,6 +2070,7 @@ public sealed partial class Plugin : IDalamudPlugin
 
         if (allMarks.Count == 0)
         {
+            ClearTrainDrag();
             ResetTrainExpansionProgress();
             ImGui.TextDisabled("No marks detected yet — fly near one and it'll appear here.");
             DrawSRankWatchRows();
@@ -2080,7 +2089,7 @@ public sealed partial class Plugin : IDalamudPlugin
         var grouping = _config.GroupTrainByExpansion;
         // Shared grouping follows the route's existing block order, so every scout
         // reaches the same order without applying conflicting local preferences.
-        if (_dragFromIndex == -1 && _dragExpansionFrom == -1
+        if (!PresetOrderLocked && _dragFromIndex == -1 && _dragExpansionFrom == -1
             && _trainGroupingState.Changed(allMarks, grouping, _config.SyncEnabled && _config.SyncShareTrain,
                 _config.ExpansionOrder, _config.WorldExpansionOrder))
         {
@@ -2112,6 +2121,7 @@ public sealed partial class Plugin : IDalamudPlugin
 
         if (marks.Count == 0)
         {
+            ClearTrainDrag();
             ImGui.TextDisabled($"All {allMarks.Count} marks are dead — untick \"Hide dead marks\" to see them.");
             DrawSRankWatchRows();
             return;
@@ -2151,6 +2161,11 @@ public sealed partial class Plugin : IDalamudPlugin
             }
         }
 
+        // Scouting can change positions between frames while a row is held.
+        if (_dragMarkKey is { } dragKey && (_dragFromIndex = marks.FindIndex(m => m.Key == dragKey)) < 0) ClearTrainDrag();
+        if (_dragTargetKey is { } targetKey) _dragToIndex = marks.FindIndex(m => m.Key == targetKey);
+        if (_dragExpansionBlock is { } dragBlock && (_dragExpansionFrom = presentExpansions.IndexOf(dragBlock)) < 0) ClearTrainDrag();
+        if (_dragExpansionTargetBlock is { } targetBlock) _dragExpansionTo = presentExpansions.IndexOf(targetBlock);
         (uint NameId, uint Instance, uint WorldId)? toRemove = null;
 
         var rowHeight = Math.Max(ImGui.GetFrameHeight(), (float)Math.Clamp(_config.TrainRowHeight, 14, 48));
@@ -2463,13 +2478,14 @@ public sealed partial class Plugin : IDalamudPlugin
             }
 
             // --- drag: only ever RECORDS intent, never mutates the list ---
-            if (_dragFromIndex == -1
+            if (CanDragPresetTrain && _dragFromIndex == -1
                 && _dragExpansionFrom == -1
                 && ImGui.IsItemActive()
                 && ImGui.IsMouseDragging(ImGuiMouseButton.Left)
                 && mouseXInWindow < buttonColumnX)
             {
                 _dragFromIndex = i;
+                _dragMarkKey = mark.Key;
             }
 
             // Grouped, a mark can only be dropped inside its own block. Which
@@ -2483,6 +2499,7 @@ public sealed partial class Plugin : IDalamudPlugin
             if (dragging && ImGui.IsItemHovered() && droppableHere)
             {
                 _dragToIndex = i;
+                _dragTargetKey = mark.Key;
             }
 
             // A block can also be dropped on any row belonging to another
@@ -2493,7 +2510,10 @@ public sealed partial class Plugin : IDalamudPlugin
                 var over = presentExpansions.IndexOf(TrainBlock(mark));
                 if (over >= 0 && _dragExpansionFrom < presentExpansions.Count
                     && presentExpansions[_dragExpansionFrom].WorldId == mark.WorldId)
+                {
                     _dragExpansionTo = over;
+                    _dragExpansionTargetBlock = presentExpansions[over];
+                }
             }
 
             // --- click: a release with no drag in progress ---
@@ -2562,12 +2582,14 @@ public sealed partial class Plugin : IDalamudPlugin
                 {
                     allMarks.RemoveAt(fromFull);
                     allMarks.Insert(toFull, moving);
-                    _detector.ApplyOrder(allMarks);
+                    ApplyManualTrainOrder(allMarks);
                 }
             }
 
             _dragFromIndex = -1;
             _dragToIndex = -1;
+            _dragMarkKey = null;
+            _dragTargetKey = null;
         }
 
         // --- and the same for a whole expansion block ---
@@ -2585,6 +2607,8 @@ public sealed partial class Plugin : IDalamudPlugin
 
             _dragExpansionFrom = -1;
             _dragExpansionTo = -1;
+            _dragExpansionBlock = null;
+            _dragExpansionTargetBlock = null;
         }
 
         if (toRemove.HasValue) _detector.Remove(toRemove.Value);
@@ -2593,6 +2617,8 @@ public sealed partial class Plugin : IDalamudPlugin
         ImGui.TextDisabled(grouping
             ? "Click a mark to echo + flag it. Click a heading to fold it away, drag one to move the whole expansion."
             : "Click a mark to echo + flag it. Drag a row to reorder marks within its world.");
+        if (PresetOrderLocked && !PresetOrderingPaused)
+            ImGui.TextWrapped("Dragging pauses preset ordering until you reselect a preset.");
 
         DrawSRankWatchRows();
     }
@@ -2674,20 +2700,24 @@ public sealed partial class Plugin : IDalamudPlugin
                 2.5f);
         }
 
-        if (_dragExpansionFrom == -1
+        if (CanDragPresetTrain && _dragExpansionFrom == -1
             && _dragFromIndex == -1
             && headerActive
             && ImGui.IsMouseDragging(ImGuiMouseButton.Left))
         {
             _dragExpansionFrom = index;
+            _dragExpansionBlock = block;
         }
 
         if (_dragExpansionFrom >= 0 && _dragExpansionFrom < blocks.Count && headerHovered
             && blocks[_dragExpansionFrom].WorldId == block.WorldId)
+        {
             _dragExpansionTo = index;
+            _dragExpansionTargetBlock = block;
+        }
 
         if (_dragExpansionFrom == -1 && _dragFromIndex == -1 && headerHovered)
-            ImGui.SetTooltip(collapsed
+            ImGui.SetTooltip(PresetOrderLocked && !PresetOrderingPaused ? "Click to fold or open this expansion. Drag to move it and pause preset ordering." : collapsed
                 ? "Click to open this expansion. Drag to reorder expansions within this world."
                 : "Click to fold this expansion away. Drag to reorder expansions within this world.");
 
@@ -2727,6 +2757,7 @@ public sealed partial class Plugin : IDalamudPlugin
     /// </summary>
     private List<DetectedMark> GroupByExpansion(List<DetectedMark> marks)
     {
+        if (PresetOrderLocked) return marks;
         if (!_config.GroupTrainByExpansion || (_config.SyncEnabled && _config.SyncShareTrain))
             return Sync.SharedRouteGrouping.GroupByWorldInRouteOrder(marks, m => m.WorldId,
                 m => ExpansionData.ExpansionOf(m.NameId, m.ZoneName), _config.GroupTrainByExpansion);
@@ -2794,7 +2825,9 @@ public sealed partial class Plugin : IDalamudPlugin
     {
         if (moving.WorldId != target.WorldId) return;
         var allMarks = _detector.Ordered();
-        var order = ExpansionDisplayOrder(allMarks.Where(m => m.WorldId == moving.WorldId));
+        var order = PresetOrderLocked
+            ? allMarks.Where(m => m.WorldId == moving.WorldId).Select(m => TrainBlock(m).Expansion).Distinct().ToList()
+            : ExpansionDisplayOrder(allMarks.Where(m => m.WorldId == moving.WorldId));
         var from = order.IndexOf(moving.Expansion);
         var to = order.IndexOf(target.Expansion);
         if (from < 0 || to < 0 || from == to) return;
@@ -2802,12 +2835,15 @@ public sealed partial class Plugin : IDalamudPlugin
         order.RemoveAt(from);
         order.Insert(to, moving.Expansion);
 
-        _config.WorldExpansionOrder[moving.WorldId] = order;
-        _detector.ApplyOrder(allMarks.GroupBy(m => m.WorldId).SelectMany(world =>
+        if (!ApplyManualTrainOrder(allMarks.GroupBy(m => m.WorldId).SelectMany(world =>
             world.Key == moving.WorldId
                 ? world.OrderBy(m => order.IndexOf(ExpansionData.ExpansionOf(m.NameId, m.ZoneName))).ToList()
-                : world.ToList()).ToList());
-        _config.Save();
+                : world.ToList()).ToList())) return;
+        if (!PresetOrderLocked)
+        {
+            _config.WorldExpansionOrder[moving.WorldId] = order;
+            _config.Save();
+        }
     }
 
     private static (uint WorldId, string Expansion) TrainBlock(DetectedMark mark) =>
@@ -3867,6 +3903,7 @@ public sealed partial class Plugin : IDalamudPlugin
         if (marks.Count == 0 && _config.Flags.Count == 0 && history.Count == 0) return;
         _config.ResetUndoReportHistory = history;
         _config.ResetUndoMarks = marks;
+        _config.ResetUndoPresetRallies = (SharingPresetTrain ? _sync.TrainPresets.Rallies : _config.LocalPresetRallies).Copy();
         _config.ResetUndoFlags = CloneWatches(_config.Flags);
         _config.ResetUndoAt = DateTime.UtcNow;
         _config.ResetUndoBy = by;
@@ -3899,6 +3936,14 @@ public sealed partial class Plugin : IDalamudPlugin
         _watcher.RestoreHistory(history);
         _config.ResetUndoReportHistory.Clear();
         _detector.LoadPersisted(restored);
+        _config.LocalPresetRallies = new()
+        {
+            Rows = _config.ResetUndoPresetRallies.Rows.Concat(_config.LocalPresetRallies.Rows)
+                .DistinctBy(r => (r.NameId, r.Visit.Key.Instance, r.Visit.Key.WorldId)).ToList(),
+            Completed = _config.ResetUndoPresetRallies.Completed.Concat(_config.LocalPresetRallies.Completed)
+                .DistinctBy(v => v.Key).ToList(),
+        };
+        _config.ResetUndoPresetRallies = new();
         _config.Flags = watches;
         _currentMark = _config.ResetUndoCurrentNameId is { } name && _config.ResetUndoCurrentInstance is { } instance
             ? (name, instance, _config.ResetUndoCurrentWorldId ?? 0) : null;
@@ -3935,6 +3980,7 @@ public sealed partial class Plugin : IDalamudPlugin
 
         _watcher.ForgetReported(submitted.Select(m => m.Key));
         _config.Flags = keptWatches;
+        ApplyLocalTrainPreset(force: true);
         if (_detector.Marks.Count == 0 && keptWatches.Count == 0)
         { _config.AdditionalScouts.Clear(); _config.ScanningPaused = true; }
         if (_currentMark is { } current && submitted.Any(m => m.Key == current)) _currentMark = null;

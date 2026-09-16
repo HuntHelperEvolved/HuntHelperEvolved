@@ -6,13 +6,14 @@
     <Deterministic>true</Deterministic>
     <Authors>MusicManBowls, kihtli</Authors>
     <Company></Company>
-    <Version>0.5.0.18</Version>
+    <Version>0.5.0.19</Version>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <Description>Hunt tracking for FFXIV. Detects marks and records a train with exact kill times, posts Discord reports sorted by the order marks actually died, draws spawn points, your detection range and SS event locations on the in-game map, counts S-rank trigger mobs, and keeps a lifetime per-mark kill tally per character.</Description>
     <PackageProjectUrl></PackageProjectUrl>
   </PropertyGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="Train/Presets/RouteCatalog.json" LogicalName="TrainPresets.RouteCatalog.json" />
     <EmbeddedResource Include="Sync/SpawnConditions.json" LogicalName="HuntHelperEvolved.Sync.SpawnConditions.json" />
     <Compile Remove="tests/**/*.cs" />
     <!-- Used only by HuntMapOverlay, for drawing markers on the in-game map. -->

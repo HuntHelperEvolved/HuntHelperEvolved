@@ -1,0 +1,1364 @@
+[
+  {
+    "territoryId": 134,
+    "name": "Middle La Noscea",
+    "expansion": "ARR",
+    "expansionOrder": 0,
+    "zoneOrder": 0,
+    "marks": [
+      {
+        "nameId": 2945,
+        "name": "Vogaal Ja"
+      }
+    ],
+    "aetherytes": [
+      {
+        "id": 52,
+        "x": 26.0,
+        "y": 16.3,
+        "name": "Summerford Farms"
+      }
+    ]
+  },
+  {
+    "territoryId": 135,
+    "name": "Lower La Noscea",
+    "expansion": "ARR",
+    "expansionOrder": 0,
+    "zoneOrder": 1,
+    "marks": [
+      {
+        "nameId": 2946,
+        "name": "Unktehi"
+      }
+    ],
+    "aetherytes": [
+      {
+        "id": 10,
+        "x": 24.6,
+        "y": 34.9,
+        "name": "Moraby Drydocks"
+      }
+    ]
+  },
+  {
+    "territoryId": 137,
+    "name": "Eastern La Noscea",
+    "expansion": "ARR",
+    "expansionOrder": 0,
+    "zoneOrder": 2,
+    "marks": [
+      {
+        "nameId": 2947,
+        "name": "Hellsclaw"
+      }
+    ],
+    "aetherytes": [
+      {
+        "id": 11,
+        "x": 31.2,
+        "y": 30.8,
+        "name": "Costa del Sol"
+      },
+      {
+        "id": 12,
+        "x": 21.1,
+        "y": 21.5,
+        "name": "Wineport"
+      }
+    ]
+  },
+  {
+    "territoryId": 138,
+    "name": "Western La Noscea",
+    "expansion": "ARR",
+    "expansionOrder": 0,
+    "zoneOrder": 3,
+    "marks": [
+      {
+        "nameId": 2948,
+        "name": "Nahn"
+      }
+    ],
+    "aetherytes": [
+      {
+        "id": 13,
+        "x": 34.5,
+        "y": 31.7,
+        "name": "Swiftperch"
+      },
+      {
+        "id": 14,
+        "x": 26.6,
+        "y": 25.8,
+        "name": "Aleport"
+      }
+    ]
+  },
+  {
+    "territoryId": 139,
+    "name": "Upper La Noscea",
+    "expansion": "ARR",
+    "expansionOrder": 0,
+    "zoneOrder": 4,
+    "marks": [
+      {
+        "nameId": 2949,
+        "name": "Marberry"
+      }
+    ],
+    "aetherytes": [
+      {
+        "id": 15,
+        "x": 30.2,
+        "y": 23.3,
+        "name": "Camp Bronze Lake"
+      }
+    ]
+  },
+  {
+    "territoryId": 180,
+    "name": "Outer La Noscea",
+    "expansion": "ARR",
+    "expansionOrder": 0,
+    "zoneOrder": 5,
+    "marks": [
+      {
+        "nameId": 2950,
+        "name": "Cornu"
+      }
+    ],
+    "aetherytes": [
+      {
+        "id": 16,
+        "x": 19.1,
+        "y": 17.2,
+        "name": "Camp Overlook"
+      }
+    ]
+  },
+  {
+    "territoryId": 141,
+    "name": "Central Thanalan",
+    "expansion": "ARR",
+    "expansionOrder": 0,
+    "zoneOrder": 6,
+    "marks": [
+      {
+        "nameId": 2941,
+        "name": "Sabotender Bailarina"
+      }
+    ],
+    "aetherytes": [
+      {
+        "id": 53,
+        "x": 21.0,
+        "y": 18.1,
+        "name": "Black Brush Station"
+      }
+    ]
+  },
+  {
+    "territoryId": 145,
+    "name": "Eastern Thanalan",
+    "expansion": "ARR",
+    "expansionOrder": 0,
+    "zoneOrder": 7,
+    "marks": [
+      {
+        "nameId": 2942,
+        "name": "Maahes"
+      }
+    ],
+    "aetherytes": [
+      {
+        "id": 18,
+        "x": 13.7,
+        "y": 24.3,
+        "name": "Camp Drybone"
+      }
+    ]
+  },
+  {
+    "territoryId": 140,
+    "name": "Western Thanalan",
+    "expansion": "ARR",
+    "expansionOrder": 0,
+    "zoneOrder": 8,
+    "marks": [
+      {
+        "nameId": 2940,
+        "name": "Alectryon"
+      }
+    ],
+    "aetherytes": [
+      {
+        "id": 17,
+        "x": 22.8,
+        "y": 16.9,
+        "name": "Horizon"
+      }
+    ]
+  },
+  {
+    "territoryId": 146,
+    "name": "Southern Thanalan",
+    "expansion": "ARR",
+    "expansionOrder": 0,
+    "zoneOrder": 9,
+    "marks": [
+      {
+        "nameId": 2943,
+        "name": "Zanig'oh"
+      }
+    ],
+    "aetherytes": [
+      {
+        "id": 19,
+        "x": 18.3,
+        "y": 13.1,
+        "name": "Little Ala Mhigo"
+      },
+      {
+        "id": 20,
+        "x": 14.9,
+        "y": 29.6,
+        "name": "Forgotten Springs"
+      }
+    ]
+  },
+  {
+    "territoryId": 147,
+    "name": "Northern Thanalan",
+    "expansion": "ARR",
+    "expansionOrder": 0,
+    "zoneOrder": 10,
+    "marks": [
+      {
+        "nameId": 2944,
+        "name": "Dalvag's Final Flame"
+      }
+    ],
+    "aetherytes": [
+      {
+        "id": 21,
+        "x": 21.9,
+        "y": 30.5,
+        "name": "Camp Bluefog"
+      },
+      {
+        "id": 22,
+        "x": 20.9,
+        "y": 20.9,
+        "name": "Ceruleum Processing Plant"
+      }
+    ]
+  },
+  {
+    "territoryId": 148,
+    "name": "Central Shroud",
+    "expansion": "ARR",
+    "expansionOrder": 0,
+    "zoneOrder": 11,
+    "marks": [
+      {
+        "nameId": 2936,
+        "name": "Forneus"
+      }
+    ],
+    "aetherytes": [
+      {
+        "id": 3,
+        "x": 21.7,
+        "y": 22.2,
+        "name": "Bentbranch Meadows"
+      }
+    ]
+  },
+  {
+    "territoryId": 152,
+    "name": "East Shroud",
+    "expansion": "ARR",
+    "expansionOrder": 0,
+    "zoneOrder": 12,
+    "marks": [
+      {
+        "nameId": 2937,
+        "name": "Melt"
+      }
+    ],
+    "aetherytes": [
+      {
+        "id": 4,
+        "x": 17.7,
+        "y": 27.4,
+        "name": "The Hawthorne Hut"
+      }
+    ]
+  },
+  {
+    "territoryId": 153,
+    "name": "South Shroud",
+    "expansion": "ARR",
+    "expansionOrder": 0,
+    "zoneOrder": 13,
+    "marks": [
+      {
+        "nameId": 2938,
+        "name": "Ghede Ti Malice"
+      }
+    ],
+    "aetherytes": [
+      {
+        "id": 5,
+        "x": 25.0,
+        "y": 20.1,
+        "name": "Quarrymill"
+      },
+      {
+        "id": 6,
+        "x": 16.8,
+        "y": 28.6,
+        "name": "Camp Tranquil"
+      }
+    ]
+  },
+  {
+    "territoryId": 154,
+    "name": "North Shroud",
+    "expansion": "ARR",
+    "expansionOrder": 0,
+    "zoneOrder": 14,
+    "marks": [
+      {
+        "nameId": 2939,
+        "name": "Girtab"
+      }
+    ],
+    "aetherytes": [
+      {
+        "id": 7,
+        "x": 20.6,
+        "y": 26.0,
+        "name": "Fallgourd Float"
+      }
+    ]
+  },
+  {
+    "territoryId": 155,
+    "name": "Coerthas Central Highlands",
+    "expansion": "ARR",
+    "expansionOrder": 0,
+    "zoneOrder": 15,
+    "marks": [
+      {
+        "nameId": 2951,
+        "name": "Marraco"
+      }
+    ],
+    "aetherytes": [
+      {
+        "id": 23,
+        "x": 25.9,
+        "y": 16.8,
+        "name": "Camp Dragonhead"
+      }
+    ]
+  },
+  {
+    "territoryId": 156,
+    "name": "Mor Dhona",
+    "expansion": "ARR",
+    "expansionOrder": 0,
+    "zoneOrder": 16,
+    "marks": [
+      {
+        "nameId": 2952,
+        "name": "Kurrea"
+      }
+    ],
+    "aetherytes": [
+      {
+        "id": 24,
+        "x": 22.2,
+        "y": 8.1,
+        "name": "Revenant's Toll"
+      }
+    ]
+  },
+  {
+    "territoryId": 397,
+    "name": "Coerthas Western Highlands",
+    "expansion": "Heavensward",
+    "expansionOrder": 1,
+    "zoneOrder": 0,
+    "marks": [
+      {
+        "nameId": 4362,
+        "name": "Mirka"
+      },
+      {
+        "nameId": 4363,
+        "name": "Lyuba"
+      }
+    ],
+    "aetherytes": [
+      {
+        "id": 71,
+        "x": 32.0,
+        "y": 36.7,
+        "name": "Falcon's Nest"
+      }
+    ]
+  },
+  {
+    "territoryId": 398,
+    "name": "The Dravanian Forelands",
+    "expansion": "Heavensward",
+    "expansionOrder": 1,
+    "zoneOrder": 1,
+    "marks": [
+      {
+        "nameId": 4364,
+        "name": "Pylraster"
+      },
+      {
+        "nameId": 4365,
+        "name": "Lord of the Wyverns"
+      }
+    ],
+    "aetherytes": [
+      {
+        "id": 76,
+        "x": 33.2,
+        "y": 23.1,
+        "name": "Tailfeather"
+      },
+      {
+        "id": 77,
+        "x": 16.4,
+        "y": 23.2,
+        "name": "Anyx Trine"
+      }
+    ]
+  },
+  {
+    "territoryId": 400,
+    "name": "The Churning Mists",
+    "expansion": "Heavensward",
+    "expansionOrder": 1,
+    "zoneOrder": 2,
+    "marks": [
+      {
+        "nameId": 4369,
+        "name": "Agathos"
+      },
+      {
+        "nameId": 4368,
+        "name": "Bune"
+      }
+    ],
+    "aetherytes": [
+      {
+        "id": 78,
+        "x": 27.9,
+        "y": 34.2,
+        "name": "Moghome"
+      },
+      {
+        "id": 79,
+        "x": 10.8,
+        "y": 28.8,
+        "name": "Zenith"
+      }
+    ]
+  },
+  {
+    "territoryId": 401,
+    "name": "The Sea of Clouds",
+    "expansion": "Heavensward",
+    "expansionOrder": 1,
+    "zoneOrder": 3,
+    "marks": [
+      {
+        "nameId": 4370,
+        "name": "Enkelados"
+      },
+      {
+        "nameId": 4371,
+        "name": "Sisiutl"
+      }
+    ],
+    "aetherytes": [
+      {
+        "id": 72,
+        "x": 10.3,
+        "y": 33.6,
+        "name": "Camp Cloudtop"
+      },
+      {
+        "id": 73,
+        "x": 10.4,
+        "y": 14.2,
+        "name": "Ok' Zundu"
+      }
+    ]
+  },
+  {
+    "territoryId": 399,
+    "name": "The Dravanian Hinterlands",
+    "expansion": "Heavensward",
+    "expansionOrder": 1,
+    "zoneOrder": 4,
+    "marks": [
+      {
+        "nameId": 4366,
+        "name": "Slipkinx Steeljoints"
+      },
+      {
+        "nameId": 4367,
+        "name": "Stolas"
+      }
+    ],
+    "aetherytes": []
+  },
+  {
+    "territoryId": 402,
+    "name": "Azys Lla",
+    "expansion": "Heavensward",
+    "expansionOrder": 1,
+    "zoneOrder": 5,
+    "marks": [
+      {
+        "nameId": 4372,
+        "name": "Campacti"
+      },
+      {
+        "nameId": 4373,
+        "name": "Stench Blossom"
+      }
+    ],
+    "aetherytes": [
+      {
+        "id": 74,
+        "x": 8.1,
+        "y": 10.6,
+        "name": "Helix"
+      }
+    ]
+  },
+  {
+    "territoryId": 612,
+    "name": "The Fringes",
+    "expansion": "Stormblood",
+    "expansionOrder": 2,
+    "zoneOrder": 0,
+    "marks": [
+      {
+        "nameId": 5990,
+        "name": "Orcus"
+      },
+      {
+        "nameId": 5991,
+        "name": "Erle"
+      }
+    ],
+    "aetherytes": [
+      {
+        "id": 98,
+        "x": 8.9,
+        "y": 11.3,
+        "name": "Castrum Oriens"
+      },
+      {
+        "id": 99,
+        "x": 29.8,
+        "y": 26.4,
+        "name": "The Peering Stones"
+      }
+    ]
+  },
+  {
+    "territoryId": 620,
+    "name": "The Peaks",
+    "expansion": "Stormblood",
+    "expansionOrder": 2,
+    "zoneOrder": 1,
+    "marks": [
+      {
+        "nameId": 5992,
+        "name": "Vochstein"
+      },
+      {
+        "nameId": 5993,
+        "name": "Aqrabuamelu"
+      }
+    ],
+    "aetherytes": [
+      {
+        "id": 100,
+        "x": 23.7,
+        "y": 6.5,
+        "name": "Ala Gannha"
+      },
+      {
+        "id": 101,
+        "x": 16.0,
+        "y": 36.4,
+        "name": "Ala Ghiri"
+      }
+    ]
+  },
+  {
+    "territoryId": 614,
+    "name": "Yanxia",
+    "expansion": "Stormblood",
+    "expansionOrder": 2,
+    "zoneOrder": 2,
+    "marks": [
+      {
+        "nameId": 5998,
+        "name": "Gajasura"
+      },
+      {
+        "nameId": 5999,
+        "name": "Angada"
+      }
+    ],
+    "aetherytes": [
+      {
+        "id": 107,
+        "x": 30.1,
+        "y": 19.6,
+        "name": "Namai"
+      },
+      {
+        "id": 108,
+        "x": 26.3,
+        "y": 13.4,
+        "name": "The House of the Fierce"
+      }
+    ]
+  },
+  {
+    "territoryId": 613,
+    "name": "The Ruby Sea",
+    "expansion": "Stormblood",
+    "expansionOrder": 2,
+    "zoneOrder": 3,
+    "marks": [
+      {
+        "nameId": 5996,
+        "name": "Funa Yurei"
+      },
+      {
+        "nameId": 5997,
+        "name": "Oni Yumemi"
+      }
+    ],
+    "aetherytes": [
+      {
+        "id": 105,
+        "x": 28.6,
+        "y": 16.2,
+        "name": "Tamamizu"
+      },
+      {
+        "id": 106,
+        "x": 23.2,
+        "y": 9.8,
+        "name": "Onokoro"
+      }
+    ]
+  },
+  {
+    "territoryId": 622,
+    "name": "The Azim Steppe",
+    "expansion": "Stormblood",
+    "expansionOrder": 2,
+    "zoneOrder": 4,
+    "marks": [
+      {
+        "nameId": 6000,
+        "name": "Girimekhala"
+      },
+      {
+        "nameId": 6001,
+        "name": "Sum"
+      }
+    ],
+    "aetherytes": [
+      {
+        "id": 109,
+        "x": 32.5,
+        "y": 28.3,
+        "name": "Reunion"
+      },
+      {
+        "id": 110,
+        "x": 23.0,
+        "y": 22.1,
+        "name": "The Dawn Throne"
+      },
+      {
+        "id": 128,
+        "x": 6.3,
+        "y": 23.8,
+        "name": "Dhoro Iloh"
+      }
+    ]
+  },
+  {
+    "territoryId": 621,
+    "name": "The Lochs",
+    "expansion": "Stormblood",
+    "expansionOrder": 2,
+    "zoneOrder": 5,
+    "marks": [
+      {
+        "nameId": 5994,
+        "name": "Mahisha"
+      },
+      {
+        "nameId": 5995,
+        "name": "Luminare"
+      }
+    ],
+    "aetherytes": [
+      {
+        "id": 102,
+        "x": 8.4,
+        "y": 21.1,
+        "name": "Porta Praetoria"
+      },
+      {
+        "id": 103,
+        "x": 33.8,
+        "y": 34.5,
+        "name": "The Ala Mhigan Quarter"
+      }
+    ]
+  },
+  {
+    "territoryId": 813,
+    "name": "Lakeland",
+    "expansion": "Shadowbringers",
+    "expansionOrder": 3,
+    "zoneOrder": 0,
+    "marks": [
+      {
+        "nameId": 8906,
+        "name": "Nuckelavee"
+      },
+      {
+        "nameId": 8907,
+        "name": "Nariphon"
+      }
+    ],
+    "aetherytes": [
+      {
+        "id": 132,
+        "x": 36.5,
+        "y": 20.9,
+        "name": "Fort Jobb"
+      },
+      {
+        "id": 136,
+        "x": 6.8,
+        "y": 16.9,
+        "name": "The Ostall Imperative"
+      }
+    ]
+  },
+  {
+    "territoryId": 814,
+    "name": "Kholusia",
+    "expansion": "Shadowbringers",
+    "expansionOrder": 3,
+    "zoneOrder": 1,
+    "marks": [
+      {
+        "nameId": 8911,
+        "name": "Li'l Murderer"
+      },
+      {
+        "nameId": 8912,
+        "name": "Huracan"
+      }
+    ],
+    "aetherytes": [
+      {
+        "id": 137,
+        "x": 34.8,
+        "y": 27.2,
+        "name": "Stilltide"
+      },
+      {
+        "id": 138,
+        "x": 16.6,
+        "y": 29.2,
+        "name": "Wright"
+      },
+      {
+        "id": 139,
+        "x": 12.9,
+        "y": 9.0,
+        "name": "Tomra"
+      }
+    ]
+  },
+  {
+    "territoryId": 815,
+    "name": "Amh Araeng",
+    "expansion": "Shadowbringers",
+    "expansionOrder": 3,
+    "zoneOrder": 2,
+    "marks": [
+      {
+        "nameId": 8901,
+        "name": "Maliktender"
+      },
+      {
+        "nameId": 8902,
+        "name": "Sugaar"
+      }
+    ],
+    "aetherytes": [
+      {
+        "id": 140,
+        "x": 26.4,
+        "y": 17.0,
+        "name": "Mord Souq"
+      },
+      {
+        "id": 161,
+        "x": 29.4,
+        "y": 27.6,
+        "name": "The Inn at Journey's Head"
+      },
+      {
+        "id": 141,
+        "x": 11.2,
+        "y": 17.2,
+        "name": "Twine"
+      }
+    ]
+  },
+  {
+    "territoryId": 816,
+    "name": "Il Mheg",
+    "expansion": "Shadowbringers",
+    "expansionOrder": 3,
+    "zoneOrder": 3,
+    "marks": [
+      {
+        "nameId": 8654,
+        "name": "The Mudman"
+      },
+      {
+        "nameId": 8655,
+        "name": "O Poorest Pauldia"
+      }
+    ],
+    "aetherytes": [
+      {
+        "id": 144,
+        "x": 14.6,
+        "y": 31.7,
+        "name": "Lydha Lran"
+      },
+      {
+        "id": 145,
+        "x": 20.0,
+        "y": 4.3,
+        "name": "Pla Enni"
+      },
+      {
+        "id": 146,
+        "x": 29.1,
+        "y": 7.7,
+        "name": "Wolekdorf"
+      }
+    ]
+  },
+  {
+    "territoryId": 817,
+    "name": "The Rak'tika Greatwood",
+    "expansion": "Shadowbringers",
+    "expansionOrder": 3,
+    "zoneOrder": 4,
+    "marks": [
+      {
+        "nameId": 8891,
+        "name": "Supay"
+      },
+      {
+        "nameId": 8892,
+        "name": "Grassman"
+      }
+    ],
+    "aetherytes": [
+      {
+        "id": 142,
+        "x": 19.4,
+        "y": 27.4,
+        "name": "Slitherbough"
+      },
+      {
+        "id": 143,
+        "x": 29.1,
+        "y": 17.5,
+        "name": "Fanow"
+      }
+    ]
+  },
+  {
+    "territoryId": 818,
+    "name": "The Tempest",
+    "expansion": "Shadowbringers",
+    "expansionOrder": 3,
+    "zoneOrder": 5,
+    "marks": [
+      {
+        "nameId": 8896,
+        "name": "Rusalka"
+      },
+      {
+        "nameId": 8897,
+        "name": "Baal"
+      }
+    ],
+    "aetherytes": [
+      {
+        "id": 147,
+        "x": 32.7,
+        "y": 17.5,
+        "name": "The Ondo Cups"
+      }
+    ]
+  },
+  {
+    "territoryId": 956,
+    "name": "Labyrinthos",
+    "expansion": "Endwalker",
+    "expansionOrder": 4,
+    "zoneOrder": 0,
+    "marks": [
+      {
+        "nameId": 10623,
+        "name": "Storsie"
+      },
+      {
+        "nameId": 10624,
+        "name": "Hulder"
+      }
+    ],
+    "aetherytes": [
+      {
+        "id": 166,
+        "x": 30.3,
+        "y": 11.9,
+        "name": "The Archeion"
+      },
+      {
+        "id": 167,
+        "x": 21.6,
+        "y": 20.5,
+        "name": "Sharlayan Hamlet"
+      },
+      {
+        "id": 168,
+        "x": 6.9,
+        "y": 27.5,
+        "name": "Aporia"
+      }
+    ]
+  },
+  {
+    "territoryId": 957,
+    "name": "Thavnair",
+    "expansion": "Endwalker",
+    "expansionOrder": 4,
+    "zoneOrder": 1,
+    "marks": [
+      {
+        "nameId": 10625,
+        "name": "Yilan"
+      },
+      {
+        "nameId": 10626,
+        "name": "Sugriva"
+      }
+    ],
+    "aetherytes": [
+      {
+        "id": 169,
+        "x": 25.4,
+        "y": 34.0,
+        "name": "Yedlihmad"
+      },
+      {
+        "id": 170,
+        "x": 10.9,
+        "y": 22.2,
+        "name": "The Great Work"
+      },
+      {
+        "id": 171,
+        "x": 29.5,
+        "y": 16.5,
+        "name": "Palaka's Stand"
+      }
+    ]
+  },
+  {
+    "territoryId": 958,
+    "name": "Garlemald",
+    "expansion": "Endwalker",
+    "expansionOrder": 4,
+    "zoneOrder": 2,
+    "marks": [
+      {
+        "nameId": 10627,
+        "name": "Minerva"
+      },
+      {
+        "nameId": 10628,
+        "name": "Aegeiros"
+      }
+    ],
+    "aetherytes": [
+      {
+        "id": 172,
+        "x": 13.3,
+        "y": 31.0,
+        "name": "Camp Broken Glass"
+      },
+      {
+        "id": 173,
+        "x": 31.8,
+        "y": 17.9,
+        "name": "Tertium",
+        "departureWaypoint": {
+          "x": 31.5,
+          "y": 12.7
+        }
+      }
+    ]
+  },
+  {
+    "territoryId": 959,
+    "name": "Mare Lamentorum",
+    "expansion": "Endwalker",
+    "expansionOrder": 4,
+    "zoneOrder": 3,
+    "marks": [
+      {
+        "nameId": 10629,
+        "name": "Lunatender Queen"
+      },
+      {
+        "nameId": 10630,
+        "name": "Mousse Princess"
+      }
+    ],
+    "aetherytes": [
+      {
+        "id": 174,
+        "x": 10.1,
+        "y": 34.5,
+        "name": "Sinus Lacrimarum"
+      }
+    ]
+  },
+  {
+    "territoryId": 961,
+    "name": "Elpis",
+    "expansion": "Endwalker",
+    "expansionOrder": 4,
+    "zoneOrder": 4,
+    "marks": [
+      {
+        "nameId": 10632,
+        "name": "Petalodus"
+      },
+      {
+        "nameId": 10631,
+        "name": "Gurangatch"
+      }
+    ],
+    "aetherytes": [
+      {
+        "id": 176,
+        "x": 24.6,
+        "y": 24.0,
+        "name": "Anagnorisis"
+      },
+      {
+        "id": 177,
+        "x": 8.7,
+        "y": 32.3,
+        "name": "The Twelve Wonders"
+      },
+      {
+        "id": 178,
+        "x": 10.8,
+        "y": 17.0,
+        "name": "Poieten Oikos"
+      }
+    ]
+  },
+  {
+    "territoryId": 960,
+    "name": "Ultima Thule",
+    "expansion": "Endwalker",
+    "expansionOrder": 4,
+    "zoneOrder": 5,
+    "marks": [
+      {
+        "nameId": 10634,
+        "name": "Arch-Eta"
+      },
+      {
+        "nameId": 10633,
+        "name": "Fan Ail"
+      }
+    ],
+    "aetherytes": [
+      {
+        "id": 179,
+        "x": 10.5,
+        "y": 26.8,
+        "name": "Reah Tahra"
+      },
+      {
+        "id": 180,
+        "x": 22.6,
+        "y": 8.3,
+        "name": "Abode of the Ea"
+      },
+      {
+        "id": 181,
+        "x": 31.2,
+        "y": 28.1,
+        "name": "Base Omicron"
+      }
+    ]
+  },
+  {
+    "territoryId": 1187,
+    "name": "Urqopacha",
+    "expansion": "Dawntrail",
+    "expansionOrder": 5,
+    "zoneOrder": 0,
+    "marks": [
+      {
+        "nameId": 13361,
+        "name": "queen hawk"
+      },
+      {
+        "nameId": 13362,
+        "name": "Nechuciho"
+      }
+    ],
+    "aetherytes": [
+      {
+        "id": 200,
+        "x": 28.1,
+        "y": 13.1,
+        "name": "Wachunpelo"
+      },
+      {
+        "id": 201,
+        "x": 30.8,
+        "y": 34.2,
+        "name": "Worlar's Echo"
+      }
+    ]
+  },
+  {
+    "territoryId": 1188,
+    "name": "Kozama'uka",
+    "expansion": "Dawntrail",
+    "expansionOrder": 5,
+    "zoneOrder": 1,
+    "marks": [
+      {
+        "nameId": 13442,
+        "name": "the Raintriller"
+      },
+      {
+        "nameId": 13443,
+        "name": "Pkuucha"
+      }
+    ],
+    "aetherytes": [
+      {
+        "id": 202,
+        "x": 18.0,
+        "y": 11.9,
+        "name": "Ok'hanu"
+      },
+      {
+        "id": 203,
+        "x": 32.2,
+        "y": 25.6,
+        "name": "Many Fires"
+      },
+      {
+        "id": 204,
+        "x": 11.9,
+        "y": 27.7,
+        "name": "Earthenshire"
+      },
+      {
+        "id": 237,
+        "x": 36.5,
+        "y": 17.2,
+        "name": "Dock Poga"
+      }
+    ]
+  },
+  {
+    "territoryId": 1189,
+    "name": "Yak T'el",
+    "expansion": "Dawntrail",
+    "expansionOrder": 5,
+    "zoneOrder": 2,
+    "marks": [
+      {
+        "nameId": 12753,
+        "name": "Rrax Yity'a"
+      },
+      {
+        "nameId": 12692,
+        "name": "Starcrier"
+      }
+    ],
+    "aetherytes": [
+      {
+        "id": 205,
+        "x": 13.5,
+        "y": 12.8,
+        "name": "Iq Br'aax"
+      },
+      {
+        "id": 206,
+        "x": 35.8,
+        "y": 32.0,
+        "name": "Mamook"
+      }
+    ]
+  },
+  {
+    "territoryId": 1190,
+    "name": "Shaaloani",
+    "expansion": "Dawntrail",
+    "expansionOrder": 5,
+    "zoneOrder": 3,
+    "marks": [
+      {
+        "nameId": 13400,
+        "name": "Yehehetoaua'pyo"
+      },
+      {
+        "nameId": 13401,
+        "name": "Keheniheyamewi"
+      }
+    ],
+    "aetherytes": [
+      {
+        "id": 207,
+        "x": 29.0,
+        "y": 30.8,
+        "name": "Hhusatahwi"
+      },
+      {
+        "id": 208,
+        "x": 15.6,
+        "y": 19.2,
+        "name": "Sheshenewezi Springs"
+      },
+      {
+        "id": 209,
+        "x": 27.6,
+        "y": 10.1,
+        "name": "Mehwahhetsoan"
+      }
+    ]
+  },
+  {
+    "territoryId": 1191,
+    "name": "Heritage Found",
+    "expansion": "Dawntrail",
+    "expansionOrder": 5,
+    "zoneOrder": 4,
+    "marks": [
+      {
+        "nameId": 13157,
+        "name": "heshuala"
+      },
+      {
+        "nameId": 13158,
+        "name": "Urna Variabilis"
+      }
+    ],
+    "aetherytes": [
+      {
+        "id": 210,
+        "x": 31.7,
+        "y": 25.6,
+        "name": "Yyasulani Station"
+      },
+      {
+        "id": 211,
+        "x": 17.0,
+        "y": 9.8,
+        "name": "The Outskirts"
+      },
+      {
+        "id": 212,
+        "x": 17.1,
+        "y": 23.9,
+        "name": "Electrope Strike"
+      }
+    ]
+  },
+  {
+    "territoryId": 1192,
+    "name": "Living Memory",
+    "expansion": "Dawntrail",
+    "expansionOrder": 5,
+    "zoneOrder": 5,
+    "marks": [
+      {
+        "nameId": 13435,
+        "name": "Sally the Sweeper"
+      },
+      {
+        "nameId": 13436,
+        "name": "Cat's Eye"
+      }
+    ],
+    "aetherytes": [
+      {
+        "id": 213,
+        "x": 21.4,
+        "y": 37.4,
+        "name": "Leynode Mnemo"
+      },
+      {
+        "id": 214,
+        "x": 34.6,
+        "y": 15.8,
+        "name": "Leynode Pyro"
+      },
+      {
+        "id": 215,
+        "x": 16.3,
+        "y": 13.5,
+        "name": "Leynode Aero"
+      }
+    ]
+  }
+]

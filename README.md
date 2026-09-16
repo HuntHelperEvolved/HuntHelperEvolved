@@ -125,6 +125,14 @@ pasted across from it produces the same line.
 
 ## The train
 
+**Route presets** save a conductor's expansion and zone order, optional strict
+mark order, and rally preferences for future trains. Choose a preset in
+**/hht > Train controls & scouts** before scouting to organise incoming marks.
+Dragging a mark or expansion pauses automatic ordering until a preset is
+reselected. Shared presets require server **0.3.26 or later**; older plugins
+receive the same train order and ordinary rally flags. See the
+[train preset guide](docs/train-presets.md) for setup and routing details.
+
 Turn on **Tracking this train** on the Conductor tab and the plugin records the
 exact moment each mark dies. **End Train Now** sends the report. Leaving a zone
 does not post it, so a multi-expansion train can continue across legs.
@@ -221,7 +229,7 @@ configuration for explicit upload from Settings → Sharing. Shared-row edits ma
 offline are replaced by server state. Blank display aliases send Anonymous.
 All password holders can edit, reorder and clear the shared train.
 
-Sync uses protocol 4; the current feature set requires server 0.3.13 or newer. Run
+Sync uses protocol 4; shared train presets require server 0.3.26 or newer. Run
 `dotnet test tests/HuntHelperEvolved.Sync.Tests -c Release` for transport and
 timer tests.
 
