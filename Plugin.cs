@@ -1911,8 +1911,24 @@ public sealed partial class Plugin : IDalamudPlugin
             ImGui.SetTooltip($"{_mapOverlay.Status}\n\n/htrm hides this bar.");
     }
 
+    private void DrawTrainNavigation()
+    {
+        if (ImGui.Button("Next Mark"))
+        {
+            SetCurrentMark(NextLiveMark(), announce: true);
+        }
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip("Move to the next live mark and flag it");
+
+        TrainControlSameLine("Next Aetheryte");
+        if (ImGui.Button("Next Aetheryte"))
+        {
+            OnNextAetheryteCommand(NextAetheryteCommand, string.Empty);
+        }
+    }
+
     private void DrawTrainControls()
     {
+        DrawTrainUndo();
         DrawPresetControls();
 
         // Row 1: scanning state.
@@ -1938,18 +1954,10 @@ public sealed partial class Plugin : IDalamudPlugin
         ImGui.SameLine();
         ImGui.TextDisabled(_config.ScanningPaused ? "Paused" : "Scanning");
 
-        // Row 2: tidy-up and navigation.
         if (ImGui.Button("Remove Dead"))
         {
             _detector.RemoveDead();
         }
-
-        TrainControlSameLine("Next Mark");
-        if (ImGui.Button("Next Mark"))
-        {
-            SetCurrentMark(NextLiveMark(), announce: true);
-        }
-        if (ImGui.IsItemHovered()) ImGui.SetTooltip("Move to the next live mark and flag it");
 
         TrainControlSameLine("Add Flag");
         if (ImGui.Button("Add Flag"))
@@ -1966,12 +1974,6 @@ public sealed partial class Plugin : IDalamudPlugin
         TrainControlSameLine("flag name (optional)");
         ImGui.SetNextItemWidth(110);
         ImGui.InputTextWithHint("##customFlagLabel", "flag name", ref _customFlagLabel, 64);
-
-        TrainControlSameLine("Next Aetheryte");
-        if (ImGui.Button("Next Aetheryte"))
-        {
-            OnNextAetheryteCommand(NextAetheryteCommand, string.Empty);
-        }
 
         // Its own row on purpose. This is the one control here that rewrites
         // the whole list, and it should not sit a mis-click away from Remove
@@ -2958,7 +2960,7 @@ public sealed partial class Plugin : IDalamudPlugin
 
     private void DrawTrainTab()
     {
-        DrawTrainUndo();
+        DrawTrainNavigation();
         if (ImGui.CollapsingHeader("Controls & scouts", ImGuiTreeNodeFlags.DefaultOpen))
         {
             DrawTrainControls();
@@ -3037,7 +3039,7 @@ public sealed partial class Plugin : IDalamudPlugin
         ImGui.SetNextWindowSizeConstraints(new Vector2(420, 200), new Vector2(float.MaxValue, float.MaxValue));
         if (ImGui.Begin("Hunt Train", ref _trainPopoutVisible))
         {
-            DrawTrainUndo();
+            DrawTrainNavigation();
             // Controls sit outside the scrolling region so they stay put while
             // the list scrolls underneath.
             ImGui.SetNextItemOpen(_config.TrainPopoutControlsExpanded, ImGuiCond.Always);
@@ -3878,8 +3880,10 @@ public sealed partial class Plugin : IDalamudPlugin
         if (ImGui.Button("Undo reset")) UndoTrainReset();
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip($"Restore {_config.ResetUndoMarks.Count} marks, {_config.ResetUndoReportHistory.Count} history entries and {_config.ResetUndoFlags.Count} watches from {resetAt.ToLocalTime():ddd HH:mm:ss} ({_config.ResetUndoBy}). No Shift required. Turns train sharing off and restores locally without changing your friends' train.");
-        ImGui.SameLine();
+        TrainControlSameLine("Restore locally; turns train sharing off");
+        ImGui.PushTextWrapPos(0);
         ImGui.TextDisabled("Restore locally; turns train sharing off");
+        ImGui.PopTextWrapPos();
     }
 
     private void ResetTrainWithUndo(bool clearWatches = true)
@@ -3892,7 +3896,7 @@ public sealed partial class Plugin : IDalamudPlugin
         ClearSavedTrain();
         _lastPostResult = "Train reset — nothing was posted.";
         if (_config.ResetUndoAt is not null)
-            _chatGui.Print("[Hunt Helper Evolved] Train reset. Use Undo reset at the top of the train window to restore it locally.");
+            _chatGui.Print("[Hunt Helper Evolved] Train reset. Use /hht > Train controls & scouts > Undo reset to restore it locally.");
     }
 
     private DateTime? _ownResetPendingAt;
@@ -4030,7 +4034,7 @@ public sealed partial class Plugin : IDalamudPlugin
         _config.Flags.Clear();
         _config.Save();
         ClearSavedTrain();
-        _chatGui.Print($"[Hunt Helper Evolved] {by} cleared the shared train. Use Undo reset at the top of the train window (or in /hh > Train) to recover it locally.");
+        _chatGui.Print($"[Hunt Helper Evolved] {by} cleared the shared train. Use /hht > Train controls & scouts > Undo reset to recover it locally.");
     }
 
     /// <summary>

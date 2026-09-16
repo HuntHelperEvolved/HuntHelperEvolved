@@ -34,6 +34,11 @@ public static class ReleaseNotes
 
     public static readonly Release[] All =
     {
+        new("0.5.0.20", "2026-09-16", "Keep train navigation visible while the controls are collapsed.",
+        [
+            new("Train", "Next Mark and Next Aetheryte now sit above the controls section in both the /hht popout and the main Train tab, so they remain available while the controls and scouts are collapsed.", Kihtli),
+            new("Reset", "Moved Undo reset inside the controls section. Its explanation wraps in narrow windows, and reset messages and Help point to its new location.", Kihtli),
+        ]),
         new("0.5.0.19", "2026-09-16", "Reusable conductor presets, shared rally stops and manual route adjustments.",
         [
             new("Presets", "Select a conductor preset in /hht > Train controls & scouts before scouting. Incoming marks follow its expansion and zone order, with instances starting at i1. Presets stay selected for future trains. Strict zones use a saved mark order; other zones use estimated travel distance.", Kihtli),
