@@ -363,6 +363,9 @@ public class Configuration : IPluginConfiguration
     /// </summary>
     public Vector4 SpawnDotColourEmpty { get; set; } = new(0.502f, 0.502f, 0.502f, 1f);
 
+    /// <summary>Spawn point matched to a living, non-sniped mark in the train.</summary>
+    public Vector4 SpawnDotColourInTrain { get; set; } = new(0f, 0.9f, 0.9f, 1f);
+
     /// <summary>Colour when a B rank is sitting on the point.</summary>
     public Vector4 SpawnDotColourB { get; set; } = new(0f, 0.549f, 0.933f, 1f);
 

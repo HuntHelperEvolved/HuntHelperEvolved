@@ -71,6 +71,8 @@ public sealed unsafe class HuntMapOverlay : IDisposable
     private bool _disposed;
     private bool _needsRefresh = true;
     private readonly Dictionary<(uint, uint, uint, uint, uint), (MapMarkerNode Dot, MarkLabelMarker? Label)> _liveNodes = new();
+    private readonly HashSet<int> _trainPoints = new();
+    private readonly HashSet<int> _nextTrainPoints = new();
     private readonly HashSet<int> _occupiedPoints = new();
     private readonly HashSet<int> _nextOccupiedPoints = new();
     private uint _lastTerritory;
@@ -736,6 +738,7 @@ public sealed unsafe class HuntMapOverlay : IDisposable
     /// </summary>
     private string DotSignature() =>
         DotTextures.HexOf(_config.SpawnDotColourEmpty) + "-"
+        + DotTextures.HexOf(_config.SpawnDotColourInTrain) + "-"
         + DotTextures.HexOf(_config.SpawnDotColourB) + "-"
         + DotTextures.HexOf(_config.SpawnDotColourA) + "-"
         + DotTextures.HexOf(_config.SpawnDotColourS) + "-"
@@ -782,6 +785,10 @@ public sealed unsafe class HuntMapOverlay : IDisposable
             {
                 Texture("empty", "dot", _config.SpawnDotColourEmpty,
                     c => DotTextures.Render(c)),
+                Texture("train", "dot", _config.SpawnDotColourInTrain,
+                    c => DotTextures.Render(c)),
+                Texture("train-scand", "outlined-" + _config.SpawnCandidateOutlineWidth + "-" + DotTextures.HexOf(_config.SpawnDotColourInTrain), _config.SpawnDotColourSCandidate,
+                    c => DotTextures.RenderOutlined(_config.SpawnDotColourInTrain, c, _config.SpawnCandidateOutlineWidth)),
                 Texture("b", "dot", _config.SpawnDotColourB,
                     c => DotTextures.Render(c)),
                 Texture("a", "dot", _config.SpawnDotColourA,
@@ -1044,6 +1051,22 @@ public sealed unsafe class HuntMapOverlay : IDisposable
             }
 
             var points = SpawnPointData.For(territory);
+            _nextTrainPoints.Clear();
+            if (_config.ShowSpawnPointsOnMap)
+            {
+                foreach (var mark in _detector.Marks.Values)
+                    if (SpawnPointVisibility.TrainPoint(points, mark, territory, worldId, instance) is { } point)
+                        _nextTrainPoints.Add(point);
+            }
+            // Membership, death/snipe, removal and position changes can happen
+            // without a map refresh or a new live sighting. Compare matched sets
+            // each update; only a changed set needs to rebuild static markers.
+            if (!_trainPoints.SetEquals(_nextTrainPoints))
+            {
+                _trainPoints.Clear();
+                _trainPoints.UnionWith(_nextTrainPoints);
+                _needsRefresh = true;
+            }
             _nextOccupiedPoints.Clear();
             if (_config.HideOccupiedSpawnPoints && _config.ShowSpawnPointsOnMap && _config.ShowMarksOnMap)
             {
@@ -1150,6 +1173,10 @@ public sealed unsafe class HuntMapOverlay : IDisposable
                         if (!reliableCycle) tooltip += "\nKill-cycle timing is not confirmed; candidates remain provisional.";
                     }
                 }
+
+                var inTrain = _trainPoints.Contains(pointIndex);
+                dot = SpawnPointVisibility.TextureKey(dot, inTrain);
+                if (inTrain) tooltip += "\nLiving mark in the train (last recorded location).";
 
                 var world = MapCoordinates.ToWorld(_dataManager, mapId, point.X, point.Y);
 

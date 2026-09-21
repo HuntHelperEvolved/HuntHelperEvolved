@@ -1633,6 +1633,15 @@ public sealed partial class Plugin : IDalamudPlugin
             _config.Save();
         }
 
+        var inTrain = _config.SpawnDotColourInTrain;
+        if (ImGui.ColorEdit4("Spawn point in train", ref inTrain, flags))
+        {
+            _config.SpawnDotColourInTrain = inTrain;
+            _config.Save();
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Visible spawn points matched to living marks in the current world's train. Returns to the normal colour when dead, sniped or removed. S-rank candidate outlines are preserved.");
+
         var b = _config.SpawnDotColourB;
         if (ImGui.ColorEdit4("B rank on it", ref b, flags))
         {
@@ -1680,6 +1689,7 @@ public sealed partial class Plugin : IDalamudPlugin
         {
             var defaults = new Configuration();
             _config.SpawnDotColourEmpty = defaults.SpawnDotColourEmpty;
+            _config.SpawnDotColourInTrain = defaults.SpawnDotColourInTrain;
             _config.SpawnDotColourB = defaults.SpawnDotColourB;
             _config.SpawnDotColourA = defaults.SpawnDotColourA;
             _config.SpawnDotColourS = defaults.SpawnDotColourS;
@@ -1689,7 +1699,7 @@ public sealed partial class Plugin : IDalamudPlugin
             _config.Save();
         }
         ImGui.SameLine();
-        ImGui.TextDisabled("Back to the original grey/blue/red/green.");
+        ImGui.TextDisabled("Restore the default dot colours.");
     }
 
     /// <summary>
