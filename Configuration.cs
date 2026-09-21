@@ -88,12 +88,6 @@ public class Configuration : IPluginConfiguration
     public List<FlagEntry> Flags { get; set; } = new();
 
     /// <summary>
-    /// Only the conductor actively recording the train should have this on,
-    /// to avoid two clients both posting the same "train complete" message.
-    /// </summary>
-    public bool TrackingEnabled { get; set; } = false;
-
-    /// <summary>
     /// How often (in seconds) to record new train marks and process queued kill evidence.
     /// </summary>
     public int PollIntervalSeconds { get; set; } = 3;

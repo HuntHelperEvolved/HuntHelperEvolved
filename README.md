@@ -133,8 +133,10 @@ reselected. Shared presets require server **0.3.26 or later**; older plugins
 receive the same train order and ordinary rally flags. See the
 [train preset guide](docs/train-presets.md) for setup and routing details.
 
-Turn on **Tracking this train** on the Conductor tab and the plugin records the
-exact moment each mark dies. **End Train Now** sends the report. Leaving a zone
+Use **Scanning / Paused** in **/hht > Train controls & scouts** to control whether
+new marks join the train. Existing train rows continue recording observed deaths
+while paused. Enable **Settings > Sharing > The train** to share additions and
+automatic scout credit with the group. **End Train Now** sends the report. Leaving a zone
 does not post it, so a multi-expansion train can continue across legs.
 
 Marks are recorded per world, so the same mark on Mateus and on Goblin are two

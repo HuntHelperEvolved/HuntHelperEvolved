@@ -2006,15 +2006,7 @@ public sealed partial class Plugin : IDalamudPlugin
             }
         }
 
-        // Row 3
-        var tracking = _config.TrackingEnabled;
-        if (ImGui.Checkbox("Tracking this train (records exact kill times)", ref tracking))
-        {
-            _config.TrackingEnabled = tracking;
-            _config.Save();
-        }
-
-        // Row 4
+        // Display options
         var hideDead = _config.HideDeadMarks;
         if (ImGui.Checkbox("Hide dead", ref hideDead))
         {
@@ -3544,7 +3536,7 @@ public sealed partial class Plugin : IDalamudPlugin
 
         if (marks.Count == 0)
         {
-            ImGui.TextDisabled("Nothing tracked yet — start a train with Tracking this train enabled.");
+            ImGui.TextDisabled("Nothing tracked yet — resume scanning in Train controls & scouts to record marks.");
             return;
         }
 

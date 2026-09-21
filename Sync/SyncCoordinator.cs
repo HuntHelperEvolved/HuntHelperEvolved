@@ -789,7 +789,7 @@ public sealed partial class SyncCoordinator : IDisposable
         var removed = _known.Keys.Where(k => !present.Contains(k)).ToList();
         foreach (var key in removed) _known.Remove(key);
 
-        if (upserts.Count > 0) _client.Send(new TrainUpsertMessage { Marks = upserts, Scouting = !_config.ScanningPaused && _config.TrackingEnabled });
+        if (upserts.Count > 0) _client.Send(new TrainUpsertMessage { Marks = upserts, Scouting = !_config.ScanningPaused });
         if (removed.Count > 0) _client.Send(new TrainRemoveMessage { Keys = removed.Select(SyncKey.From).ToList() });
         if (newlyDead.Count > 0) _client.Send(new SightingsRemoveMessage { Keys = newlyDead });
 

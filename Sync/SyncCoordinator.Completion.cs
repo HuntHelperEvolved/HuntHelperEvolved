@@ -92,7 +92,7 @@ public sealed partial class SyncCoordinator
     private void SendManualScouts()
     {
         if (!SupportsTrainFinish || !_config.SyncShareTrain) return;
-        var scouting = !_config.ScanningPaused && _config.TrackingEnabled;
+        var scouting = !_config.ScanningPaused;
         if (scouting && !_scoutingSent) _client.Send(new TrainScoutsMessage { Scouting=true });
         _scoutingSent=scouting;
         if (_detector.Marks.Count==0) return;

@@ -68,8 +68,7 @@ public class TrainWatcher : IDisposable
 
     /// <summary>
     /// Raised periodically so the in-progress train can be written to disk.
-    /// Fires regardless of whether tracking is on, since kill times and the
-    /// pointer are worth keeping either way.
+    /// Continues while scanning is paused so recorded kill times are retained.
     /// </summary>
     public event Action? PersistRequested;
 
@@ -218,14 +217,15 @@ public class TrainWatcher : IDisposable
     /// Takes a kill from the tally. Public because the tally is wired to this
     /// from Plugin now; it used to arrive on this class's own IPC subscription.
     ///
-    /// Only queued while actively tracking — otherwise the queue would grow
-    /// unbounded across a long session of ordinary hunting.
+    /// Only queue evidence for a living train row. Ordinary hunting outside
+    /// the train must not grow the pending queue or kill-deduplication history.
     /// </summary>
     public void OnHuntTallyKill(HuntTallyKill kill)
     {
-        if (!_config.TrackingEnabled) return;
-        if (!_config.AutoMarkDeadEnabled) return;
-        if (kill.WorldId != 0) _pendingKills.Enqueue(kill);
+        if (!_config.AutoMarkDeadEnabled || kill.WorldId == 0
+            || !_detector.Marks.TryGetValue((kill.NameId, kill.InstanceId, kill.WorldId), out var mark)
+            || mark.IsCustom || mark.Dead) return;
+        _pendingKills.Enqueue(kill);
     }
 
     private void OnUpdate(IFramework framework)
@@ -245,9 +245,8 @@ public class TrainWatcher : IDisposable
             PersistRequested?.Invoke();
         }
 
-        // Detection runs regardless of tracking: the map wants to know about
-        // B, A and S ranks all the time. Only whether A-ranks get RECORDED into
-        // the train is gated by tracking and the pause button.
+        // Live sightings continue while paused. The pause button alone decides
+        // whether new A-ranks are recorded into the train.
         _secondsSinceScan += framework.UpdateDelta.TotalSeconds;
         _secondsSinceRecordScan += framework.UpdateDelta.TotalSeconds;
         if (_secondsSinceScan >= 0.5)
@@ -257,7 +256,7 @@ public class TrainWatcher : IDisposable
             {
                 var recordNow = _secondsSinceRecordScan >= Math.Max(1, _config.PollIntervalSeconds);
                 if (recordNow) _secondsSinceRecordScan = 0;
-                _detector.Scan(recordNew: recordNow && _config.TrackingEnabled && !_config.ScanningPaused);
+                _detector.Scan(recordNew: recordNow && !_config.ScanningPaused);
             }
             catch (Exception ex)
             {
@@ -265,8 +264,7 @@ public class TrainWatcher : IDisposable
             }
         }
 
-        if (!_config.TrackingEnabled) return;
-
+        // Existing train rows keep their kill times and report history while paused.
         _secondsSinceLastPoll += framework.UpdateDelta.TotalSeconds;
         var interval = Math.Max(1, _config.PollIntervalSeconds);
         if (_secondsSinceLastPoll < interval) return;
