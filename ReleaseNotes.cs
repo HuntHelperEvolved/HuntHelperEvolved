@@ -34,6 +34,12 @@ public static class ReleaseNotes
 
     public static readonly Release[] All =
     {
+        new("0.5.0.22", "2026-09-21", "Simpler scouting controls and configurable train spawn-point colours.",
+        [
+            new("Scouting", "Removed Tracking this train. Scanning/Paused now controls whether new marks join the train, and old saved tracking settings no longer block recording or automatic scout credit. Enable Sharing > The train to share contributions. Scouting still starts paused after login or reload.", Kihtli),
+            new("History", "Existing train rows continue recording observed deaths and keeping report history while scanning is paused. Auto-mark preferences still apply; End Train remains a manual action.", Kihtli),
+            new("Map", "Living, non-sniped train marks highlight their matched spawn points, including after leaving sight. Choose Spawn point in train under Settings > Map > Dot colours; the default is cyan. Dead, sniped or removed rows restore the normal point style. Matching respects world and instance, existing visibility rules and S-rank outlines.", Kihtli),
+        ]),
         new("0.5.0.21", "2026-09-21", "Safer FATE tracking and more reliable train recovery and spawn timers.",
         [
             new("Counters", "Fixed an unsafe FATE memory read that could crash the game during teleporting or after a FATE disappeared. The Nunyunuwi watch pauses during loading and starts a fresh observation window afterward. A FATE that disappears before its result is observed restarts the clock conservatively and is labelled unconfirmed.", Kihtli),
