@@ -34,6 +34,14 @@ public static class ReleaseNotes
 
     public static readonly Release[] All =
     {
+        new("0.5.0.21", "2026-09-21", "Safer FATE tracking and more reliable train recovery and spawn timers.",
+        [
+            new("Counters", "Fixed an unsafe FATE memory read that could crash the game during teleporting or after a FATE disappeared. The Nunyunuwi watch pauses during loading and starts a fresh observation window afterward. A FATE that disappears before its result is observed restarts the clock conservatively and is labelled unconfirmed.", Kihtli),
+            new("Train", "Fixed End Train incorrectly reporting that a sniped mark changed when its last-seen time fell within the same ten-second interval. Genuine changes still prevent the shared train from being cleared.", Kihtli),
+            new("Scouting", "Killed or sniped marks return to the live train when an unpaused scout sees them alive again, with their previous death and sniped times cleared.", Kihtli),
+            new("A ranks", "Confirmed live A-ranks remain at 100% spawned in /hha after leaving the zone and across reloads for up to 14 days. Newer death, sniped, corpse or maintenance evidence replaces that confirmation; worlds and instances remain separate.", Kihtli),
+            new("Rallies", "Preset rallies return when a finished zone or instance is scouted alive again. Reselecting a preset rebuilds rallies for live marks, including previously removed stops. Shared trains require server 0.3.27; local trains work independently.", Kihtli),
+        ]),
         new("0.5.0.20", "2026-09-16", "Keep train navigation visible while the controls are collapsed.",
         [
             new("Train", "Next Mark and Next Aetheryte now sit above the controls section in both the /hht popout and the main Train tab, so they remain available while the controls and scouts are collapsed.", Kihtli),

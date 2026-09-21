@@ -673,6 +673,7 @@ public class Configuration : IPluginConfiguration
     public bool ARankWindowAvailableOnly { get; set; }
     public string ARankWindowSearch { get; set; } = "";
     public List<Sync.ARankKill> ARankKills { get; set; } = new();
+    public List<Sync.ARankSighting> ARankSightings { get; set; } = new();
     public bool SRankWindowCurrentWorld { get; set; } = true;
     public List<uint> SRankWindowWorlds { get; set; } = new();
     public List<string>? SRankWindowExpansions { get; set; }

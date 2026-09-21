@@ -61,7 +61,7 @@ public sealed partial class Plugin
             _config.ActiveTrainPresetId = id;
             _config.TrainPresetOrderingPaused = false;
             _config.Save();
-            ApplyLocalTrainPreset(force: true);
+            ApplyLocalTrainPreset(force: true, restartRallies: true);
         }
         ClearTrainDrag();
     }
@@ -86,7 +86,7 @@ public sealed partial class Plugin
         return true;
     }
 
-    private void ApplyLocalTrainPreset(bool force = false)
+    private void ApplyLocalTrainPreset(bool force = false, bool restartRallies = false)
     {
         if (SharingPresetTrain
             || _dragFromIndex != -1 || _dragExpansionFrom != -1
@@ -113,7 +113,7 @@ public sealed partial class Plugin
                 flag.WorldName = lead.WorldName;
                 flag.ZoneName = RouteCatalog.ByTerritory[stop.Key.TerritoryId].Name;
                 return flag;
-            }, orderingPaused: _config.TrainPresetOrderingPaused);
+            }, orderingPaused: _config.TrainPresetOrderingPaused, restartRallies: restartRallies);
         var order = route.Rows;
         foreach (var removed in marks.Except(order)) _detector.Remove(removed.Key);
         _detector.Merge(order.Where(m => !_detector.Marks.ContainsKey(m.Key)));

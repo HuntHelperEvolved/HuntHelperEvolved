@@ -247,13 +247,12 @@ public sealed class MarkDetector
 
     /// <summary>
     /// One scan pass. Adds any newly sighted A-rank marks and refreshes the last
-    /// seen time on ones already known. Never removes anything — a mark going out
-    /// of render range shouldn't drop it from the train.
+    /// seen time on ones already known, restoring live marks when recording.
+    /// Never removes anything — a mark going out of render range shouldn't
+    /// drop it from the train.
     ///
-    /// When recordNew is false, marks already in the list still update, but
-    /// nothing new is picked up — that's the pause button, and it's deliberately
-    /// narrower than switching tracking off entirely (which would also stop
-    /// kill-time recording for the marks already being tracked).
+    /// When recordNew is false, existing sightings and observed deaths still
+    /// update, but marks are neither added nor restored to alive.
     /// </summary>
     public void Scan(bool recordNew = true)
     {
@@ -305,8 +304,8 @@ public sealed class MarkDetector
             var key = (mob.NameId, instance, worldId);
             if (_marks.TryGetValue(key, out var existing))
             {
-                if (!IsDead(mob)) existing.LastSeenUtc = now;
-                existing.MapPosition = MapCoordinates.FromWorld(_dataManager, mapId, mob.Position.X, mob.Position.Z);
+                existing.UpdateSighting(mob.CurrentHp, mob.MaxHp, now,
+                    MapCoordinates.FromWorld(_dataManager, mapId, mob.Position.X, mob.Position.Z), recordNew);
 
                 // Zero health is the death itself, seen rather than inferred,
                 // and it carries as far as the object table does. The battle
@@ -394,6 +393,7 @@ public sealed class MarkDetector
         uint territoryId, uint mapId, uint instance, uint worldId, string worldName,
         DateTime now, HuntRank? knownRank)
     {
+        if (mob.MaxHp == 0) return;
         HuntRank rank;
         if (knownRank is { } r)
         {

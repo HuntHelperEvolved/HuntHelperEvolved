@@ -371,7 +371,7 @@ public sealed partial class Plugin : IDalamudPlugin
             startup.Add(_zoneReminder.Dispose);
             _counter = new HuntCounter(chatGui, clientState, objectTable, _config);
             startup.Add(_counter.Dispose);
-            _spawnWatch = new SpawnWatchCounters(framework, clientState, objectTable, fateTable, _log);
+            _spawnWatch = new SpawnWatchCounters(framework, clientState, objectTable, fateTable, _log, HuntTally.Service.Condition);
             startup.Add(_spawnWatch.Dispose);
             _worldData = new WorldData(dataManager);
 

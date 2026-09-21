@@ -74,9 +74,19 @@ removal shortly after a successful teleport.
 
 An expansion entry and instance entry at the same stop produce one flag.
 Expansion rallies follow the first scouted live zone in preset order.
-Completing or removing a stop records that entry, so later scouts and
-reconnects do not recreate it. Resetting or finishing the train clears rally
-progress for the next train while retaining the preset and any ordering pause.
+Completing or removing a stop records that entry, so more scouting during the
+same zone/instance visit and reconnects do not recreate it. Once that visit has
+no live marks, scouting live marks there again restores its rallies. Other
+zones, instances and worlds keep their progress. An expansion rally becomes
+available again when that expansion has no live marks and is later rescouted.
+
+Selecting any preset, including the current one, rebuilds its rallies for the
+remaining live marks and resumes automatic ordering. Use this to restore rallies
+without resetting the train, including when marks were never cleared or marked
+dead. Pending flags keep their identities; completed stops become fresh flags.
+Resetting or finishing the whole train clears rally progress while retaining
+the preset and any ordering pause. Shared trains need the server update for
+this rally recovery behavior.
 
 Existing rally flags still support completion and removal while ordering is
 paused. Zones with no live marks lose their preset flags. Disabling rallies

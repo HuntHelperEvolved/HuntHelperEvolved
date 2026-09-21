@@ -51,5 +51,18 @@ public class DetectedMark
     /// Compare the full key to avoid matching a mark on another world or instance.
     /// </summary>
     public (uint NameId, uint Instance, uint WorldId) Key => (NameId, Instance, WorldId);
-}
 
+    internal void UpdateSighting(uint currentHp, uint maxHp, DateTime seenAt, Vector2 position, bool recording)
+    {
+        if (maxHp == 0) return;
+        MapPosition = position;
+        if (currentHp == 0) return;
+        LastSeenUtc = seenAt;
+
+        // Paused scans still refresh sightings, but only active scouting restores a train row.
+        if (!recording) return;
+        Dead = false;
+        DeathObservedAtUtc = null;
+        SnipedAtUtc = null;
+    }
+}

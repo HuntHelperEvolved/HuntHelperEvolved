@@ -218,6 +218,7 @@ public sealed partial class SyncCoordinator : IDisposable
         _detector.Scanned -= OnScanned;
         _detector.SightingObservedDead -= OnSightingDeath;
         _client.Dispose();
+        SaveARankSightings(force: true);
     }
 
     // Settings and status
@@ -265,10 +266,11 @@ public sealed partial class SyncCoordinator : IDisposable
     private void OnUpdate(IFramework framework)
     {
         if (_disposed) return;
-        if (!_config.SyncEnabled) return;
 
         try
         {
+            SaveARankSightings();
+            if (!_config.SyncEnabled) return;
             DrainInbox();
             CheckPresetRequest();
             ExpireRemote();
@@ -340,6 +342,7 @@ public sealed partial class SyncCoordinator : IDisposable
                 break;
             case "marks.visible":
                 var visible = SyncProtocol.Deserialize<VisibleMarksBroadcast>(payload)!;
+                RememberARankSightings(ARankSightings.FromSightings(visible.Marks.Select(m => m.Mark)));
                 foreach (var mark in visible.Marks) { _visibleMarks[mark.Mark.LiveKey] = mark; _activeMarkGrace.Update(mark, DateTime.UtcNow); }
                 foreach (var key in visible.Removed) _visibleMarks.Remove(key.ToLiveKey());
                 break;
@@ -374,6 +377,7 @@ public sealed partial class SyncCoordinator : IDisposable
             case ServerMessageTypes.TrainUpsert:
             {
                 var marks = SyncProtocol.Deserialize<TrainUpsertBroadcast>(payload)!.Marks;
+                RememberARankSightings(ARankSightings.FromMarks(marks));
                 if (ARankHistory.Merge(_config.ARankKills, ARankHistory.FromMarks(marks), DateTime.UtcNow)) _config.Save();
                 if (_config.SyncShareTrain) ApplyMarks(marks);
                 break;
@@ -398,7 +402,9 @@ public sealed partial class SyncCoordinator : IDisposable
                 break;
 
             case ServerMessageTypes.Sightings:
-                foreach (var s in SyncProtocol.Deserialize<SightingsBroadcast>(payload)!.Sightings)
+                var sightings = SyncProtocol.Deserialize<SightingsBroadcast>(payload)!.Sightings;
+                if (!SupportsVisibleMarks) RememberARankSightings(ARankSightings.FromSightings(sightings));
+                foreach (var s in sightings)
                     AddRemoteSighting(s);
                 Bump();
                 break;
@@ -454,6 +460,8 @@ public sealed partial class SyncCoordinator : IDisposable
         _trainScouts=welcome.TrainScouts;
         SupportsScoutRemoval=welcome.SupportsScoutRemoval; ApplyScoutCredits(welcome.ScoutCredits);
         _watchSent = null;
+        RememberARankSightings(ARankSightings.FromMarks(welcome.Marks).Concat(ARankSightings.FromSightings(
+            welcome.SupportsVisibleMarks ? welcome.VisibleMarks.Select(m => m.Mark) : welcome.Sightings)));
         if (ARankHistory.Merge(_config.ARankKills, welcome.ARankKills.Concat(ARankHistory.FromMarks(welcome.Marks)), DateTime.UtcNow)) _config.Save();
         ClientId = welcome.ClientId;
         SupportsVisibleMarks = welcome.SupportsVisibleMarks;
@@ -550,7 +558,7 @@ public sealed partial class SyncCoordinator : IDisposable
                     // sync". A same-revision echo of our own position update
                     // must not overwrite a tick the user made a moment ago;
                     // a higher revision is somebody else's edit and wins.
-                    var untouched = !hasKnown || Signature(local) == known.Signature;
+                    var untouched = !hasKnown || TrainMarkSignature.Create(local) == known.Signature;
 
                     if (m.LastSeen >= local.LastSeenUtc)
                     {
@@ -582,7 +590,7 @@ public sealed partial class SyncCoordinator : IDisposable
                 var canonical = new DetectedMark { Dead = m.Dead, DeathObservedAtUtc = m.DeathAt, SnipedAtUtc = m.SnipedAt,
                     Spiced = m.Spiced, Name = m.Name, ZoneName = m.ZoneName, IsCustom = m.IsCustom,
                     TerritoryId = m.TerritoryId, MapId = m.MapId, MapPosition = new Vector2(m.X, m.Y), LastSeenUtc = m.LastSeen };
-                _known[key] = new KnownMark(Signature(canonical), m.Revision, m.Dead);
+                _known[key] = new KnownMark(TrainMarkSignature.Create(canonical), m.Revision, m.Dead);
             }
         }
         finally
@@ -769,7 +777,7 @@ public sealed partial class SyncCoordinator : IDisposable
             var key = mark.Key;
             present.Add(key);
 
-            var signature = Signature(mark);
+            var signature = TrainMarkSignature.Create(mark);
             var hasKnown = _known.TryGetValue(key, out var known);
             if (hasKnown && known.Signature == signature) continue;
 
@@ -807,11 +815,12 @@ public sealed partial class SyncCoordinator : IDisposable
 
     private void OnScanned()
     {
-        if (!IsConnected) return;
-
         try
         {
-            PublishSightings();
+            RememberARankSightings(_detector.VisibleMarks.Select(s => new ARankSighting {
+                NameId = s.NameId, WorldId = s.WorldId, Instance = s.Instance,
+                At = s.LastSeenUtc, Alive = s.HealthPercent > 0 }));
+            if (IsConnected) PublishSightings();
         }
         catch (Exception ex)
         {
@@ -990,29 +999,6 @@ public sealed partial class SyncCoordinator : IDisposable
             Instance = MarkDetector.GetCurrentInstance(),
             Worlds = _worlds,
         };
-    }
-
-    /// <summary>
-    /// Everything about a mark that is worth telling the server. Position
-    /// to a tenth of a coordinate and last-seen to ten seconds, so a mark
-    /// standing still in range does not produce an update every scan.
-    /// </summary>
-    private static int Signature(DetectedMark m)
-    {
-        var h = new HashCode();
-        h.Add(m.Dead);
-        h.Add(m.DeathObservedAtUtc?.Ticks / TimeSpan.TicksPerSecond ?? 0);
-        h.Add(m.Spiced);
-        h.Add(m.SnipedAtUtc?.Ticks ?? 0);
-        h.Add(m.Name);
-        h.Add(m.ZoneName);
-        h.Add(m.IsCustom);
-        h.Add(m.TerritoryId);
-        h.Add(m.MapId);
-        h.Add(MathF.Round(m.MapPosition.X, 1));
-        h.Add(MathF.Round(m.MapPosition.Y, 1));
-        h.Add(m.LastSeenUtc.Ticks / (10 * TimeSpan.TicksPerSecond));
-        return h.ToHashCode();
     }
 
     private static SyncMark ToSyncMark(DetectedMark m, long baseRevision) => new()

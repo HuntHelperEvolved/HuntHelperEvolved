@@ -15,7 +15,7 @@ public sealed class ARankWindow
     private DateTime _nextCapture;
     private readonly BoardSnapshot<List<Row>> _board = new();
     private sealed record Row(uint NameId, uint World, uint Instance, MarkInfo Info, ARankKill? Kill,
-        DateTime? Opens, DateTime? Ends, bool Up, bool AfterMaintenance, int State, double Percent);
+        DateTime? Opens, DateTime? Ends, bool Up, DateTime? SeenAliveAt, bool AfterMaintenance, int State, double Percent);
     private static readonly KeyValuePair<uint, MarkInfo>[] OrderedMarks = ExpansionData.ModelIdToMark.OrderBy(e => e.Value.Order).ThenBy(e => e.Value.ZoneOrder).ToArray();
     private static readonly string[] Expansions = ExpansionData.ModelIdToMark.Values.OrderBy(m => m.Order).Select(m => m.Expansion).Distinct().ToArray();
     public ARankWindow(Configuration config, SyncCoordinator sync, WorldData worlds, MarkDetector detector)
@@ -30,14 +30,22 @@ public sealed class ARankWindow
         {
             _nextCapture = now.AddSeconds(1);
             var captured = new List<ARankKill>();
+            var sightings = new List<ARankSighting>();
             foreach (var mark in _detector.Marks.Values)
             {
-                if (!mark.Dead || mark.IsCustom || ExpansionData.Lookup(mark.NameId) is null) continue;
+                if (mark.IsCustom || ExpansionData.Lookup(mark.NameId) is null) continue;
+                if (!mark.Dead)
+                {
+                    sightings.Add(new() { NameId = mark.NameId, WorldId = mark.WorldId,
+                        Instance = mark.Instance, At = mark.LastSeenUtc, Alive = true });
+                    continue;
+                }
                 var at = mark.SnipedAtUtc ?? mark.DeathObservedAtUtc;
                 if (at is null || mark.WorldId == 0 || now - at.Value > TimeSpan.FromDays(14)) continue;
                 captured.Add(new ARankKill { NameId = mark.NameId,
                     WorldId = mark.WorldId, Instance = mark.Instance, At = at.Value, LastAliveAt = mark.SnipedAtUtc is not null ? mark.LastSeenUtc : null, Uncertain = mark.SnipedAtUtc is not null });
             }
+            _sync.RememberARankSightings(sightings);
             if (ARankHistory.Merge(_config.ARankKills, captured, now)) _config.Save();
         }
         if (!_config.ARankWindowOpen) { _board.Invalidate(); return; }
@@ -50,7 +58,7 @@ public sealed class ARankWindow
     }
     private void DrawContents(DateTime now)
     {
-        ImGui.TextDisabled("Respawn windows from local and shared kill history.");
+        ImGui.TextDisabled("Respawn windows and confirmed spawns from local and shared sightings.");
         var worlds = DrawWorldPicker();
         ImGui.SameLine(); DrawExpansionFilter();
         var available = _config.ARankWindowAvailableOnly;
@@ -58,7 +66,7 @@ public sealed class ARankWindow
         ImGui.SameLine(); var search = _config.ARankWindowSearch; ImGui.SetNextItemWidth(220);
         if (ImGui.InputTextWithHint("##asearch", "Search mark or zone", ref search,100)) { _config.ARankWindowSearch = search; _config.Save(); }
         if (ImGui.CollapsingHeader("Timer information"))
-            ImGui.TextWrapped("Each world and instance has its own timer. Sniped ranges run from last seen alive to found missing; missing evidence stays unknown. Elapsed windows do not confirm a spawn. No community A-rank kill feed.");
+            ImGui.TextWrapped("Each world and instance has its own timer. A live sighting shows 100% spawned until newer death, sniped or maintenance evidence. Sniped ranges run from last seen alive to found missing; missing evidence stays unknown. Elapsed windows alone do not confirm a spawn. No community A-rank kill feed.");
         var rows = _board.Get(worlds, _config.ARankWindowExpansions, search, available, _sync.IsConnected,
             System.Diagnostics.Stopwatch.GetTimestamp(), () => BuildRows(worlds, search, available, now));
         ImGui.TextDisabled($"{rows.Count} marks across {worlds.Count} selected worlds.");
@@ -97,6 +105,8 @@ public sealed class ARankWindow
     {
         var selectedWorlds = worlds.ToHashSet();
         var killsByMark = _config.ARankKills.Where(k => selectedWorlds.Contains(k.WorldId)).ToLookup(k => (k.WorldId, k.NameId));
+        var sightings = _config.ARankSightings.Where(s => selectedWorlds.Contains(s.WorldId))
+            .ToDictionary(s => (s.NameId, s.WorldId, s.Instance));
         var restarts = _sync.SRankStatuses.Values.Where(s => s.Maintenance && selectedWorlds.Contains(s.WorldId))
             .GroupBy(s => s.WorldId).ToDictionary(g => g.Key, g => g.Max(s => s.KilledAt));
         var zoneInstances = new ARankZoneInstances();
@@ -104,6 +114,8 @@ public sealed class ARankWindow
             if (selectedWorlds.Contains(mark.WorldId)) zoneInstances.Add(mark.NameId, 0, mark.WorldId, mark.Instance);
         foreach (var kill in _config.ARankKills)
             if (selectedWorlds.Contains(kill.WorldId)) zoneInstances.Add(kill.NameId, 0, kill.WorldId, kill.Instance);
+        foreach (var sighting in sightings.Values)
+            zoneInstances.Add(sighting.NameId, 0, sighting.WorldId, sighting.Instance);
         foreach (var sighting in _detector.OtherRanks.Values)
             if (selectedWorlds.Contains(sighting.WorldId)) zoneInstances.Add(sighting.NameId, sighting.TerritoryId, sighting.WorldId, sighting.Instance);
         foreach (var sighting in _sync.RemoteSightings.Values)
@@ -127,15 +139,17 @@ public sealed class ARankWindow
             foreach (var instance in instances)
             {
                 var kill = kills.FirstOrDefault(k => k.Instance == instance);
-                var up = _sync.IsSeenUp(entry.Key,world,instance);
+                var sighting = sightings.GetValueOrDefault((entry.Key, world, instance));
                 var restart = restarts.GetValueOrDefault(world);
+                var up = ARankSightings.IsSpawned(sighting, kill, restart, now);
                 var (opens, end) = ARankHistory.Window(kill, info.MinHours, info.MaxHours, restart);
+                if (up) { opens = null; end = null; }
                 var known = opens is not null;
                 if (available && (_sync.Faloop.IsOffline(_worldData.NameOf(world)) || up || opens is null || now < opens)) continue;
                 var afterMaintenance=restart is not null && (kill is null || kill.At <= restart || kill.LastAliveAt <= restart);
                 var state=up ? 0 : !known ? 5 : now >= end ? 1 : now >= opens ? 2 : 4;
-                var percent=known ? Math.Clamp((now-opens!.Value).TotalSeconds/(end!.Value-opens.Value).TotalSeconds*100,0,100) : 0;
-                rows.Add(new(entry.Key,world,instance,info,kill,opens,end,up,afterMaintenance,state,percent));
+                var percent=up ? 100 : known ? Math.Clamp((now-opens!.Value).TotalSeconds/(end!.Value-opens.Value).TotalSeconds*100,0,100) : 0;
+                rows.Add(new(entry.Key,world,instance,info,kill,opens,end,up,sighting?.At,afterMaintenance,state,percent));
             }
         }
         return rows.OrderBy(r=>r.State).ThenByDescending(r=>r.Percent).ThenBy(r=>r.Opens??DateTime.MaxValue)
@@ -158,13 +172,15 @@ public sealed class ARankWindow
         ImGui.TableNextColumn();ImGui.TextDisabled(row.Info.Expansion);
         ImGui.TableNextColumn();
         if(offline) ImGui.TextDisabled("OFFLINE / MAINTENANCE");
-        else if(row.Up) ImGui.TextColored(TimerTableUi.Up,"UP");
+        else if(row.Up) ImGui.TextColored(TimerTableUi.Up, "100% spawned");
         else if(row.Opens is null) ImGui.TextColored(TimerTableUi.Unknown,
             row.AfterMaintenance ? "after maintenance / unknown" : row.Kill?.Uncertain==true ? "sniped / unknown" : "no kill recorded");
         else if(now < row.Opens) ImGui.TextColored(TimerTableUi.Cooldown,"opens in "+TimerTableUi.Duration(row.Opens.Value-now));
         else if(now >= row.Ends) ImGui.TextColored(TimerTableUi.Up,"READY");
         else TimerTableUi.Progress(row.Percent);
-        if(ImGui.IsItemHovered()) ImGui.SetTooltip(row.Up ? "Currently reported alive." :
+        if(ImGui.IsItemHovered()) ImGui.SetTooltip(row.Up
+            ? $"Seen alive {Time(row.SeenAliveAt)}. Kept at 100% after leaving the zone, until newer death, sniped or maintenance evidence."
+            :
             (row.Kill?.Uncertain==true ? "Sniped: bounded by last seen alive and found missing. " : "")+
             "Elapsed portion of the respawn window, not a spawn probability or confirmation that the mark is alive.");
         ImGui.TableNextColumn();ImGui.TextUnformatted(Time(row.Opens));

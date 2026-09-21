@@ -13,7 +13,10 @@ public sealed class RallyProgress
     public long Revision { get; set; }
     public List<RallyVisit> Completed { get; set; } = new();
     public List<RallyRow> Rows { get; set; } = new();
-    public RallyProgress Copy() => new() { Revision = Revision, Completed = new(Completed), Rows = new(Rows) };
+    // Null distinguishes progress saved before visit tracking from an empty train.
+    public List<RallyKey>? LiveVisits { get; set; }
+    public RallyProgress Copy() => new() { Revision = Revision, Completed = new(Completed), Rows = new(Rows),
+        LiveVisits = LiveVisits is null ? null : new(LiveVisits) };
 }
 
 public sealed record RallyRoute<T>(List<T> Rows, bool ProgressChanged);
@@ -21,7 +24,8 @@ public sealed record RallyRoute<T>(List<T> Rows, bool ProgressChanged);
 public static class PresetRallies
 {
     public static RallyRoute<T> Reconcile<T>(IReadOnlyList<T> input, TrainPreset? preset, RallyProgress progress,
-        Func<T, RoutePoint> point, Func<RallyStop, uint, T?, T> flag, bool orderingPaused = false) where T : class
+        Func<T, RoutePoint> point, Func<RallyStop, uint, T?, T> flag, bool orderingPaused = false,
+        bool restartRallies = false) where T : class
     {
         static (uint, uint, uint) Identity(RoutePoint p) => (p.NameId, p.Instance, p.WorldId);
         static (uint, uint, uint) RowIdentity(RallyRow r) => (r.NameId, r.Visit.Key.Instance, r.Visit.Key.WorldId);
@@ -38,17 +42,23 @@ public static class PresetRallies
         }
 
         var ordinary = input.Where(m => !owned.ContainsKey(Identity(point(m)))).ToList();
+        var live = ordinary.Select(point).Where(p => !p.IsCustom && !p.Dead)
+            .Select(p => new RallyKey(p.WorldId, p.TerritoryId, p.Instance)).ToHashSet();
+        if (preset is not null) RefreshVisits(progress, live);
+        if (preset is not null && restartRallies) progress.Completed.Clear();
+        bool ProgressChanged() => !before.Rows.SequenceEqual(progress.Rows)
+            || !before.Completed.SequenceEqual(progress.Completed)
+            || (before.LiveVisits is null ? progress.LiveVisits is not null
+                : progress.LiveVisits is null || !before.LiveVisits.SequenceEqual(progress.LiveVisits));
         if (preset is not null && orderingPaused)
         {
             // Manual adjustments freeze pending rally positions too. Continue
             // tracking completed flags and removing flags whose live marks are gone.
-            var live = ordinary.Select(point).Where(p => !p.IsCustom && !p.Dead)
-                .Select(p => new RallyKey(p.WorldId, p.TerritoryId, p.Instance)).ToHashSet();
             progress.Rows = progress.Rows.Where(r => live.Contains(r.Visit.Key) && existing.ContainsKey(RowIdentity(r)))
                 .Select(r => r with { Completed = point(existing[RowIdentity(r)]).Dead }).ToList();
             var retained = progress.Rows.Select(RowIdentity).ToHashSet();
             var frozen = input.Where(m => !owned.ContainsKey(Identity(point(m))) || retained.Contains(Identity(point(m)))).ToList();
-            return new(frozen, !before.Rows.SequenceEqual(progress.Rows) || !before.Completed.SequenceEqual(progress.Completed));
+            return new(frozen, ProgressChanged());
         }
         var ordered = preset is null ? ordinary : PresetRouter.Order(ordinary, preset, point);
         if (preset is not null) RememberCompletedEntries(ordered.Select(point), preset, progress.Completed);
@@ -63,6 +73,7 @@ public static class PresetRallies
             // Removed flags stay removed. A checked flag remains visible until
             // the conductor clears it, just like a manually placed custom flag.
             if (stop.Completed && (old is null || !point(old).Dead)) continue;
+            if (!stop.Completed && old is not null && point(old).Dead) old = null;
             var id = previous.NameId;
             if (old is null)
             {
@@ -80,7 +91,25 @@ public static class PresetRallies
             result.Add(row);
         }
         progress.Rows = rows;
-        return new(result, !before.Rows.SequenceEqual(rows) || !before.Completed.SequenceEqual(progress.Completed));
+        return new(result, ProgressChanged());
+    }
+
+    private static void RefreshVisits(RallyProgress progress, HashSet<RallyKey> live)
+    {
+        if (progress.LiveVisits is { } previous)
+        {
+            var returned = live.Except(previous).ToHashSet();
+            var previousExpansions = previous.Where(k => RouteCatalog.ByTerritory.ContainsKey(k.TerritoryId))
+                .Select(k => (k.WorldId, RouteCatalog.ByTerritory[k.TerritoryId].Expansion)).ToHashSet();
+            var returnedExpansions = returned.Where(k => RouteCatalog.ByTerritory.ContainsKey(k.TerritoryId))
+                .Select(k => (k.WorldId, RouteCatalog.ByTerritory[k.TerritoryId].Expansion))
+                .Where(e => !previousExpansions.Contains(e)).ToHashSet();
+            // Keep completed entries while clearing a run, so expansion rallies
+            // do not move to the next zone. Reopen them when live marks return.
+            progress.Completed.RemoveAll(v => returned.Contains(v.Key)
+                || returnedExpansions.Contains((v.Key.WorldId, v.Expansion)));
+        }
+        progress.LiveVisits = live.OrderBy(k => k.WorldId).ThenBy(k => k.TerritoryId).ThenBy(k => k.Instance).ToList();
     }
 
     private static void Remember(List<RallyVisit> completed, RallyVisit visit)

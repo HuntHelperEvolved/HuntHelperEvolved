@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Dalamud.Game.ClientState.Fates;
+using Dalamud.Game.ClientState.Conditions;
 using Dalamud.Game.ClientState.Objects.Enums;
 using Dalamud.Plugin.Services;
 
@@ -17,14 +18,13 @@ namespace HuntHelperEvolved;
 ///    the real number, but enough to answer "are we there yet".
 ///
 ///  - <b>Nunyunuwi</b> (Southern Thanalan): no FATE may fail in the zone for
-///    one real hour. We hold the clock and restart it the moment a FATE is seen
-///    to fail, so the countdown on screen is always the honest one — including
-///    a failure that happens while we are too far away to be told about it
-///    directly. See the long comment in OnUpdate for how that actually works.
+///    one real hour. Restart on observed failures or conservatively when a
+///    FATE disappears without an observed result. Client observations alone
+///    cannot establish the outcome of every out-of-range FATE.
 ///
 /// Adapted from Hunt Helper's <c>CounterUI.Fates.cs</c> and
-/// <c>DrawWeeEaCounter</c> (img02/HuntHelper, MIT) — the FATE tracking below in
-/// particular reproduces its exact mechanism, not just its intent.
+/// <c>DrawWeeEaCounter</c> (img02/HuntHelper, MIT) — the FATE tracking below
+/// uses managed snapshots so removed native FATE objects are never retained.
 /// </summary>
 public sealed class SpawnWatchCounters : IDisposable
 {
@@ -56,15 +56,12 @@ public sealed class SpawnWatchCounters : IDisposable
     private readonly IObjectTable objects;
     private readonly IFateTable fates;
     private readonly IPluginLog log;
+    private readonly ICondition condition;
 
-    /// <summary>
-    /// Every FATE we are still watching this zone visit, holding the same
-    /// <see cref="IFate"/> reference — and so the same underlying pointer —
-    /// from the poll it was first seen on, alongside the last state we read
-    /// off it. Kept even after the FATE stops appearing in <see cref="fates"/>
-    /// itself; see OnUpdate for why that is the point of keeping it at all.
-    /// </summary>
-    private readonly Dictionary<uint, (IFate Fate, FateState LastState)> trackedFates = new();
+    // IFate properties dereference native memory. Retain only copied values,
+    // never an IFate or its address, beyond the current live-table iteration.
+    private readonly record struct TrackedFate(string Name, int Progress, FateState State);
+    private Dictionary<uint, TrackedFate> trackedFates = new();
     private List<FateSnapshot> activeFates = new();
 
     /// <summary>When the current unbroken FATE-clean stretch started.</summary>
@@ -83,7 +80,7 @@ public sealed class SpawnWatchCounters : IDisposable
         }
     }
 
-    /// <summary>Empty until a FATE has been seen to fail this session.</summary>
+    /// <summary>Last observed failure or unconfirmed disappearance this visit.</summary>
     public string NunyunuwiLastFailure { get; private set; } = string.Empty;
 
     /// <summary>FATEs currently running or pending, soonest to expire first.</summary>
@@ -91,13 +88,14 @@ public sealed class SpawnWatchCounters : IDisposable
 
     public SpawnWatchCounters(
         IFramework framework, IClientState clientState, IObjectTable objects,
-        IFateTable fates, IPluginLog log)
+        IFateTable fates, IPluginLog log, ICondition condition)
     {
         this.framework = framework;
         this.clientState = clientState;
         this.objects = objects;
         this.fates = fates;
         this.log = log;
+        this.condition = condition;
 
         framework.Update += OnUpdate;
         clientState.TerritoryChanged += OnTerritoryChanged;
@@ -112,6 +110,9 @@ public sealed class SpawnWatchCounters : IDisposable
     /// <summary>Wee Ea minions loaded in our object table right now.</summary>
     public int WeeEaLoaded()
     {
+        if (!CanReadWorld)
+            return 0;
+
         var n = 0;
         foreach (var obj in objects)
         {
@@ -127,135 +128,75 @@ public sealed class SpawnWatchCounters : IDisposable
         NunyunuwiSince = DateTime.Now;
         NunyunuwiLastFailure = string.Empty;
         trackedFates.Clear();
-        activeFates = new();
+        if (activeFates.Count > 0)
+            activeFates = new();
     }
 
     private void OnTerritoryChanged(uint territory)
     {
-        // FATE ids and the clock only mean anything within one visit to the
-        // zone, and a stale Failed entry left over from the last zone would
-        // otherwise trip the reset the instant the new table loads.
-        trackedFates.Clear();
-        activeFates = new();
-        NunyunuwiSince = DateTime.Now;
-        NunyunuwiLastFailure = string.Empty;
+        // Even a return to the same territory starts a fresh observation window.
+        ResetNunyunuwiClock();
     }
+
+    private bool CanReadWorld => clientState.IsLoggedIn
+        && !condition[ConditionFlag.BetweenAreas]
+        && !condition[ConditionFlag.BetweenAreas51];
 
     private void OnUpdate(IFramework _)
     {
-        // Only Southern Thanalan needs the FATE watch, and it has to run whether
-        // or not the counter window is open — a failure while you are tabbed out
-        // still has to restart the clock.
-        if (clientState.TerritoryType != SouthernThanalanTerritory)
+        // TerritoryType can still name the old zone while its objects unload.
+        // Discard the visit before touching the FATE table during a transition.
+        if (!CanReadWorld || clientState.TerritoryType != SouthernThanalanTerritory)
         {
-            if (activeFates.Count > 0)
-                activeFates = new();
-            if (trackedFates.Count > 0)
-                trackedFates.Clear();
+            ResetNunyunuwiClock();
             return;
         }
 
-        // fates enumerates FateManager's own linked list, so an id only ever
-        // appears in it while the game still considers that FATE active. This
-        // first pass just notices anything new; the actual state reads happen
-        // below, off our own held references rather than off this enumeration.
-        var live = new HashSet<uint>();
-
+        var current = new Dictionary<uint, TrackedFate>();
+        var snapshot = new List<FateSnapshot>();
         foreach (var fate in fates)
         {
-            live.Add(fate.FateId);
-            trackedFates.TryAdd(fate.FateId, (fate, fate.State));
-        }
-
-        // Dalamud's Fate is a readonly struct wrapping one raw pointer, and
-        // every property on it — State, Name, Progress, all of it — re-reads
-        // the native FateContext at that address on every access; nothing is
-        // cached at construction. That is what makes the loop below work: it
-        // keeps reading .State off the SAME reference a FATE was first grabbed
-        // with, on every poll, whether or not that FATE is still showing up in
-        // `fates` above.
-        //
-        // That is deliberate, and it is the actual fix for the bug this was
-        // written to catch. FateManager unlinks a FATE from its list — which is
-        // what makes it stop appearing in `fates` — as its own step, seemingly
-        // separate from writing FateState.Failed into the FateContext itself,
-        // and for a FATE failing far enough away that the game does not bother
-        // keeping your client closely synced to it, the unlink can already have
-        // happened by the time your own next poll runs. Simply enumerating
-        // `fates` and asking "is anything here newly Failed" — however often —
-        // can end up never once finding it in the table in a Failed state, no
-        // matter how tight the poll: not because the write is missed, but
-        // because the entry granting access to it is already gone. Keeping the
-        // pointer from while it WAS still listed sidesteps that: the memory
-        // is not freed just because the entry was unlinked, and reading .State
-        // off it later still sees the Failed write when it happens.
-        //
-        // This is not a theory reached by reasoning about the network model —
-        // it is Hunt Helper's own approach, reproduced deliberately rather than
-        // reinvented: CounterUI.Fates.cs keeps a HashSet<IFate> it only ever
-        // adds to (a HashSet.Add that finds an equal FateId already present is
-        // a no-op, so the first struct grabbed for an id is the one kept), and
-        // that is what its own out-of-range resets were actually running on —
-        // not, as first assumed here, simply how often it polled.
-        //
-        // One real risk in doing this: if the game frees and reuses that exact
-        // memory address for an unrelated FATE before we read it again, this
-        // would misreport under the old id. Hunt Helper carries the same risk
-        // and it is not a new one introduced here — nothing in IFate exposes a
-        // way to check the pointer is still backing the FATE it started as.
-        var snapshot = new List<FateSnapshot>();
-        var resolved = new List<uint>();
-
-        foreach (var (id, entry) in trackedFates)
-        {
-            var (fate, lastState) = entry;
+            // Copy everything while this entry belongs to the live table on
+            // the framework update thread. No native wrapper escapes this loop.
+            var id = fate.FateId;
             var state = fate.State;
-            var stillListed = live.Contains(id);
+            var name = fate.Name.ToString();
+            var progress = fate.Progress;
+            current[id] = new TrackedFate(name, progress, state);
 
-            // Edge-triggered: only a transition we actually witnessed counts.
-            // A FATE that already reads Failed the moment we first grab it
-            // (walked in late, plugin just loaded) is recorded silently — the
-            // game's own clock for that failure is already running and we
-            // cannot know how far along it is. "Reset clock" is there for that.
-            if (lastState != FateState.Failed && state == FateState.Failed)
+            // A failure already present on first observation has no known time.
+            // Keep terminal states until removal to avoid repeated resets.
+            if (state == FateState.Failed)
             {
-                RegisterFailure(fate.Name.ToString(), fate.Progress);
-                resolved.Add(id);
+                if (trackedFates.TryGetValue(id, out var previous) && previous.State != FateState.Failed)
+                    RegisterFailure(name, progress);
                 continue;
             }
-
             if (state == FateState.Ended)
-            {
-                resolved.Add(id);
                 continue;
-            }
-
-            // The one case a held reference does not cover: a "!" FATE that
-            // needed activation and timed out is torn down without Failed ever
-            // being written, as if it had never started — so re-reading this
-            // pointer forever would just keep showing Preparing. Absence from
-            // THIS poll's live enumeration is the only signal available for
-            // that specific case, which is exactly why it is checked here and
-            // nowhere else in this loop.
-            if (!stillListed && state == FateState.Preparing)
-            {
-                RegisterFailure(fate.Name.ToString(), fate.Progress);
-                resolved.Add(id);
-                continue;
-            }
-
-            trackedFates[id] = (fate, state);
 
             var awaiting = state == FateState.Preparing;
-            var remaining = awaiting || fate.TimeRemaining <= 0
-                ? TimeSpan.Zero
-                : TimeSpan.FromSeconds(fate.TimeRemaining);
-            snapshot.Add(new FateSnapshot(fate.Name.ToString(), fate.Progress, remaining, awaiting));
+            var seconds = awaiting ? 0 : fate.TimeRemaining;
+            var remaining = seconds <= 0 ? TimeSpan.Zero : TimeSpan.FromSeconds(seconds);
+            snapshot.Add(new FateSnapshot(name, progress, remaining, awaiting));
         }
 
-        foreach (var id in resolved)
-            trackedFates.Remove(id);
+        foreach (var (id, previous) in trackedFates)
+        {
+            if (current.ContainsKey(id) || previous.State is FateState.Failed or FateState.Ended)
+                continue;
 
+            // The final state may never be observed, especially out of range.
+            // Removal does not authorize another native read. Conservatively
+            // restart from the managed snapshot and report uncertainty honestly.
+            NunyunuwiSince = DateTime.Now;
+            NunyunuwiLastFailure =
+                $"{previous.Name} disappeared without an observed result (last seen at {previous.Progress}%) " +
+                $"({DateTime.Now:HH:mm:ss}). Outcome unconfirmed; clock restarted conservatively.";
+            log.Information($"Nunyunuwi clock reset — {NunyunuwiLastFailure}");
+        }
+
+        trackedFates = current;
         snapshot.Sort((a, b) => a.TimeRemaining.CompareTo(b.TimeRemaining));
         activeFates = snapshot;
     }
