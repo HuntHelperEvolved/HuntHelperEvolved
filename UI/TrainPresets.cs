@@ -23,7 +23,7 @@ public sealed partial class Plugin
     private bool CanDragPresetTrain => !PresetOrderLocked || !SharingPresetTrain
         || _sync.HasCurrentTrainSnapshot && _sync.PendingPresetRequest is null;
 
-    private void DrawPresetControls()
+    private void DrawPresetControls(bool showStatus = true)
     {
         var presets = SharingPresetTrain ? _sync.TrainPresets.Presets : _config.TrainPresets;
         var active = presets.FirstOrDefault(p => p.Id == ActivePresetId);
@@ -44,6 +44,7 @@ public sealed partial class Plugin
                 : "Select before scouting to organise incoming marks. The preset stays active for future trains until you choose Manual order or another preset.");
         TrainControlSameLine("Manage presets");
         if (ImGui.Button("Manage presets")) _presetEditorOpen = true;
+        if (!showStatus) return;
         if (active is not null && PresetOrderingPaused)
             ImGui.TextWrapped("Automatic ordering is paused. Reselect a preset to resume, including for future trains.");
         if (SharingPresetTrain && !_sync.HasCurrentTrainSnapshot)
@@ -55,6 +56,7 @@ public sealed partial class Plugin
 
     private void SelectTrainPreset(string? id)
     {
+        if (TrainMutationBusy) return;
         if (SharingPresetTrain) _sync.SendPreset("select", presetId: id);
         else
         {

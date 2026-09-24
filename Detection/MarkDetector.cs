@@ -182,6 +182,12 @@ public sealed class MarkDetector
     }
 
     /// <summary>
+    /// Invalidates train-local drafts before a shared snapshot replaces the
+    /// route, without clearing sightings or firing the train-history reset event.
+    /// </summary>
+    public void BeginTrainReplacement() => TrainGeneration++;
+
+    /// <summary>
     /// Marks in scouted order (or whatever order the conductor has dragged them
     /// into), which is how the train list is always displayed.
     /// </summary>

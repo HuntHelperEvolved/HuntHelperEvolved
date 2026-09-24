@@ -509,7 +509,11 @@ public sealed partial class SyncCoordinator : IDisposable
             _config.SyncLocalTrainBackup = _localTrainBackup;
             _config.Save();
             _applying = true;
-            try { foreach (var key in _detector.Marks.Keys.ToList()) _detector.Remove(key); }
+            try
+            {
+                _detector.BeginTrainReplacement();
+                foreach (var key in _detector.Marks.Keys.ToList()) _detector.Remove(key);
+            }
             finally { _applying = false; }
             ApplyMarks(welcome.Marks);
             ApplyOrder(welcome.Order);

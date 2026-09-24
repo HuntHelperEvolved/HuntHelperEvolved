@@ -34,8 +34,8 @@ If it does not appear, first check that testing builds are enabled in step 2.
 
 | Command | Action |
 |---|---|
-| `/hh` or `/htr` | the main window: Conductor, Train, Scout, S Counters, Marks Slain, Settings, Help |
-| `/hht` or `/htrt` | the train list, as a popout |
+| `/hh` or `/htr` | the main window: Train, S Ranks, Settings and Help |
+| `/hht` or `/htrt` | the train workspace as a popout: Route, Reports and Setup |
 | `/hhc` or `/htrc` | the trigger-mob counter popout, including Narrow-rift's Wee Ea headcount and Nunyunuwi's no-FATE-failed clock |
 | `/hhn` or `/htrn` | move to the next live mark and flag it |
 | `/hhna` or `/htra` | name the closest aetheryte to the next mark |
@@ -52,8 +52,8 @@ support. Entries reset on the next S kill; undo leaves automatic evidence intact
 
 ## Settings and help
 
-Settings uses a category sidebar, or a dropdown in narrow windows: Train, Counters, Map,
-Notifications, Travel, Sharing, Discord, Tally and About. The **Help** tab has
+Settings uses a category sidebar, or a dropdown in narrow windows: Train, S Ranks, Map,
+Notifications, Travel, Sharing, Active Marks, Discord and Tally. The **Help** tab has
 searchable explanations of the controls, timer colours, mapping, sharing and
 kill credit. Hover details focus on live information and short action labels.
 
@@ -126,48 +126,94 @@ pasted across from it produces the same line.
 
 ## The train
 
+The main **Train** tab and `/hht` popout share three pages: **Route**, **Reports**
+and **Setup**. Next Mark, Next Aetheryte and Scanning/Paused remain above every
+page, alongside local/shared connection and route-ordering status. Switching
+pages does not change the train or recording state.
+
 **Route presets** save a conductor's expansion and zone order, optional strict
 mark order, and rally preferences for future trains. Choose a preset in
-**/hht > Train controls & scouts** before scouting to organise incoming marks.
+**/hht > Setup** before scouting to organise incoming marks.
 Dragging a mark or expansion pauses automatic ordering until a preset is
 reselected. Shared presets require server **0.3.26 or later**; older plugins
 receive the same train order and ordinary rally flags. See the
 [train preset guide](docs/train-presets.md) for setup and routing details.
 
-Use **Scanning / Paused** in **/hht > Train controls & scouts** to control whether
+Use **Scanning / Paused** above the train workspace to control whether
 new marks join the train. Existing train rows continue recording observed deaths
 while paused. Enable **Settings > Sharing > The train** to share additions and
-automatic scout credit with the group. **End Train Now** sends the report. Leaving a zone
-does not post it, so a multi-expansion train can continue across legs.
+automatic scout credit with the group. Scouting starts paused after login.
+Leaving a zone does not post a report, so a multi-expansion train can continue
+across legs. Reports are sent explicitly from **Reports** with Shift-click.
+
+**Next Mark** selects, flags and announces the next live mark without recording
+a kill. **Next Aetheryte** announces and copies the next destination without
+teleporting or moving the flag. A row's **TP** button teleports to its nearest
+eligible aetheryte; travelling to a custom rally stop completes that stop after
+a short delay.
 
 Marks are recorded per world, so the same mark on Mateus and on Goblin are two
 marks and can't overwrite each other. The export code carries the world,
 so two scouts on two worlds sending lists to one conductor stay separate.
 
-**Group by expansion** sorts the list into blocks and keeps scout order inside
+**Group expansions within worlds**, in Setup, sorts the list into blocks and keeps scout order inside
 each one. It sorts the train itself rather than only redrawing it, so Next Mark
 and the export code follow what's on screen. Blocks start in the
 order the expansions already stand in, so ticking the box folds an imported list
 into blocks without rearranging it. Drag a block heading to move a whole
 expansion, or click it to fold that expansion away.
 
-**Import** reads an export code straight off the clipboard, from the popout as
-well as the Train tab. Imports merge; nothing already in the train is
-overwritten.
+**Import from Clipboard**, **Copy Export Code** and **Add Flag** are in Setup,
+in both train views. Imports merge; nothing already in the train is overwritten.
+Hide dead changes only the display. Setup's **Remove Dead** removes dead route
+rows while keeping their report history. Expansion totals exclude rally stops
+and retain recorded counts when dead rows are hidden.
+
+**Scouting reports** live under **Reports > Scouting report**. They summarize
+last recorded state by world and expansion, distinguishing marked snipes,
+witnessed kills and unknown death times. **Not recorded** means a roster name
+is missing from the retained list; it does not prove the mark is absent in an
+instance or that every instance was searched.
+
+Add an optional note of up to **256 Unicode code points** beside the preview.
+Notes stay local until explicitly sent, are shared between both train views,
+and last for the current plugin session. Closing a window or changing page
+keeps the draft. A successful send clears only the submitted draft; failures,
+partial delivery and edits made during sending preserve unsent work. Resetting
+or replacing the train detaches its note for explicit reuse or discard. This
+includes loading a shared snapshot when joining or reconnecting; an old note
+is not silently sent with a new train. Undo can restore a reset draft without
+replacing newer edits.
+
+The scouting summary, exceptions, notes and credits appear before the intact
+import code. The preview shows the outgoing message count per destination and
+warns if the code is too large to include; Copy Export Code remains available
+in Setup. Sending refreshes the latest train snapshot. While posting, the
+captured report remains visible and subsequent note edits belong to the next
+report. Both train views show progress and results.
 
 **Completed-train reports** summarize observed kills by world and expansion.
 Each overall respawn range runs from the earliest individual window opening to
 the latest individual cap; it does not mean every mark respawns together.
-Individual kill records remain available in the in-game report view.
+Choose **Reports > Train completion**, review the content, then hold Shift and
+click **Send & finish completed legs**. Reported dead marks clear only after
+Discord success and, for shared trains, server acknowledgement; unfinished
+marks remain. Individual kill records are available under **Individual kill
+history**. Failed submission or concurrent changes keep the train. Check the
+shared state before retrying after an acknowledgement timeout.
 
-**Sniped marks** have a button beside the dead tick and a separate report section.
+**Sniped marks** use the crosshairs button beside the witnessed-kill check button.
+The check button records a kill now or restores a dead mark. Crosshairs marks a
+mark found gone; clearing that evidence leaves it dead with an unknown kill
+time. These remain separate report states.
 Their individual respawn window uses the interval between the last live sighting
 and when the train found them missing. Roster marks not recorded on this train
 appear under **Missing / not seen this train**, without an asserted respawn time.
 Unfinished marks, unknown kill times and S-rank checks retain their own details.
 
-The S-rank watches from the Conductor tab repeat under the train list, so their
-Spawned / Didn't Spawn boxes can be ticked from the popout while running.
+Manage S-rank watches in **Setup > S-rank watch setup**. Their Spawned / Didn't
+Spawn boxes remain under the route, including in the popout. The row's
+more-actions menu holds removal and spicing; spiced marks remain visibly marked.
 
 A mark is ticked off when it dies, whoever killed it, even if you were not
 credited with the kill. Its health reaching zero is the signal, which carries as
@@ -176,8 +222,11 @@ only reaches as far as the fight. One the group brought down while you were
 still running in used to stay lit as though it were up, and the report is built
 from this list.
 
-The **Scout** tab posts a report with an HHE import code and a per-
-expansion count of what's up, including what was found already dead.
+**Setup > Recovery** contains Shift-click **Reset train**, which posts nothing,
+and **Undo reset**. Undo restores the saved train locally and switches train
+sharing off, leaving the group's train unchanged. A recovery notice also
+appears after a reset. Conflicting edits and reset actions are disabled during
+report posting; navigation remains available.
 
 ## The tally
 

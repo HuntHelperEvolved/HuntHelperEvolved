@@ -30,44 +30,47 @@ public static class DiscordRelay
         return DiscordWebhookSender.SendAsync(webhooks, new[] { payload }, cancellationToken);
     }
 
-    public static Task<(bool Success, string Message)> PostScoutingReportAsync(List<WebhookEntry> webhooks, List<TrainMobRecord> marks, List<string> scoutNames, string exportCode, CancellationToken cancellationToken = default)
+    public static Task<(bool Success, string Message)> PostScoutingReportAsync(List<WebhookEntry> webhooks, List<TrainMobRecord> marks, List<string> scoutNames, string exportCode, CancellationToken cancellationToken = default) =>
+        PostPreparedReportAsync(webhooks, PrepareScoutingReport(ScoutingReport.ToNative(marks), scoutNames,
+            exportCode, DateTimeOffset.UtcNow.ToUnixTimeSeconds()), cancellationToken);
+
+    internal static IReadOnlyList<object> BuildScoutingMessages(List<TrainMobRecord> marks, List<string> scoutNames, string exportCode, long nowUnix) =>
+        PrepareScoutingReport(ScoutingReport.ToNative(marks), scoutNames, exportCode, nowUnix).Messages;
+
+    internal static PreparedDiscordReport PrepareScoutingReport(IReadOnlyList<NativeTrainRecord> marks,
+        IEnumerable<string> scoutNames, string exportCode, long nowUnix, string? notes = null)
     {
         if (marks.Count == 0)
-            return Task.FromResult((false, "Nothing to report — the train list is empty."));
+            return new PreparedDiscordReport(Array.Empty<DiscordEmbedPreview>(), packEmbeds: true);
 
-        return DiscordWebhookSender.SendAsync(webhooks,
-            BuildScoutingMessages(marks, scoutNames, exportCode, DateTimeOffset.UtcNow.ToUnixTimeSeconds()), cancellationToken);
-    }
+        var details = new StringBuilder($"From the train list • Sent <t:{nowUnix}:F>\n\n");
+        details.Append(ScoutingReport.BuildSummary(marks));
+        details.Append("\n\nUp is the last recorded state.");
+        var normalizedNotes = ScoutingReport.NormalizeNotes(notes);
+        if (normalizedNotes.Length > 0)
+            details.Append($"\n\n**Scout notes**\n{ScoutingReport.EscapeText(normalizedNotes)}");
+        var names = scoutNames.Where(n => !string.IsNullOrWhiteSpace(n)).Select(n => n.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase).Select(ScoutingReport.EscapeText).ToList();
+        if (names.Count > 0) details.Append($"\n\nScouts: {string.Join(", ", names)}");
 
-    internal static IReadOnlyList<object> BuildScoutingMessages(List<TrainMobRecord> marks, List<string> scoutNames, string exportCode, long nowUnix)
-    {
-        var summary = ScoutingReport.BuildSummary(marks);
-        var names = (scoutNames ?? new List<string>()).Where(n => !string.IsNullOrWhiteSpace(n)).ToList();
-        var scoutedBy = names.Count > 0 ? $"\n\nScouted by {string.Join(", ", names)}" : "";
-        var details = $"Scouting done at <t:{nowUnix}:F>\n\n{summary}{scoutedBy}";
         var codeBlock = $"```\n{exportCode}\n```";
-        var description = $"{codeBlock}\n{details}";
-        var descriptions = new List<string>();
+        var omitted = codeBlock.Length > DescriptionLimit;
+        if (omitted)
+            details.Append("\n\nExport code omitted — it is too long for Discord. Copy it directly from the plugin instead.");
 
-        if (description.Length <= DescriptionLimit)
-            descriptions.Add(description);
-        else if (codeBlock.Length <= DescriptionLimit)
-        {
-            // Keep the import code intact, even when the summary/scout list needs
-            // additional messages. Splitting the code would make it unusable.
-            descriptions.Add(codeBlock);
-            descriptions.AddRange(ChunkByLength(details, DescriptionLimit));
-        }
-        else
-        {
-            descriptions.AddRange(ChunkByLength(
-                $"Scouting done at <t:{nowUnix}:F>\n\n{summary}\n\n" +
-                "(Export code omitted — this scout covers too many marks to fit in one " +
-                $"Discord message. Try sending separate reports per zone instead.){scoutedBy}", DescriptionLimit));
-        }
-
-        return BuildMessages("🔭 Scouting Report", descriptions);
+        var embeds = ChunkByLength(details.ToString(), DescriptionLimit)
+            .Select((description, i) => new DiscordEmbedPreview(
+                i == 0 ? "🔭 Scouting Report" : "🔭 Scouting Report (continued)", description)).ToList();
+        // Keep the code intact and after all human-readable content. The packer
+        // starts a new message if this whole embed will exceed the combined limit.
+        if (!omitted) embeds.Add(new DiscordEmbedPreview("Import code", codeBlock));
+        return new PreparedDiscordReport(embeds, packEmbeds: true, exportCodeOmitted: omitted);
     }
+
+    internal static Task<(bool Success, string Message)> PostPreparedReportAsync(List<WebhookEntry> webhooks,
+        PreparedDiscordReport report, CancellationToken cancellationToken = default) =>
+        report.MessageCount == 0 ? Task.FromResult((false, report.EmptyMessage))
+            : DiscordWebhookSender.SendAsync(webhooks, report.Messages, cancellationToken);
 
     /// <summary>
     /// Posts the train report over exactly the marks and watches it is handed.
@@ -81,34 +84,27 @@ public static class DiscordRelay
     /// in-game preview reads from as well. Discord summarizes the same observed
     /// kills and preserves the individual exceptions below their summary.
     /// </summary>
-    public static Task<(bool Success, string Message)> PostTrainCompleteAsync(List<WebhookEntry> webhooks, List<TrackedMark> marks, string? endedBy, List<FlagEntry>? flags = null, CancellationToken cancellationToken = default)
+    public static Task<(bool Success, string Message)> PostTrainCompleteAsync(List<WebhookEntry> webhooks, List<TrackedMark> marks, string? endedBy, List<FlagEntry>? flags = null, CancellationToken cancellationToken = default) =>
+        PostPreparedReportAsync(webhooks,
+            PrepareTrainReport(marks, endedBy, flags, DateTimeOffset.UtcNow.ToUnixTimeSeconds()), cancellationToken);
+
+    internal static IReadOnlyList<object> BuildTrainMessages(List<TrackedMark> marks, string? endedBy, List<FlagEntry>? flags, long nowUnix) =>
+        PrepareTrainReport(marks, endedBy, flags, nowUnix).Messages;
+
+    internal static PreparedDiscordReport PrepareTrainReport(List<TrackedMark> marks, string? endedBy, List<FlagEntry>? flags, long nowUnix)
     {
         if (marks.Count == 0)
-            return Task.FromResult((false, "Nothing to report — no marks were killed on this train."));
-
-        return DiscordWebhookSender.SendAsync(webhooks,
-            BuildTrainMessages(marks, endedBy, flags, DateTimeOffset.UtcNow.ToUnixTimeSeconds()), cancellationToken);
-    }
-
-    internal static IReadOnlyList<object> BuildTrainMessages(List<TrackedMark> marks, string? endedBy, List<FlagEntry>? flags, long nowUnix)
-    {
+            return new PreparedDiscordReport(Array.Empty<DiscordEmbedPreview>(), packEmbeds: false,
+                emptyMessage: "Nothing to report — no marks were killed on this train.");
         var endedByLine = string.IsNullOrWhiteSpace(endedBy) ? "" : $"\nEnded by {endedBy}";
         var description = $"Finished <t:{nowUnix}:F> — {marks.Count(TrainReport.IsObservedKill)} observed kills{endedByLine}\n\n" +
             BuildTrainBody(marks) + BuildFlagFooter(flags);
-        return BuildMessages("🚂 Train Complete", ChunkByLength(description, DescriptionLimit));
+        var embeds = ChunkByLength(description, DescriptionLimit).Select((chunk, i) =>
+            new DiscordEmbedPreview(i == 0 ? "🚂 Train Complete" : "🚂 Train Complete (continued)", chunk));
+        return new PreparedDiscordReport(embeds, packEmbeds: false);
     }
 
     private const int DescriptionLimit = 4096;
-
-    private static IReadOnlyList<object> BuildMessages(string title, IReadOnlyList<string> descriptions)
-    {
-        // One embed per message stays below both Discord's 4096-character
-        // description limit and its 6000-character combined embed-text limit.
-        return descriptions.Select((description, i) => (object)new
-        {
-            embeds = new[] { new { title = i == 0 ? title : title + " (continued)", description, color = EmbedColor } },
-        }).ToList();
-    }
 
     /// <summary>
     /// S-rank watch results for the train (Spawned / Didn't Spawn / never checked).

@@ -6,15 +6,21 @@ train's marks and positions come from scouting.
 
 ## Create and select a preset
 
-Open **/hht > Train controls & scouts > Manage presets**. Create a named
+Open **/hht > Setup > Manage presets**. Create a named
 preset, move its expansions and zones earlier or later, and save it locally.
 New drafts begin with Dawntrail, Shadowbringers and Endwalker; add or remove
 zones and expansions as needed. Saving a draft does not select it.
 
 Before scouting, choose the conductor's preset under **Route preset** in
-**Train controls & scouts**. The selector works with an empty train. Incoming
+**Setup**. The selector works with an empty train. Incoming
 marks follow the preset as they arrive, and it remains selected for later
 trains until you choose **Manual order** or another preset.
+
+The main Train tab and `/hht` popout share **Route**, **Reports** and **Setup**
+pages. The active preset and any ordering pause remain visible above them;
+**Change** opens Setup. Next Mark, Next Aetheryte and Scanning/Paused stay
+available while moving between pages. A page change never changes the route
+or starts or pauses recording.
 
 For an Arch-Eta finale, put Endwalker last and Ultima Thule last within it.
 Enable **Strict mark order** for Ultima Thule and use **Reverse mark order**
@@ -89,7 +95,9 @@ the preset and any ordering pause. Shared trains need the server update for
 this rally recovery behavior.
 
 Existing rally flags still support completion and removal while ordering is
-paused. Zones with no live marks lose their preset flags. Disabling rallies
+paused. Use the row's check button to complete or restore a stop, or its
+more-actions menu to remove it. Rally stops have no sniped state. Zones with no
+live marks lose their preset flags. Disabling rallies
 or choosing **Manual order** removes pending preset flags; manually placed
 custom flags remain. Personal teleport exclusions still apply to travel.
 
