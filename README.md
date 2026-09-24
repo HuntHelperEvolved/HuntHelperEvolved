@@ -182,8 +182,11 @@ rows while keeping their report history. Expansion totals exclude rally stops
 and retain recorded counts when dead rows are hidden.
 
 **Scouting reports** live under **Reports > Scouting report**. They summarize
-last recorded state by world and expansion using compact remaining/recorded
-counts such as **10/12**, distinguishing marked snipes,
+last recorded state by world and expansion using compact remaining/expected
+counts such as **1/12** for a partial scout. Totals use the full expansion
+roster and known instances per zone, from server metadata or the scout's own
+records; three instances across all six zones give **36** expected marks.
+The report distinguishes marked snipes,
 witnessed kills and unknown death times. **Not recorded** means a roster name
 is missing from the retained list; it does not prove the mark is absent in an
 instance or that every instance was searched.

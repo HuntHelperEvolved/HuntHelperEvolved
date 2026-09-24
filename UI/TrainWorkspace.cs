@@ -466,7 +466,7 @@ public sealed partial class Plugin
                 report = DiscordRelay.PrepareTrainReport(marks, _objectTable.LocalPlayer?.Name?.TextValue, watches, unix);
             }
             else report = DiscordRelay.PrepareScoutingReport(ScoutRecords(route), scouts,
-                TrainExchange.Export(route), unix, _scoutNote.CaptureForReport(_detector.TrainGeneration).Text);
+                TrainExchange.Export(route), unix, _scoutNote.CaptureForReport(_detector.TrainGeneration).Text, ScoutZoneInstanceCounts);
             SetTrainReportPreview(report);
         }
         catch (Exception ex)
@@ -485,6 +485,17 @@ public sealed partial class Plugin
         var hash = new HashCode();
         hash.Add(_trainCompletionReport); hash.Add(CanReportPartially); hash.Add(_detector.TrainGeneration);
         hash.Add(_scoutNote.Revision); hash.Add(_objectTable.LocalPlayer?.Name?.TextValue);
+        if (!_trainCompletionReport)
+        {
+            var instanceCounts = ScoutZoneInstanceCounts;
+            hash.Add(instanceCounts is not null);
+            if (instanceCounts is not null)
+                foreach (var entry in instanceCounts.OrderBy(p => p.Key))
+                {
+                    hash.Add(entry.Key);
+                    hash.Add(entry.Value);
+                }
+        }
         foreach (var mark in route)
         {
             hash.Add(mark.Name); hash.Add(mark.NameId); hash.Add(mark.WorldId); hash.Add(mark.WorldName);

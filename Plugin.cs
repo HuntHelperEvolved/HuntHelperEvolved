@@ -831,6 +831,9 @@ public sealed partial class Plugin : IDalamudPlugin
         .Select(m => new NativeTrainRecord(m.Name, m.NameId, m.TerritoryId, m.MapId, m.Instance,
             m.WorldId, m.WorldName, m.MapPosition, m.Dead, m.LastSeenUtc, m.DeathObservedAtUtc, m.SnipedAtUtc)).ToList();
 
+    private IReadOnlyDictionary<uint, int>? ScoutZoneInstanceCounts =>
+        _sync.Faloop.MetadataAt is not null ? _sync.Faloop.ZoneInstances : null;
+
     private Task SendScoutingReportAsync()
     {
         ScoutNoteDraft.ReportCapture? submittedNote = null;
@@ -843,7 +846,7 @@ public sealed partial class Plugin : IDalamudPlugin
             var ownCode = TrainExchange.Export(marks);
             submittedNote = _scoutNote.CaptureForReport(_detector.TrainGeneration);
             var prepared = DiscordRelay.PrepareScoutingReport(ScoutRecords(marks), names,
-                ownCode, DateTimeOffset.UtcNow.ToUnixTimeSeconds(), submittedNote.Text);
+                ownCode, DateTimeOffset.UtcNow.ToUnixTimeSeconds(), submittedNote.Text, ScoutZoneInstanceCounts);
             _trainCompletionReport = false;
             SetTrainReportPreview(prepared);
             return DiscordRelay.PostPreparedReportAsync(webhooks, prepared, token);

@@ -38,7 +38,8 @@ public static class DiscordRelay
         PrepareScoutingReport(ScoutingReport.ToNative(marks), scoutNames, exportCode, nowUnix).Messages;
 
     internal static PreparedDiscordReport PrepareScoutingReport(IReadOnlyList<NativeTrainRecord> marks,
-        IEnumerable<string> scoutNames, string exportCode, long nowUnix, string? notes = null)
+        IEnumerable<string> scoutNames, string exportCode, long nowUnix, string? notes = null,
+        IReadOnlyDictionary<uint, int>? zoneInstanceCounts = null)
     {
         if (marks.Count == 0)
             return new PreparedDiscordReport(Array.Empty<DiscordEmbedPreview>(), packEmbeds: true);
@@ -49,7 +50,7 @@ public static class DiscordRelay
                 emptyMessage: "Scouting report not sent: the intact import code exceeds Discord's 4,096-character embed limit. Copy Export Code in Setup or report a smaller train. Nothing was posted.");
 
         var details = new StringBuilder($"From the train list • Sent <t:{nowUnix}:F>\n\n");
-        details.Append(ScoutingReport.BuildSummary(marks));
+        details.Append(ScoutingReport.BuildSummary(marks, zoneInstanceCounts));
         var normalizedNotes = ScoutingReport.NormalizeNotes(notes);
         if (normalizedNotes.Length > 0)
             details.Append($"\n\n**Scout notes**\n{ScoutingReport.EscapeText(normalizedNotes)}");
