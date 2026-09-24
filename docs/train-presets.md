@@ -20,10 +20,11 @@ trains until you choose **Manual order** or another preset.
 The main Train tab and `/hht` popout share **Route**, **Reports** and **Setup**
 pages, with the pause/resume icon at the right of the page tabs. **Next Mark**
 and **Next Aetheryte** appear below the tabs only on **Route** and remain usable
-while posting. During scanning, Route has a preset dropdown and **Add Flag**
-above its single-line mark rows. Add Flag inserts your current map flag as a
-custom stop; Setup retains the optional name field. While scanning is paused,
-Route shows the active preset and any ordering pause; **Change** opens Setup.
+while posting. During scanning, Route has a preset dropdown, with **Add Flag**
+and its optional name box on a separate row below it. Add Flag inserts your
+current map flag as a custom stop. Setup has the same controls and name draft.
+While scanning is paused, Route shows the active preset and any ordering pause;
+**Change** opens Setup.
 A page change never changes the route or starts or pauses recording.
 
 For an Arch-Eta finale, put Endwalker last and Ultima Thule last within it.

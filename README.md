@@ -173,10 +173,10 @@ into blocks without rearranging it. Drag a block heading to move a whole
 expansion, or click it to fold that expansion away.
 
 **Import from Clipboard**, **Copy Export Code** and **Add Flag** are in Setup,
-in both train views. While scanning is active, **Add Flag** is also beside the
-preset dropdown on Route. It adds your current map flag as a custom stop; an
-optional name can be set in Setup. Imports merge; nothing already in the train
-is overwritten.
+in both train views. While scanning is active, **Add Flag** and its optional
+name box also have their own row below the preset dropdown on Route. They add
+your current map flag as a custom stop with your chosen label. Imports merge;
+nothing already in the train is overwritten.
 Hide dead changes only the display. Setup's **Remove Dead** removes dead route
 rows while keeping their report history. Expansion totals exclude rally stops
 and retain recorded counts when dead rows are hidden.

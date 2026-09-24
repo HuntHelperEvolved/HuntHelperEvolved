@@ -2003,7 +2003,7 @@ public sealed partial class Plugin : IDalamudPlugin
         if (ImGui.IsItemHovered()) ImGui.SetTooltip("Announce the next aetheryte without teleporting or changing the current map flag");
     }
 
-    private void DrawAddTrainFlagButton()
+    private void DrawAddTrainFlagControls()
     {
         ImGui.BeginDisabled(TrainMutationBusy);
         if (ImGui.Button("Add Flag") && !TrainMutationBusy)
@@ -2014,17 +2014,17 @@ public sealed partial class Plugin : IDalamudPlugin
             else
                 _customFlagLabel = string.Empty;
         }
-        ImGui.EndDisabled();
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip("Adds your current map flag to the train as a custom stop");
+        TrainControlSameLine("flag name (optional)");
+        ImGui.SetNextItemWidth(110);
+        ImGui.InputTextWithHint("##customFlagLabel", "flag name", ref _customFlagLabel, 64);
+        ImGui.EndDisabled();
     }
 
     private void DrawTrainControls()
     {
-        DrawAddTrainFlagButton();
-        TrainControlSameLine("flag name (optional)");
-        ImGui.SetNextItemWidth(110);
-        ImGui.InputTextWithHint("##customFlagLabel", "flag name", ref _customFlagLabel, 64);
+        DrawAddTrainFlagControls();
 
         // Its own row on purpose. This is the one control here that rewrites
         // the whole list, and it should not sit a mis-click away from Remove

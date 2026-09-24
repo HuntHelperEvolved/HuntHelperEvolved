@@ -118,19 +118,15 @@ public sealed partial class Plugin
             var width = Math.Max(1, ImGui.GetContentRegionAvail().X);
             var spacing = ImGui.GetStyle().ItemSpacing.X;
             var contextWidth = ImGui.CalcTextSize(context).X;
-            var flagWidth = ImGui.CalcTextSize("Add Flag").X + ImGui.GetStyle().FramePadding.X * 2;
             var minimumPresetWidth = ImGui.CalcTextSize("Manual order").X + ImGui.GetFrameHeight()
                 + ImGui.GetStyle().FramePadding.X * 2;
-            var inline = contextWidth + spacing + minimumPresetWidth + spacing + flagWidth <= width;
+            var inline = contextWidth + spacing + minimumPresetWidth <= width;
             ImGui.AlignTextToFramePadding();
             ImGui.TextWrapped(context);
             if (inline) ImGui.SameLine();
             var controlsWidth = inline ? width - contextWidth - spacing : width;
-            var presetWidth = controlsWidth >= minimumPresetWidth + spacing + flagWidth
-                ? controlsWidth - spacing - flagWidth : controlsWidth;
-            DrawPresetSelector("##Route preset", Math.Min(280, Math.Max(1, presetWidth)));
-            TrainControlSameLine("Add Flag");
-            DrawAddTrainFlagButton();
+            DrawPresetSelector("##Route preset", Math.Min(280, Math.Max(1, controlsWidth)));
+            DrawAddTrainFlagControls();
         }
         else
         {
