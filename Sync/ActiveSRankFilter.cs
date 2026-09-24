@@ -4,6 +4,15 @@ namespace HuntHelperEvolved.Sync;
 
 public static class ActiveSRankFilter
 {
+    // All observations and death evidence use server time; the display grace
+    // still expires against local receipt time. A historical death received now
+    // must also supersede living rows retained from before that receipt.
+    public static DateTime? DeathEvidenceAt(SyncSRankStatus? status)
+    {
+        if (status?.KilledAt is not { } killed) return null;
+        return status.KillReceivedAt is { } received && received > killed ? received : killed;
+    }
+
     public static bool LivingObservation(float hp, DateTime seenAt, DateTime expiresAt, DateTime? killedAt, DateTime now,
         DateTime? observationNow = null) =>
         float.IsFinite(hp) && hp > 0 && hp <= 100 && expiresAt > now

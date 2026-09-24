@@ -62,6 +62,9 @@ public static class ActiveMarkRows
         DateTime? serverNow = null)
     {
         var rows=visible.Where(v=>VisibleMarkFilter.Fresh(v,now))
+            .Where(v => v.Mark.HpPercent == 0
+                || ActiveSRankFilter.DeathEvidenceAt(states.GetValueOrDefault(v.Mark.Key)) is not { } death
+                || v.Mark.SeenAt > death)
             .ToDictionary(v=>v.Mark.LiveKey,v=>new ActiveMarkRow(v.Mark,v,states.GetValueOrDefault(v.Mark.Key)));
         var represented = rows.Values.Select(r => r.Mark.Key).ToHashSet();
         foreach(var status in states.Values)

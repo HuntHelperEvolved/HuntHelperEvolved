@@ -78,8 +78,8 @@ public static class DiscordRelay
     /// has to cover all of them, because the whole train is about to be wiped
     /// either way. That choice needs the server's capabilities, which belong to
     /// the plugin. Both callers narrow the list through TrainReport, which the
-    /// in-game preview reads from as well, so the preview and the post cannot
-    /// disagree about what went out.
+    /// in-game preview reads from as well. Discord summarizes the same observed
+    /// kills and preserves the individual exceptions below their summary.
     /// </summary>
     public static Task<(bool Success, string Message)> PostTrainCompleteAsync(List<WebhookEntry> webhooks, List<TrackedMark> marks, string? endedBy, List<FlagEntry>? flags = null, CancellationToken cancellationToken = default)
     {
@@ -94,7 +94,7 @@ public static class DiscordRelay
     {
         var endedByLine = string.IsNullOrWhiteSpace(endedBy) ? "" : $"\nEnded by {endedBy}";
         var description = $"Finished <t:{nowUnix}:F> — {marks.Count(TrainReport.IsObservedKill)} observed kills{endedByLine}\n\n" +
-            BuildChronologicalBody(marks) + BuildFlagFooter(flags);
+            BuildTrainBody(marks) + BuildFlagFooter(flags);
         return BuildMessages("🚂 Train Complete", ChunkByLength(description, DescriptionLimit));
     }
 
@@ -135,21 +135,36 @@ public static class DiscordRelay
     }
 
     /// <summary>
-    /// One continuous list sorted by the exact moment each mark was observed
-    /// dead (not by expansion or zone) — reflecting the real order the train
-    /// actually killed things in. A bold expansion header is inserted wherever
-    /// the expansion changes between consecutive kills, purely as a readability
-    /// aid — it's a side effect of the chronological sort, not a grouping key.
-    /// Finishes with an "Assumed Sniped" section. Both the entries and the
-    /// sniped groups come from TrainReport, the same module the in-game
-    /// "Marks Slain" tab reads from.
+    /// Summarizes observed-kill windows by world and expansion. Sniped marks,
+    /// unknown timers, unfinished marks and missing roster entries retain their
+    /// own details, so none can be mistaken for a kill included in the range.
     /// </summary>
-    private static string BuildChronologicalBody(List<TrackedMark> marks)
+    private static string BuildTrainBody(List<TrackedMark> marks)
     {
         var entries = TrainReport.BuildEntries(marks);
         var sb = new StringBuilder();
 
-        AppendEntries(sb, entries.Where(e => !e.Sniped).ToList());
+        var summaries = TrainReport.BuildWindowSummaries(marks);
+        if (summaries.Count > 0)
+        {
+            sb.Append("**Respawn windows**\nOverall ranges for observed kills only; each mark has its own window.\n");
+            foreach (var summary in summaries)
+            {
+                var openUnix = new DateTimeOffset(summary.EarliestWindowOpensUtc).ToUnixTimeSeconds();
+                var capUnix = new DateTimeOffset(summary.LatestWindowCapsUtc).ToUnixTimeSeconds();
+                var instances = string.Concat(summary.Instances.Select(ExpansionData.InstanceGlyph));
+                if (instances.Length > 0) instances = " — instances" + instances;
+                sb.Append($"\n**{summary.WorldName} / {summary.Expansion}** — {summary.ObservedKills} observed kills{instances}\n");
+                sb.Append($"Overall respawn range <t:{openUnix}:t> → <t:{capUnix}:t>\n");
+            }
+        }
+
+        var unknownTimers = entries.Where(e => !e.Sniped && !e.HasWindow).ToList();
+        if (unknownTimers.Count > 0)
+        {
+            sb.Append("\n**Observed kills without fixed timers**\n");
+            AppendEntries(sb, unknownTimers);
+        }
 
         // Marks found already gone get their own section rather than a note on
         // an ordinary line. Their leading time is when the train arrived to
@@ -171,7 +186,7 @@ public static class DiscordRelay
         var neverSeen = TrainReport.BuildSniped(marks);
         if (neverSeen.Count > 0)
         {
-            sb.Append("\n**Assumed Sniped** (not seen this train)\n");
+            sb.Append("\n**Missing / not seen this train** (respawn time unknown)\n");
             sb.Append(string.Join("\n", neverSeen.Select(s => $"**{s.WorldName} / {s.Expansion}**: {string.Join(", ", s.Marks)}")));
             sb.Append('\n');
         }

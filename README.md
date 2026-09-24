@@ -1,8 +1,8 @@
 # Hunt Helper Evolved
 
 A hunting plugin for FFXIV, built from two that came before it. It scouts and
-records a train with exact kill times, posts a Discord report sorted by the
-order marks actually died, draws spawn points, your detection range and SS
+records a train with exact kill times, posts a Discord report with respawn
+summaries and sniped/missing-mark details, draws spawn points, your detection range and SS
 event locations on the **in-game map**, counts S-rank trigger mobs, and keeps a
 lifetime per-mark kill tally for every character you play.
 
@@ -80,10 +80,11 @@ answer different questions: the points are where a mark *could* be, the marks
 are what *is* there. Showing only A and S points while still being told about
 a B rank that's turned up is a perfectly ordinary way to hunt.
 
-**Click to flag.** Clicking a spawn point drops the flag on it, for sending
-people to a spot before anything has spawned there. SS event spots and the spot
-the SS mark itself will appear on are clickable the same way. Turn it off and
-the clickable cursor stops appearing too.
+**Ctrl-click to flag.** Hold Ctrl and left-click a spawn point to drop the flag
+on it, for sending people to a spot before anything has spawned there. SS event
+spots and the spot the SS mark itself will appear on work the same way. Ordinary
+clicks do not place a flag. Shift-click still toggles manual S-rank exclusions
+when the server supports them.
 
 **Mark names.** Every mark that is actually up gets its name and remaining
 health written beside its dot, so a glance at the map says which are still
@@ -144,8 +145,8 @@ marks and can't overwrite each other. The export code carries the world,
 so two scouts on two worlds sending lists to one conductor stay separate.
 
 **Group by expansion** sorts the list into blocks and keeps scout order inside
-each one. It sorts the train itself rather than only redrawing it, so Next Mark,
-the export code and the report all follow what's on screen. Blocks start in the
+each one. It sorts the train itself rather than only redrawing it, so Next Mark
+and the export code follow what's on screen. Blocks start in the
 order the expansions already stand in, so ticking the box folds an imported list
 into blocks without rearranging it. Drag a block heading to move a whole
 expansion, or click it to fold that expansion away.
@@ -154,10 +155,16 @@ expansion, or click it to fold that expansion away.
 well as the Train tab. Imports merge; nothing already in the train is
 overwritten.
 
+**Completed-train reports** summarize observed kills by world and expansion.
+Each overall respawn range runs from the earliest individual window opening to
+the latest individual cap; it does not mean every mark respawns together.
+Individual kill records remain available in the in-game report view.
+
 **Sniped marks** have a button beside the dead tick and a separate report section.
-Their respawn window uses the interval between the last live sighting and when
-the train found them missing. Marks never seen alive stay in Assumed Sniped,
-without a respawn window.
+Their individual respawn window uses the interval between the last live sighting
+and when the train found them missing. Roster marks not recorded on this train
+appear under **Missing / not seen this train**, without an asserted respawn time.
+Unfinished marks, unknown kill times and S-rank checks retain their own details.
 
 The S-rank watches from the Conductor tab repeat under the train list, so their
 Spawned / Didn't Spawn boxes can be ticked from the popout while running.

@@ -960,7 +960,7 @@ public sealed partial class SyncCoordinator : IDisposable
         var key = (nameId, instance, worldId);
         var now = DateTime.UtcNow;
         var serverNow = ServerTimeFor(now);
-        var killed = StatusFor(nameId, worldId, instance)?.KilledAt;
+        var killed = ActiveSRankFilter.DeathEvidenceAt(StatusFor(nameId, worldId, instance));
         if (_detector.OtherRanks.TryGetValue((key.Item1,key.Item2,key.Item3,0,0), out var local) && ActiveSRankFilter.LivingObservation(
             local.HealthPercent, ServerTimeFor(local.LastSeenUtc), local.LastSeenUtc + RemoteSightingTtl, killed, now, serverNow)) return true;
         if (!IsConnected) return false;

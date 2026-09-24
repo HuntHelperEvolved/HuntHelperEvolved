@@ -330,7 +330,7 @@ public sealed partial class Plugin
             }
 
             var clickFlag = _config.ClickSpawnPointToFlag;
-            if (ImGui.Checkbox("Click a spawn point on the map to flag it", ref clickFlag))
+            if (ImGui.Checkbox("Ctrl-click a spawn point on the map to flag it", ref clickFlag))
             {
                 _config.ClickSpawnPointToFlag = clickFlag;
                 _config.Save();

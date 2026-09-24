@@ -371,7 +371,7 @@ public class Configuration : IPluginConfiguration
     public Vector4 SpawnDotColourS { get; set; } = new(0f, 0.827f, 0f, 1f);
 
     /// <summary>
-    /// Click a spawn point on the map to drop the flag on it.
+    /// Ctrl-click a spawn point on the map to drop the flag on it.
     ///
     /// For pointing people at a spot before anything is on it — "go and look
     /// here" — which is why it is the points that are clickable rather than the

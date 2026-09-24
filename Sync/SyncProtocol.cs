@@ -131,6 +131,8 @@ public sealed class SyncSRankStatus
     public uint Instance { get; set; }
     public uint TerritoryId { get; set; }
     public DateTime? KilledAt { get; set; }
+    /// <summary>Server receipt of accepted death evidence; absent on older servers.</summary>
+    public DateTime? KillReceivedAt { get; set; }
     public string? KillSource { get; set; }
     public string? KillReporter { get; set; }
     public bool Maintenance { get; set; }
