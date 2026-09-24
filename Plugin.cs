@@ -934,7 +934,12 @@ public sealed partial class Plugin : IDalamudPlugin
             return;
         }
         var marks = BuildCurrentMarks();
-        if (marks.Count == 0) { SetReportPostResult("Nothing to post — the train is empty."); return; }
+        if (marks.Count == 0)
+        {
+            SetReportPostResult("Nothing to post — the train is empty.");
+            _chatGui.Print("[Hunt Helper Evolved] " + _lastPostResult);
+            return;
+        }
 
         // A report covers only the expansions the train actually killed
         // something in, and only those come off the train when it posts. The
@@ -942,7 +947,11 @@ public sealed partial class Plugin : IDalamudPlugin
         var partial = CanReportPartially;
         var reportMarks = partial ? TrainReport.ForReport(marks) : marks;
         if (reportMarks.Count == 0)
-        { SetReportPostResult("Nothing to post — no marks were killed on this train."); return; }
+        {
+            SetReportPostResult("Nothing to post — no marks were killed on this train.");
+            _chatGui.Print("[Hunt Helper Evolved] " + _lastPostResult);
+            return;
+        }
 
         var (reportedWatches, keptWatches) = partial
             ? TrainReport.SplitWatches(_config.Flags, TrainReport.ReportedLegs(marks), marks.Select(m => m.WorldId))

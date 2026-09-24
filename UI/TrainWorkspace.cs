@@ -315,7 +315,7 @@ public sealed partial class Plugin
         if (_trainWorkspacePage == TrainWorkspacePage.Route)
         {
             var summary = TrainRouteCountText();
-            if (TrainFooterReviewFits(summary, width))
+            if (TrainFooterEndFits(summary, width))
                 AddRow(Math.Max(TextHeight(summary), ImGui.GetFrameHeight()));
             else
             {
@@ -335,7 +335,7 @@ public sealed partial class Plugin
         return height + style.ItemSpacing.Y * 2;
     }
 
-    private const string TrainReviewCompletionLabel = "Review completion…";
+    private const string TrainEndLabel = "End train";
     private const string TrainReportSendHint = "Hold Shift and click to send.";
     private bool HasTrainWorkspaceFooter => _trainWorkspacePage != TrainWorkspacePage.Setup
         || !string.IsNullOrEmpty(TrainWorkspaceResultText);
@@ -357,9 +357,9 @@ public sealed partial class Plugin
         return $"{recorded} records · {remaining} recorded up";
     }
 
-    private static bool TrainFooterReviewFits(string summary, float width) =>
+    private static bool TrainFooterEndFits(string summary, float width) =>
         ImGui.CalcTextSize(summary).X + ImGui.GetStyle().ItemSpacing.X
-        + ImGui.CalcTextSize(TrainReviewCompletionLabel).X + ImGui.GetStyle().FramePadding.X * 2 <= width;
+        + ImGui.CalcTextSize(TrainEndLabel).X + ImGui.GetStyle().FramePadding.X * 2 <= width;
 
     private static void DrawTrainFooterMutedText(string text)
     {
@@ -375,18 +375,15 @@ public sealed partial class Plugin
         if (_trainWorkspacePage == TrainWorkspacePage.Route)
         {
             var summary = TrainRouteCountText();
-            var reviewFits = TrainFooterReviewFits(summary, ImGui.GetContentRegionAvail().X);
+            var endFits = TrainFooterEndFits(summary, ImGui.GetContentRegionAvail().X);
             DrawTrainFooterMutedText(summary);
-            if (reviewFits) ImGui.SameLine();
-            ImGui.BeginDisabled(TrainMutationBusy);
-            if (ImGui.Button(TrainReviewCompletionLabel))
-            {
-                _trainCompletionReport = true;
-                _trainReportPreview = null;
-                _trainPreviewFingerprint = null;
-                SelectTrainPage(TrainWorkspacePage.Reports);
-            }
+            if (endFits) ImGui.SameLine();
+            var armed = ImGui.GetIO().KeyShift;
+            ImGui.BeginDisabled(TrainMutationBusy || !armed);
+            if (ImGui.Button(TrainEndLabel) && armed) _ = EndTrainNowAsync();
             ImGui.EndDisabled();
+            if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+                ImGui.SetTooltip("Hold Shift and click to send the completion report.\nReported dead marks are cleared after success; unfinished marks remain.\nPreview available in Reports > Train completion.");
         }
         else if (_trainWorkspacePage == TrainWorkspacePage.Reports)
         {

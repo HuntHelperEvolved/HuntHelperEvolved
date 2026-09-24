@@ -207,8 +207,9 @@ Route and Setup reserve no space for those messages.
 **Completed-train reports** summarize observed kills by world and expansion.
 Each overall respawn range runs from the earliest individual window opening to
 the latest individual cap; it does not mean every mark respawns together.
-Choose **Reports > Train completion**, review the content, then hold Shift and
-click **Send & finish completed legs**. Reported dead marks clear only after
+Hold **Shift** and click **End train** at the bottom of Route to send the
+completion report. To preview it first, choose **Reports > Train completion**,
+then hold Shift and click **Send & finish completed legs**. Reported dead marks clear only after
 Discord success and, for shared trains, server acknowledgement; unfinished
 marks remain. Individual kill records are available under **Individual kill
 history**. Failed submission or concurrent changes keep the train. Check the
