@@ -23,14 +23,14 @@ public sealed partial class Plugin
     private bool CanDragPresetTrain => !PresetOrderLocked || !SharingPresetTrain
         || _sync.HasCurrentTrainSnapshot && _sync.PendingPresetRequest is null;
 
-    private void DrawPresetControls(bool showStatus = true)
+    private void DrawPresetSelector(string label, float width)
     {
         var presets = SharingPresetTrain ? _sync.TrainPresets.Presets : _config.TrainPresets;
         var active = presets.FirstOrDefault(p => p.Id == ActivePresetId);
-        ImGui.SetNextItemWidth(Math.Min(280, Math.Max(120, ImGui.GetContentRegionAvail().X - 100)));
-        ImGui.BeginDisabled(SharingPresetTrain && (!_sync.SupportsTrainPresets
+        ImGui.SetNextItemWidth(width);
+        ImGui.BeginDisabled(TrainMutationBusy || SharingPresetTrain && (!_sync.SupportsTrainPresets
             || !_sync.HasCurrentTrainSnapshot || _sync.PendingPresetRequest is not null));
-        if (ImGui.BeginCombo("Route preset", active is null ? "Manual order" : active.Name + (PresetOrderingPaused ? " (paused)" : "")))
+        if (ImGui.BeginCombo(label, active is null ? "Manual order" : active.Name + (PresetOrderingPaused ? " (paused)" : "")))
         {
             if (ImGui.Selectable("Manual order", ActivePresetId is null)) SelectTrainPreset(null);
             foreach (var preset in presets)
@@ -38,14 +38,19 @@ public sealed partial class Plugin
             ImGui.EndCombo();
         }
         ImGui.EndDisabled();
-        if (ImGui.IsItemHovered())
+        if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
             ImGui.SetTooltip(SharingPresetTrain
-                ? "Select before scouting to organise incoming marks for everyone. The preset stays active for future trains until you choose Manual order or another preset."
-                : "Select before scouting to organise incoming marks. The preset stays active for future trains until you choose Manual order or another preset.");
+                ? "Order existing and incoming marks for everyone. Reselecting resumes automatic ordering and restarts preset rally stops. The preset stays active until you choose Manual order or another preset."
+                : "Order existing and incoming marks. Reselecting resumes automatic ordering and restarts preset rally stops. The preset stays active until you choose Manual order or another preset.");
+    }
+
+    private void DrawPresetControls(bool showStatus = true)
+    {
+        DrawPresetSelector("Route preset", Math.Min(280, Math.Max(120, ImGui.GetContentRegionAvail().X - 100)));
         TrainControlSameLine("Manage presets");
         if (ImGui.Button("Manage presets")) _presetEditorOpen = true;
         if (!showStatus) return;
-        if (active is not null && PresetOrderingPaused)
+        if (ActivePresetId is not null && PresetOrderingPaused)
             ImGui.TextWrapped("Automatic ordering is paused. Reselect a preset to resume, including for future trains.");
         if (SharingPresetTrain && !_sync.HasCurrentTrainSnapshot)
             ImGui.TextWrapped("Waiting for the server's train. Shared updates will resume after reconnecting.");

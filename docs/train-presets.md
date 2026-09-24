@@ -12,16 +12,19 @@ New drafts begin with Dawntrail, Shadowbringers and Endwalker; add or remove
 zones and expansions as needed. Saving a draft does not select it.
 
 Before scouting, choose the conductor's preset under **Route preset** in
-**Setup**. The selector works with an empty train. Incoming
+**Setup**, or use the preset dropdown on **Route** while scanning is active.
+Both selectors work with an empty train. Incoming
 marks follow the preset as they arrive, and it remains selected for later
 trains until you choose **Manual order** or another preset.
 
 The main Train tab and `/hht` popout share **Route**, **Reports** and **Setup**
 pages, with the pause/resume icon at the right of the page tabs. **Next Mark**
 and **Next Aetheryte** appear below the tabs only on **Route** and remain usable
-while posting. Route also shows the active preset and any ordering pause above
-its single-line mark rows; **Change** opens Setup. A page change never changes
-the route or starts or pauses recording.
+while posting. During scanning, Route has a preset dropdown and **Add Flag**
+above its single-line mark rows. Add Flag inserts your current map flag as a
+custom stop; Setup retains the optional name field. While scanning is paused,
+Route shows the active preset and any ordering pause; **Change** opens Setup.
+A page change never changes the route or starts or pauses recording.
 
 For an Arch-Eta finale, put Endwalker last and Ultima Thule last within it.
 Enable **Strict mark order** for Ultima Thule and use **Reverse mark order**

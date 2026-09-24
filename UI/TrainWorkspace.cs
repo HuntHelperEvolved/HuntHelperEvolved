@@ -113,13 +113,35 @@ public sealed partial class Plugin
     {
         var sharing = _config.SyncEnabled && _config.SyncShareTrain;
         var context = sharing ? (_sync.IsConnected ? "Shared train" : "Shared train · disconnected") : "Local train";
-        var presets = sharing ? _sync.TrainPresets.Presets : _config.TrainPresets;
-        var active = presets.FirstOrDefault(p => p.Id == ActivePresetId);
-        var order = active?.Name ?? "Manual order";
-        if (active is not null && PresetOrderingPaused) order += " · ordering paused";
-        ImGui.TextWrapped(context + " · " + order);
-        TrainControlSameLine("Change");
-        if (ImGui.SmallButton("Change")) SelectTrainPage(TrainWorkspacePage.Setup);
+        if (!_config.ScanningPaused)
+        {
+            var width = Math.Max(1, ImGui.GetContentRegionAvail().X);
+            var spacing = ImGui.GetStyle().ItemSpacing.X;
+            var contextWidth = ImGui.CalcTextSize(context).X;
+            var flagWidth = ImGui.CalcTextSize("Add Flag").X + ImGui.GetStyle().FramePadding.X * 2;
+            var minimumPresetWidth = ImGui.CalcTextSize("Manual order").X + ImGui.GetFrameHeight()
+                + ImGui.GetStyle().FramePadding.X * 2;
+            var inline = contextWidth + spacing + minimumPresetWidth + spacing + flagWidth <= width;
+            ImGui.AlignTextToFramePadding();
+            ImGui.TextWrapped(context);
+            if (inline) ImGui.SameLine();
+            var controlsWidth = inline ? width - contextWidth - spacing : width;
+            var presetWidth = controlsWidth >= minimumPresetWidth + spacing + flagWidth
+                ? controlsWidth - spacing - flagWidth : controlsWidth;
+            DrawPresetSelector("##Route preset", Math.Min(280, Math.Max(1, presetWidth)));
+            TrainControlSameLine("Add Flag");
+            DrawAddTrainFlagButton();
+        }
+        else
+        {
+            var presets = sharing ? _sync.TrainPresets.Presets : _config.TrainPresets;
+            var active = presets.FirstOrDefault(p => p.Id == ActivePresetId);
+            var order = active?.Name ?? "Manual order";
+            if (active is not null && PresetOrderingPaused) order += " · ordering paused";
+            ImGui.TextWrapped(context + " · " + order);
+            TrainControlSameLine("Change");
+            if (ImGui.SmallButton("Change")) SelectTrainPage(TrainWorkspacePage.Setup);
+        }
         if (sharing && !_sync.HasCurrentTrainSnapshot)
             ImGui.TextWrapped("Waiting for the server's train. Shared updates resume after reconnecting.");
         else if (sharing && !_sync.SupportsTrainPresets)

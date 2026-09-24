@@ -140,7 +140,9 @@ Switching pages does not change the train or recording state.
 
 **Route presets** save a conductor's expansion and zone order, optional strict
 mark order, and rally preferences for future trains. Choose a preset in
-**/hht > Setup** before scouting to organise incoming marks.
+**/hht > Setup** before scouting to organise incoming marks. While scanning is
+active, Route shows a preset dropdown so you can change it without leaving the
+route. Choosing or reselecting a preset resumes its ordering and rally stops.
 Dragging a mark or expansion pauses automatic ordering until a preset is
 reselected. Shared presets require server **0.3.26 or later**; older plugins
 receive the same train order and ordinary rally flags. See the
@@ -151,7 +153,7 @@ join the train. Existing train rows continue recording observed deaths
 while paused. Enable **Settings > Sharing > The train** to share additions and
 automatic scout credit with the group. Scouting starts paused after login.
 Leaving a zone does not post a report, so a multi-expansion train can continue
-across legs. Reports are sent explicitly from **Reports** with Shift-click.
+across legs. Use Shift-click on **Reports**, or **End train** on Route, to send.
 
 **Next Mark** selects, flags and announces the next live mark without recording
 a kill. **Next Aetheryte** announces and copies the next destination without
@@ -171,7 +173,10 @@ into blocks without rearranging it. Drag a block heading to move a whole
 expansion, or click it to fold that expansion away.
 
 **Import from Clipboard**, **Copy Export Code** and **Add Flag** are in Setup,
-in both train views. Imports merge; nothing already in the train is overwritten.
+in both train views. While scanning is active, **Add Flag** is also beside the
+preset dropdown on Route. It adds your current map flag as a custom stop; an
+optional name can be set in Setup. Imports merge; nothing already in the train
+is overwritten.
 Hide dead changes only the display. Setup's **Remove Dead** removes dead route
 rows while keeping their report history. Expansion totals exclude rally stops
 and retain recorded counts when dead rows are hidden.

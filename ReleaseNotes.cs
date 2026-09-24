@@ -36,7 +36,7 @@ public static class ReleaseNotes
     {
         new("0.6.0", "2026-09-24", "A tidier train window, scout notes and clearer Discord reports.",
         [
-            new("Train window", "The Train tab and /hht now have Route, Reports and Setup pages. Compact rows put TP before the mark name and status buttons on the right. Route keeps navigation and preset details together; Setup holds the train options, including spicing markers.", Kihtli),
+            new("Train window", "The Train tab and /hht now have Route, Reports and Setup pages. Compact rows put TP before the mark name and status buttons on the right. While scanning, choose a preset or add a custom flag directly from Route. Setup holds the train options, including spicing markers.", Kihtli),
             new("Scouting reports", "Add a scout note of up to 256 characters and preview your report before sending. The import code comes first, with the report in the same Discord card when it fits. Larger scouting reports use two messages: code, then report.", Kihtli),
             new("Completed trains", "Shorter reports summarise overall respawn ranges by world and expansion, with sniped and missing marks listed separately. Detailed kill history remains available in game.", Kihtli),
             new("Safer controls", "Hold Alt when clicking a spawn-point or SS-location dot to place a map flag. Ctrl still hides the overlay; hold Ctrl when clicking a route row's X to remove it. With spicing markers enabled, right-click a mark to change its spicing status.", Kihtli),
