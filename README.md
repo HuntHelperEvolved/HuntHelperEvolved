@@ -127,10 +127,11 @@ pasted across from it produces the same line.
 ## The train
 
 The main **Train** tab and `/hht` popout share three pages: **Route**, **Reports**
-and **Setup**. Next Mark and Next Aetheryte remain above every page, with a
-pause/resume icon at the right. The **Route** page shows local/shared and preset
-context above compact, single-line mark rows. Switching pages does not change
-the train or recording state.
+and **Setup**, with a pause/resume icon at the right of the page tabs. **Next
+Mark** and **Next Aetheryte** appear below the tabs only on **Route**, alongside
+local/shared and preset context above compact, single-line mark rows.
+Last-seen ages use concise brackets, such as `(5m)` or `(1h 12m)`.
+Switching pages does not change the train or recording state.
 
 **Route presets** save a conductor's expansion and zone order, optional strict
 mark order, and rally preferences for future trains. Choose a preset in
@@ -232,7 +233,7 @@ from this list.
 and **Undo reset**. Undo restores the saved train locally and switches train
 sharing off, leaving the group's train unchanged. A recovery notice also
 appears after a reset. Conflicting edits and reset actions are disabled during
-report posting; navigation remains available.
+report posting; Next Mark and Next Aetheryte remain usable on Route.
 
 ## The tally
 

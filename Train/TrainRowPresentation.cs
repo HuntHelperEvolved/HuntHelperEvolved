@@ -58,13 +58,13 @@ internal static class TrainRowPresentation
         if (!mark.Dead && mark.Spiced && showSpicing) parts.Add("Spiced");
         if (showAge && !mark.IsCustom)
         {
-            if (mark.LastSeenUtc == default) parts.Add("Seen time unknown");
+            if (mark.LastSeenUtc == default) parts.Add("(seen time unknown)");
             else
             {
                 var age = now - mark.LastSeenUtc;
-                parts.Add(age.TotalMinutes < 1 ? "Seen just now"
-                    : age.TotalHours < 1 ? $"Seen {(int)age.TotalMinutes}m ago"
-                    : $"Seen {(int)age.TotalHours}h {age.Minutes}m ago");
+                parts.Add(age.TotalMinutes < 1 ? "(just now)"
+                    : age.TotalHours < 1 ? $"({(int)age.TotalMinutes}m)"
+                    : $"({(int)age.TotalHours}h {age.Minutes}m)");
             }
         }
         return string.Join(" · ", parts);

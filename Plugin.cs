@@ -1978,7 +1978,7 @@ public sealed partial class Plugin : IDalamudPlugin
             ImGui.SetTooltip($"{_mapOverlay.Status}\n\n/htrm hides this bar.");
     }
 
-    private void DrawTrainNavigation(float reservedRight)
+    private void DrawTrainNavigation()
     {
         if (ImGui.Button("Next Mark"))
         {
@@ -1986,7 +1986,7 @@ public sealed partial class Plugin : IDalamudPlugin
         }
         if (ImGui.IsItemHovered()) ImGui.SetTooltip("Move to the next live mark and flag it");
 
-        TrainControlSameLine("Next Aetheryte", reservedRight);
+        TrainControlSameLine("Next Aetheryte");
         if (ImGui.Button("Next Aetheryte"))
         {
             OnNextAetheryteCommand(NextAetheryteCommand, string.Empty);

@@ -40,11 +40,19 @@ public sealed partial class Plugin
         var operatingStart = ImGui.GetCursorPos();
         var operatingWidth = ImGui.GetContentRegionAvail().X;
         var scanButtonSize = ImGui.GetFrameHeight();
-        var navigationMinimum = ImGui.CalcTextSize("Next Mark").X + ImGui.GetStyle().FramePadding.X * 2;
-        if (navigationMinimum + scanButtonSize + ImGui.GetStyle().ItemSpacing.X > operatingWidth)
+        var firstTabWidth = ImGui.CalcTextSize(nameof(TrainWorkspacePage.Route)).X + ImGui.GetStyle().FramePadding.X * 2;
+        var reservedRight = scanButtonSize + ImGui.GetStyle().ItemSpacing.X;
+        if (firstTabWidth + reservedRight > operatingWidth)
             ImGui.SetCursorPosY(operatingStart.Y + scanButtonSize + ImGui.GetStyle().ItemSpacing.Y);
-        DrawTrainNavigation(scanButtonSize + ImGui.GetStyle().ItemSpacing.X);
-        var navigationEnd = ImGui.GetCursorPos();
+        foreach (var page in Enum.GetValues<TrainWorkspacePage>())
+        {
+            if (page != TrainWorkspacePage.Route) TrainControlSameLine(page.ToString(), reservedRight);
+            var selected = page == _trainWorkspacePage;
+            if (selected) ImGui.PushStyleColor(ImGuiCol.Button, ImGui.GetStyle().Colors[(int)ImGuiCol.ButtonActive]);
+            if (ImGui.Button(page.ToString())) SelectTrainPage(page);
+            if (selected) ImGui.PopStyleColor();
+        }
+        var tabsEnd = ImGui.GetCursorPos();
         ImGui.SetCursorPos(new Vector2(operatingStart.X + Math.Max(0, operatingWidth - scanButtonSize), operatingStart.Y));
         ImGui.BeginDisabled(TrainMutationBusy);
         if (TrainIconButton(_config.ScanningPaused ? FontAwesomeIcon.Play : FontAwesomeIcon.Pause, new Vector2(scanButtonSize)))
@@ -55,18 +63,13 @@ public sealed partial class Plugin
         ImGui.EndDisabled();
         if (ImGui.IsItemHovered()) ImGui.SetTooltip((_config.ScanningPaused ? "Scanning paused — resume" : "Scanning — pause")
             + "\nControls new scouting records and automatic scout credit. Existing deaths still update while paused.");
-        ImGui.SetCursorPos(new Vector2(operatingStart.X, Math.Max(navigationEnd.Y, ImGui.GetCursorPosY())));
-
-        foreach (var page in Enum.GetValues<TrainWorkspacePage>())
-        {
-            if (page != TrainWorkspacePage.Route) ImGui.SameLine();
-            var selected = page == _trainWorkspacePage;
-            if (selected) ImGui.PushStyleColor(ImGuiCol.Button, ImGui.GetStyle().Colors[(int)ImGuiCol.ButtonActive]);
-            if (ImGui.Button(page.ToString())) SelectTrainPage(page);
-            if (selected) ImGui.PopStyleColor();
-        }
+        ImGui.SetCursorPos(new Vector2(operatingStart.X, Math.Max(tabsEnd.Y, ImGui.GetCursorPosY())));
         ImGui.Separator();
-        if (_trainWorkspacePage == TrainWorkspacePage.Route) DrawTrainContext();
+        if (_trainWorkspacePage == TrainWorkspacePage.Route)
+        {
+            DrawTrainNavigation();
+            DrawTrainContext();
+        }
 
         var footerHeight = TrainWorkspaceFooterHeight();
         // All setup/report details scroll. Only operating controls and the relevant
