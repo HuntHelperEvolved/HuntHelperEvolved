@@ -218,8 +218,8 @@ public sealed partial class Plugin
         {
             var destinations = TrainMutationBusy ? _trainReportDestinationCount : ReportDestinationCount();
             ImGui.TextWrapped($"{preview.MessageCount} Discord message(s) per destination · {destinations} enabled destination(s)");
-            if (preview.ExportCodeOmitted)
-                ImGui.TextWrapped("The import code is too large for a Discord embed and will be omitted. Copy Export Code in Setup or report a smaller train.");
+            if (!_trainCompletionReport && preview.MessageCount == 2)
+                ImGui.TextWrapped("The import code will be sent first, followed by the report in a second message.");
             if (preview.MessageCount == 0) ImGui.TextWrapped(preview.EmptyMessage);
             ImGui.TextDisabled($"Preview updated {_trainPreviewAt.ToLocalTime():T}");
             DrawPreparedTrainReport(_trainReportDisplay);
@@ -253,6 +253,8 @@ public sealed partial class Plugin
             var embed = embeds[i];
             ImGui.PushID(i);
             ImGui.Spacing();
+            if (!_trainCompletionReport && _trainReportPreview is { MessageCount: 2 } && i < 2)
+                ImGui.TextDisabled(i == 0 ? "Message 1 — import code" : "Message 2 — scouting report");
             if (embed.Description.StartsWith("```", StringComparison.Ordinal))
             {
                 if (ImGui.CollapsingHeader("Import code"))

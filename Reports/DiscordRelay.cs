@@ -43,6 +43,11 @@ public static class DiscordRelay
         if (marks.Count == 0)
             return new PreparedDiscordReport(Array.Empty<DiscordEmbedPreview>(), packEmbeds: true);
 
+        var codeBlock = $"```\n{exportCode}\n```";
+        if (codeBlock.Length > DescriptionLimit)
+            return new PreparedDiscordReport(Array.Empty<DiscordEmbedPreview>(), packEmbeds: true,
+                emptyMessage: "Scouting report not sent: the intact import code exceeds Discord's 4,096-character embed limit. Copy Export Code in Setup or report a smaller train. Nothing was posted.");
+
         var details = new StringBuilder($"From the train list • Sent <t:{nowUnix}:F>\n\n");
         details.Append(ScoutingReport.BuildSummary(marks));
         details.Append("\n\nUp is the last recorded state.");
@@ -53,18 +58,20 @@ public static class DiscordRelay
             .Distinct(StringComparer.OrdinalIgnoreCase).Select(ScoutingReport.EscapeText).ToList();
         if (names.Count > 0) details.Append($"\n\nScouts: {string.Join(", ", names)}");
 
-        var codeBlock = $"```\n{exportCode}\n```";
-        var omitted = codeBlock.Length > DescriptionLimit;
-        if (omitted)
-            details.Append("\n\nExport code omitted — it is too long for Discord. Copy it directly from the plugin instead.");
-
-        var embeds = ChunkByLength(details.ToString(), DescriptionLimit)
+        var reportEmbeds = ChunkByLength(details.ToString(), DescriptionLimit)
             .Select((description, i) => new DiscordEmbedPreview(
                 i == 0 ? "🔭 Scouting Report" : "🔭 Scouting Report (continued)", description)).ToList();
-        // Keep the code intact and after all human-readable content. The packer
-        // starts a new message if this whole embed will exceed the combined limit.
-        if (!omitted) embeds.Add(new DiscordEmbedPreview("Import code", codeBlock));
-        return new PreparedDiscordReport(embeds, packEmbeds: true, exportCodeOmitted: omitted);
+        if (!PreparedDiscordReport.FitsOneMessage(reportEmbeds))
+            return new PreparedDiscordReport(Array.Empty<DiscordEmbedPreview>(), packEmbeds: true,
+                emptyMessage: "Scouting report not sent: the report details exceed Discord's single-message limit. Report a smaller train or shorten the scout credits. Nothing was posted.");
+
+        var codeEmbed = new DiscordEmbedPreview("Import code", codeBlock);
+        var combined = new[] { codeEmbed }.Concat(reportEmbeds).ToList();
+        // Prefer one message. If it does not fit, the complete code stands alone
+        // in the first message and every report detail remains in the second.
+        return PreparedDiscordReport.FitsOneMessage(combined)
+            ? PreparedDiscordReport.FromMessages(combined)
+            : PreparedDiscordReport.FromMessages(new[] { codeEmbed }, reportEmbeds);
     }
 
     internal static Task<(bool Success, string Message)> PostPreparedReportAsync(List<WebhookEntry> webhooks,

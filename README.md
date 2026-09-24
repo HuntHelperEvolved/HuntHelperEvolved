@@ -186,10 +186,13 @@ includes loading a shared snapshot when joining or reconnecting; an old note
 is not silently sent with a new train. Undo can restore a reset draft without
 replacing newer edits.
 
-The scouting summary, exceptions, notes and credits appear before the intact
-import code. The preview shows the outgoing message count per destination and
-warns if the code is too large to include; Copy Export Code remains available
-in Setup. Sending refreshes the latest train snapshot. While posting, the
+The intact import code comes first, followed by the scouting summary,
+exceptions, notes and credits. These share one Discord message when they fit;
+otherwise the code is the first message and the full report is the second.
+The preview shows the outgoing message count per destination. If either part
+exceeds its own Discord limit, sending is blocked before anything is posted;
+Copy Export Code remains available in Setup. Sending refreshes the latest
+train snapshot. While posting, the
 captured report remains visible and subsequent note edits belong to the next
 report. Both train views show progress and results.
 
