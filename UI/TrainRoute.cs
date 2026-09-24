@@ -192,7 +192,7 @@ public sealed partial class Plugin
             var actionsY = rowStart.Y + (height - buttonHeight) / 2;
             var rowMax = rowMin + new Vector2(width, height);
             var rowColour = mark.Dead ? new Vector4(0.6f, 0.6f, 0.6f, 1f)
-                : mark.Spiced && _config.ShowSpicing ? new Vector4(1f, 0.55f, 0.4f, 1f)
+                : mark.Spiced && _config.ShowSpicing ? new Vector4(1f, 0.35f, 0.35f, 1f)
                 : mark.IsCustom ? new Vector4(0.45f, 0.95f, 0.5f, 1f) : Vector4.One;
 
             ImGui.SetCursorPos(new Vector2(rowStart.X + layout.X(0), actionsY));
