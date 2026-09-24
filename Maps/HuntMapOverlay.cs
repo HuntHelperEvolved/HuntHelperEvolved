@@ -411,7 +411,7 @@ public sealed unsafe class HuntMapOverlay : IDisposable
     private const float LabelWidth = 320f;
 
     /// <summary>
-    /// What Ctrl-clicking a spawn point should do: drop the flag on the point.
+    /// What Alt-clicking a spawn point should do: drop the flag on the point.
     ///
     /// Useful before anything has spawned, which is the point of it — a
     /// conductor can send the group to a spot to go and look at it, rather than
@@ -457,7 +457,7 @@ public sealed unsafe class HuntMapOverlay : IDisposable
 
         return () =>
         {
-            if (!IsLeftMapClick() || !Dalamud.Bindings.ImGui.ImGui.GetIO().KeyCtrl) return;
+            if (!IsLeftMapClick() || !Dalamud.Bindings.ImGui.ImGui.GetIO().KeyAlt) return;
             try
             {
                 // Instance 0: a place is not a sighting, so it carries no
@@ -474,7 +474,7 @@ public sealed unsafe class HuntMapOverlay : IDisposable
     }
 
     /// <summary>The "click to flag it" line, when clicking would in fact do that.</summary>
-    private string ClickHint => _config.ClickSpawnPointToFlag ? "\nCtrl + left-click to flag it." : string.Empty;
+    private string ClickHint => _config.ClickSpawnPointToFlag ? "\nAlt + left-click to flag it." : string.Empty;
 
     /// <summary>
     /// The player's position on the map, or the last one known when they are

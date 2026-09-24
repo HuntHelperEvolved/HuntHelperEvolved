@@ -85,11 +85,11 @@ answer different questions: the points are where a mark *could* be, the marks
 are what *is* there. Showing only A and S points while still being told about
 a B rank that's turned up is a perfectly ordinary way to hunt.
 
-**Ctrl-click to flag.** Hold Ctrl and left-click a spawn point to drop the flag
+**Alt-click to flag.** Hold Alt and left-click a spawn point to drop the flag
 on it, for sending people to a spot before anything has spawned there. SS event
 spots and the spot the SS mark itself will appear on work the same way. Ordinary
-clicks do not place a flag. Shift-click still toggles manual S-rank exclusions
-when the server supports them.
+clicks do not place a flag. Ctrl still hides the overlay. Shift-click still
+toggles manual S-rank exclusions when the server supports them.
 
 **Mark names.** Every mark that is actually up gets its name and remaining
 health written beside its dot, so a glance at the map says which are still
