@@ -17,10 +17,10 @@ marks follow the preset as they arrive, and it remains selected for later
 trains until you choose **Manual order** or another preset.
 
 The main Train tab and `/hht` popout share **Route**, **Reports** and **Setup**
-pages. The active preset and any ordering pause remain visible above them;
-**Change** opens Setup. Next Mark, Next Aetheryte and Scanning/Paused stay
-available while moving between pages. A page change never changes the route
-or starts or pauses recording.
+pages. The **Route** page shows the active preset and any ordering pause above
+its single-line mark rows; **Change** opens Setup. Next Mark, Next Aetheryte and
+the right-aligned pause/resume icon stay available while moving between pages.
+A page change never changes the route or starts or pauses recording.
 
 For an Arch-Eta finale, put Endwalker last and Ultima Thule last within it.
 Enable **Strict mark order** for Ultima Thule and use **Reverse mark order**

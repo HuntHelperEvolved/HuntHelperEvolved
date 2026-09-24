@@ -1390,10 +1390,10 @@ public sealed partial class Plugin : IDalamudPlugin
         _log.Warning(message);
     }
 
-    private static void TrainControlSameLine(string nextLabel)
+    private static void TrainControlSameLine(string nextLabel, float reservedRight = 0)
     {
         var style = ImGui.GetStyle();
-        var right = ImGui.GetWindowPos().X + ImGui.GetWindowContentRegionMax().X;
+        var right = ImGui.GetWindowPos().X + ImGui.GetWindowContentRegionMax().X - reservedRight;
         if (ImGui.GetItemRectMax().X + style.ItemSpacing.X + ImGui.CalcTextSize(nextLabel).X
             + style.FramePadding.X * 2 <= right) ImGui.SameLine();
     }
@@ -1962,7 +1962,7 @@ public sealed partial class Plugin : IDalamudPlugin
             ImGui.SetTooltip($"{_mapOverlay.Status}\n\n/htrm hides this bar.");
     }
 
-    private void DrawTrainNavigation()
+    private void DrawTrainNavigation(float reservedRight)
     {
         if (ImGui.Button("Next Mark"))
         {
@@ -1970,7 +1970,7 @@ public sealed partial class Plugin : IDalamudPlugin
         }
         if (ImGui.IsItemHovered()) ImGui.SetTooltip("Move to the next live mark and flag it");
 
-        TrainControlSameLine("Next Aetheryte");
+        TrainControlSameLine("Next Aetheryte", reservedRight);
         if (ImGui.Button("Next Aetheryte"))
         {
             OnNextAetheryteCommand(NextAetheryteCommand, string.Empty);

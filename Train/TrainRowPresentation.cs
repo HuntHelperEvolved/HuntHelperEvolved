@@ -1,10 +1,36 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 
 namespace HuntHelperEvolved;
 
 internal static class TrainRowPresentation
 {
+    internal static string FitText(string text, float width, Func<string, float> measure, string suffix = "")
+    {
+        if (width <= 0) return string.Empty;
+        text = text.Replace("\r\n", " ").Replace('\r', ' ').Replace('\n', ' ');
+        if (measure(text + suffix) <= width) return text + suffix;
+        const string ellipsis = "…";
+        if (measure(ellipsis + suffix) > width)
+        {
+            suffix = string.Empty;
+            if (measure(ellipsis) > width) return string.Empty;
+        }
+        var starts = StringInfo.ParseCombiningCharacters(text);
+        var low = 0;
+        var high = starts.Length;
+        while (low < high)
+        {
+            var middle = (low + high + 1) / 2;
+            var end = middle == starts.Length ? text.Length : starts[middle];
+            if (measure(text[..end] + ellipsis + suffix) <= width) low = middle;
+            else high = middle - 1;
+        }
+        var length = low == starts.Length ? text.Length : starts[low];
+        return text[..length] + ellipsis + suffix;
+    }
+
     internal static (int Recorded, int Remaining) Count(IEnumerable<DetectedMark> marks)
     {
         var recorded = 0;

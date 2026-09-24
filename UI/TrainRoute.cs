@@ -173,66 +173,58 @@ public sealed partial class Plugin
             var rowStart = ImGui.GetCursorPos();
             var rowMin = ImGui.GetCursorScreenPos();
             var width = Math.Max(1, ImGui.GetContentRegionAvail().X);
-            // At very large font scales keep the actions together on their own
-            // line instead of shrinking click targets or scrolling them away.
-            var layout = TrainRowLayout.Create(width, buttonHeight, buttonGap, ImGui.GetFontSize() * 7);
+            var layout = TrainRowLayout.Create(width, buttonHeight, buttonGap);
             var buttonSize = new Vector2(layout.ButtonWidth, buttonHeight);
-            var actionsBelow = layout.ActionsBelow;
-            var nameWidth = layout.NameWidth;
             var isCurrent = _currentMark == mark.Key;
-            var name = $"{(isCurrent ? "> " : "")}{mark.Name}{ExpansionData.InstanceGlyph(mark.Instance)}";
+            var name = $"{(isCurrent ? "> " : "")}{mark.Name}";
+            var instance = ExpansionData.InstanceGlyph(mark.Instance);
             var zone = ExpansionData.Lookup(mark.NameId)?.Location ?? (mark.IsCustom ? mark.ZoneName : "?");
             var detail = TrainRowPresentation.Describe(mark, now, showZones ? zone : null,
                 _config.ShowMarkAge, _config.ShowSpicing);
-            var nameHeight = ImGui.CalcTextSize(name, false, nameWidth).Y;
-            var primaryHeight = Math.Max(buttonHeight, nameHeight);
-            var detailHeight = string.IsNullOrEmpty(detail) ? 0 : ImGui.CalcTextSize(detail, false, width).Y;
-            var detailY = rowStart.Y + primaryHeight + (detailHeight > 0 ? buttonGap : 0);
-            var actionsY = actionsBelow ? detailY + detailHeight + buttonGap : rowStart.Y;
-            var height = Math.Max(Math.Clamp(_config.TrainRowHeight, 14, 48),
-                actionsBelow ? actionsY - rowStart.Y + layout.ActionHeight : detailY - rowStart.Y + detailHeight);
+            var displayedName = TrainRowPresentation.FitText(name, layout.TextWidth,
+                static text => ImGui.CalcTextSize(text).X, instance);
+            var displayedNameWidth = ImGui.CalcTextSize(displayedName).X;
+            var inlineDetail = string.IsNullOrEmpty(detail) ? string.Empty : " · " + detail;
+            var displayedDetail = TrainRowPresentation.FitText(inlineDetail,
+                layout.TextWidth - displayedNameWidth, static text => ImGui.CalcTextSize(text).X);
+            var height = Math.Max(buttonHeight, Math.Clamp(_config.TrainRowHeight, 14, 48));
+            var textY = rowStart.Y + (height - ImGui.GetTextLineHeight()) / 2;
+            var actionsY = rowStart.Y + (height - buttonHeight) / 2;
             var rowMax = rowMin + new Vector2(width, height);
             var rowColour = mark.Dead ? new Vector4(0.6f, 0.6f, 0.6f, 1f)
                 : mark.Spiced && _config.ShowSpicing ? new Vector4(1f, 0.55f, 0.4f, 1f)
                 : mark.IsCustom ? new Vector4(0.45f, 0.95f, 0.5f, 1f) : Vector4.One;
 
-            // Separate text hit regions avoid click-through from the action
-            // buttons. Capture interaction before drawing text or opening menus.
+            // One text hit region excludes the action buttons. Neither long
+            // names nor metadata can increase the row height or move controls.
             ImGui.Selectable("##row", _dragFromIndex == i, ImGuiSelectableFlags.None,
-                new Vector2(nameWidth, primaryHeight));
+                new Vector2(layout.TextWidth, height));
             var rowHovered = ImGui.IsItemHovered();
             var dropHovered = ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenBlockedByActiveItem);
             var rowActive = ImGui.IsItemActive();
             var rowFocused = ImGui.IsItemFocused();
             ImGui.SetItemAllowOverlap();
-            if (detailHeight > 0)
-            {
-                ImGui.SetCursorPos(new Vector2(rowStart.X, detailY));
-                ImGui.Selectable("##detail", _dragFromIndex == i, ImGuiSelectableFlags.None,
-                    new Vector2(width, detailHeight));
-                rowHovered |= ImGui.IsItemHovered();
-                dropHovered |= ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenBlockedByActiveItem);
-                rowActive |= ImGui.IsItemActive();
-                rowFocused |= ImGui.IsItemFocused();
-                ImGui.SetItemAllowOverlap();
-            }
-            ImGui.SetCursorPos(rowStart);
+            ImGui.SetCursorPos(new Vector2(rowStart.X, textY));
             ImGui.PushStyleColor(ImGuiCol.Text, isCurrent ? new Vector4(1f, 0.85f, 0.4f, 1f) : rowColour);
-            ImGui.PushTextWrapPos(rowStart.X + nameWidth);
-            ImGui.TextUnformatted(name);
-            ImGui.PopTextWrapPos();
+            ImGui.TextUnformatted(displayedName);
             ImGui.PopStyleColor();
-            if (detailHeight > 0)
+            if (!string.IsNullOrEmpty(displayedDetail))
             {
-                ImGui.SetCursorPos(new Vector2(rowStart.X, detailY));
+                ImGui.SetCursorPos(new Vector2(rowStart.X + displayedNameWidth, textY));
                 ImGui.PushStyleColor(ImGuiCol.Text, rowColour);
-                ImGui.PushTextWrapPos(rowStart.X + width);
-                ImGui.TextUnformatted(detail);
-                ImGui.PopTextWrapPos();
+                ImGui.TextUnformatted(displayedDetail);
                 ImGui.PopStyleColor();
             }
+            if (rowHovered && _dragFromIndex == -1 && _dragExpansionFrom == -1)
+            {
+                ImGui.BeginTooltip();
+                ImGui.TextUnformatted(name + instance);
+                ImGui.TextUnformatted(TrainWorldName(mark.WorldId, allMarks));
+                if (!string.IsNullOrEmpty(detail)) ImGui.TextWrapped(detail);
+                ImGui.EndTooltip();
+            }
 
-            ImGui.SetCursorPos(new Vector2(rowStart.X + layout.X(0), actionsY + layout.Y(0)));
+            ImGui.SetCursorPos(new Vector2(rowStart.X + layout.X(0), actionsY));
             var teleportPressed = false;
             if (_textureProvider.TryGetFromGameIcon(new GameIconLookup(AetheryteIconId), out var iconTex)
                 && iconTex.TryGetWrap(out var iconWrap, out _))
@@ -257,7 +249,7 @@ public sealed partial class Plugin
             }
 
             ImGui.BeginDisabled(TrainMutationBusy);
-            ImGui.SetCursorPos(new Vector2(rowStart.X + layout.X(1), actionsY + layout.Y(1)));
+            ImGui.SetCursorPos(new Vector2(rowStart.X + layout.X(1), actionsY));
             var witnessed = mark.Dead && mark.SnipedAtUtc is null && mark.DeathObservedAtUtc is not null;
             if (witnessed) ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.28f, 0.42f, 0.3f, 1f));
             var killPressed = TrainIconButton(FontAwesomeIcon.Check, buttonSize);
@@ -275,7 +267,7 @@ public sealed partial class Plugin
                 : mark.Dead ? "Restore this mark to not marked dead; clear death and sniped evidence"
                 : "Killed now — record a witnessed death");
 
-            ImGui.SetCursorPos(new Vector2(rowStart.X + layout.X(2), actionsY + layout.Y(2)));
+            ImGui.SetCursorPos(new Vector2(rowStart.X + layout.X(2), actionsY));
             ImGui.BeginDisabled(mark.IsCustom);
             var wasSniped = mark.SnipedAtUtc is not null;
             if (wasSniped) ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.48f, 0.35f, 0.15f, 1f));
@@ -299,9 +291,14 @@ public sealed partial class Plugin
                 : wasSniped ? "Clear found-gone evidence; this mark stays dead with its kill time unknown"
                 : "Found gone — record a missing mark without inventing a witnessed kill time");
 
-            ImGui.SetCursorPos(new Vector2(rowStart.X + layout.X(3), actionsY + layout.Y(3)));
-            if (ImGui.Button("...", buttonSize)) ImGui.OpenPopup("Row actions");
-            if (ImGui.IsItemHovered()) ImGui.SetTooltip("More actions");
+            ImGui.SetCursorPos(new Vector2(rowStart.X + layout.X(3), actionsY));
+            var showSpiced = _config.ShowSpicing && mark.Spiced && !mark.Dead;
+            if (showSpiced) ImGui.PushStyleColor(ImGuiCol.Text, new Vector4(1f, 0.55f, 0.4f, 1f));
+            var morePressed = showSpiced ? TrainIconButton(FontAwesomeIcon.PepperHot, buttonSize)
+                : ImGui.Button("...", buttonSize);
+            if (showSpiced) ImGui.PopStyleColor();
+            if (morePressed) ImGui.OpenPopup("Row actions");
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip(showSpiced ? "Being spiced · More actions" : "More actions");
             if (ImGui.BeginPopup("Row actions"))
             {
                 if (_config.ShowSpicing && !mark.IsCustom && ImGui.MenuItem("Being spiced", "", mark.Spiced))
@@ -459,7 +456,7 @@ public sealed partial class Plugin
         ImGui.PushID($"expansion_{TrainBlockKey(block)}");
         ImGui.Spacing();
         var arrow = collapsed ? "▶" : "▼";
-        var tally = count == 0 ? string.Empty : $" · {upCount} remaining / {count} recorded";
+        var tally = count == 0 ? string.Empty : $" · {upCount}/{count}";
         var label = $"{arrow} {expansion}{tally}";
         var start = ImGui.GetCursorPos();
         var width = Math.Max(1, ImGui.GetContentRegionAvail().X);
@@ -519,9 +516,10 @@ public sealed partial class Plugin
         }
 
         if (_dragExpansionFrom == -1 && _dragFromIndex == -1 && headerHovered)
-            ImGui.SetTooltip(PresetOrderLocked && !PresetOrderingPaused ? "Click to fold or open this expansion. Drag to move it and pause preset ordering." : collapsed
+            ImGui.SetTooltip((count > 0 ? $"{upCount} remaining / {count} recorded.\n" : "")
+                + (PresetOrderLocked && !PresetOrderingPaused ? "Click to fold or open this expansion. Drag to move it and pause preset ordering." : collapsed
                 ? "Click to open this expansion. Drag to reorder expansions within this world."
-                : "Click to fold this expansion away. Drag to reorder expansions within this world.");
+                : "Click to fold this expansion away. Drag to reorder expansions within this world."));
 
         ImGui.PopID();
         return collapsed;

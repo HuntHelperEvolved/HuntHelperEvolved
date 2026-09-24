@@ -127,9 +127,10 @@ pasted across from it produces the same line.
 ## The train
 
 The main **Train** tab and `/hht` popout share three pages: **Route**, **Reports**
-and **Setup**. Next Mark, Next Aetheryte and Scanning/Paused remain above every
-page, alongside local/shared connection and route-ordering status. Switching
-pages does not change the train or recording state.
+and **Setup**. Next Mark and Next Aetheryte remain above every page, with a
+pause/resume icon at the right. The **Route** page shows local/shared and preset
+context above compact, single-line mark rows. Switching pages does not change
+the train or recording state.
 
 **Route presets** save a conductor's expansion and zone order, optional strict
 mark order, and rally preferences for future trains. Choose a preset in
@@ -139,8 +140,8 @@ reselected. Shared presets require server **0.3.26 or later**; older plugins
 receive the same train order and ordinary rally flags. See the
 [train preset guide](docs/train-presets.md) for setup and routing details.
 
-Use **Scanning / Paused** above the train workspace to control whether
-new marks join the train. Existing train rows continue recording observed deaths
+Use the **pause/resume icon** at the top right to control whether new marks
+join the train. Existing train rows continue recording observed deaths
 while paused. Enable **Settings > Sharing > The train** to share additions and
 automatic scout credit with the group. Scouting starts paused after login.
 Leaving a zone does not post a report, so a multi-expansion train can continue

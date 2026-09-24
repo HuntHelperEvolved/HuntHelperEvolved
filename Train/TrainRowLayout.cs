@@ -2,24 +2,22 @@ using System;
 
 namespace HuntHelperEvolved;
 
-internal readonly record struct TrainRowLayout(float ButtonWidth, float ButtonHeight, float Gap, int Columns,
-    float ActionLeft, float ActionWidth, float ActionHeight, float NameWidth, bool ActionsBelow)
+internal readonly record struct TrainRowLayout(float ButtonWidth, float ButtonHeight, float Gap,
+    float ActionLeft, float TextWidth)
 {
-    internal static TrainRowLayout Create(float width, float buttonHeight, float gap, float minimumNameWidth)
+    internal static TrainRowLayout Create(float width, float buttonHeight, float gap)
     {
         width = Math.Max(1, width);
         buttonHeight = Math.Max(1, buttonHeight);
-        gap = Math.Max(0, gap);
-        var buttonWidth = Math.Min(width, buttonHeight);
-        var columns = Math.Clamp((int)((width + gap) / (buttonWidth + gap)), 1, 4);
-        var actionWidth = columns * buttonWidth + (columns - 1) * gap;
-        var rows = (4 + columns - 1) / columns;
-        var below = columns < 4 || width < actionWidth + gap * 2 + minimumNameWidth;
-        return new(buttonWidth, buttonHeight, gap, columns, width - actionWidth, actionWidth,
-            rows * buttonHeight + (rows - 1) * gap,
-            below ? width : Math.Max(1, width - actionWidth - gap * 2), below);
+        // Keep all four actions on the same line. Only widths smaller than the
+        // action strip shrink buttons; ordinary narrow windows truncate text.
+        var minimumText = Math.Min(width / 4, buttonHeight);
+        gap = Math.Clamp(gap, 0, (width - minimumText) / 8);
+        var buttonWidth = Math.Min(buttonHeight, (width - minimumText - gap * 5) / 4);
+        var actionWidth = buttonWidth * 4 + gap * 3;
+        var actionLeft = width - actionWidth;
+        return new(buttonWidth, buttonHeight, gap, actionLeft, actionLeft - gap * 2);
     }
 
-    internal float X(int action) => ActionLeft + action % Columns * (ButtonWidth + Gap);
-    internal float Y(int action) => action / Columns * (ButtonHeight + Gap);
+    internal float X(int action) => ActionLeft + action * (ButtonWidth + Gap);
 }

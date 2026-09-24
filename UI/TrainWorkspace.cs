@@ -1,4 +1,5 @@
 using Dalamud.Bindings.ImGui;
+using Dalamud.Interface;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -36,17 +37,25 @@ public sealed partial class Plugin
     private void DrawTrainWorkspace(bool popout)
     {
         _trainWorkspaceDrawnAt = DateTime.UtcNow;
-        DrawTrainNavigation();
-        var scanning = _config.ScanningPaused ? "Paused · Resume" : "Scanning · Pause";
-        TrainControlSameLine(scanning);
+        var operatingStart = ImGui.GetCursorPos();
+        var operatingWidth = ImGui.GetContentRegionAvail().X;
+        var scanButtonSize = ImGui.GetFrameHeight();
+        var navigationMinimum = ImGui.CalcTextSize("Next Mark").X + ImGui.GetStyle().FramePadding.X * 2;
+        if (navigationMinimum + scanButtonSize + ImGui.GetStyle().ItemSpacing.X > operatingWidth)
+            ImGui.SetCursorPosY(operatingStart.Y + scanButtonSize + ImGui.GetStyle().ItemSpacing.Y);
+        DrawTrainNavigation(scanButtonSize + ImGui.GetStyle().ItemSpacing.X);
+        var navigationEnd = ImGui.GetCursorPos();
+        ImGui.SetCursorPos(new Vector2(operatingStart.X + Math.Max(0, operatingWidth - scanButtonSize), operatingStart.Y));
         ImGui.BeginDisabled(TrainMutationBusy);
-        if (ImGui.Button(scanning))
+        if (TrainIconButton(_config.ScanningPaused ? FontAwesomeIcon.Play : FontAwesomeIcon.Pause, new Vector2(scanButtonSize)))
         {
             _config.ScanningPaused = !_config.ScanningPaused;
             _config.Save();
         }
         ImGui.EndDisabled();
-        if (ImGui.IsItemHovered()) ImGui.SetTooltip("Controls new scouting records and automatic scout credit. Existing deaths still update while paused.");
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip((_config.ScanningPaused ? "Scanning paused — resume" : "Scanning — pause")
+            + "\nControls new scouting records and automatic scout credit. Existing deaths still update while paused.");
+        ImGui.SetCursorPos(new Vector2(operatingStart.X, Math.Max(navigationEnd.Y, ImGui.GetCursorPosY())));
 
         foreach (var page in Enum.GetValues<TrainWorkspacePage>())
         {
@@ -57,7 +66,7 @@ public sealed partial class Plugin
             if (selected) ImGui.PopStyleColor();
         }
         ImGui.Separator();
-        DrawTrainContext();
+        if (_trainWorkspacePage == TrainWorkspacePage.Route) DrawTrainContext();
 
         var footerHeight = TrainWorkspaceFooterHeight();
         // All setup/report details scroll. Only operating controls and the relevant
@@ -119,7 +128,7 @@ public sealed partial class Plugin
     {
         ImGui.BeginDisabled(TrainMutationBusy);
         DrawSettingsHeading("Route preset");
-        DrawPresetControls(showStatus: false);
+        DrawPresetControls();
         ImGui.Spacing();
         DrawSettingsHeading("Route tools and view");
         DrawTrainControls();
