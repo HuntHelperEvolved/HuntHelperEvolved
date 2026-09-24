@@ -125,8 +125,10 @@ public sealed partial class Plugin
             ImGui.TextWrapped(context);
             if (inline) ImGui.SameLine();
             var controlsWidth = inline ? width - contextWidth - spacing : width;
-            DrawPresetSelector("##Route preset", Math.Min(280, Math.Max(1, controlsWidth)));
-            DrawAddTrainFlagControls();
+            var presetX = ImGui.GetCursorPosX();
+            var presetWidth = Math.Min(280, Math.Max(1, controlsWidth));
+            DrawPresetSelector("##Route preset", presetWidth);
+            DrawAddTrainFlagControls(presetX, presetWidth);
         }
         else
         {

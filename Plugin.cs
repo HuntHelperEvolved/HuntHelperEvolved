@@ -2003,9 +2003,10 @@ public sealed partial class Plugin : IDalamudPlugin
         if (ImGui.IsItemHovered()) ImGui.SetTooltip("Announce the next aetheryte without teleporting or changing the current map flag");
     }
 
-    private void DrawAddTrainFlagControls()
+    private void DrawAddTrainFlagControls(float? labelX = null, float labelWidth = 110)
     {
         ImGui.BeginDisabled(TrainMutationBusy);
+        var buttonX = ImGui.GetCursorPosX();
         if (ImGui.Button("Add Flag") && !TrainMutationBusy)
         {
             var added = _detector.AddCustomFlag(_customFlagLabel);
@@ -2014,10 +2015,16 @@ public sealed partial class Plugin : IDalamudPlugin
             else
                 _customFlagLabel = string.Empty;
         }
+        var buttonRight = buttonX + ImGui.GetItemRectSize().X;
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip("Adds your current map flag to the train as a custom stop");
-        TrainControlSameLine("flag name (optional)");
-        ImGui.SetNextItemWidth(110);
+        if (labelX is { } x)
+        {
+            if (buttonRight + ImGui.GetStyle().ItemSpacing.X <= x) ImGui.SameLine();
+            ImGui.SetCursorPosX(x);
+        }
+        else TrainControlSameLine("flag name (optional)");
+        ImGui.SetNextItemWidth(labelWidth);
         ImGui.InputTextWithHint("##customFlagLabel", "flag name", ref _customFlagLabel, 64);
         ImGui.EndDisabled();
     }
