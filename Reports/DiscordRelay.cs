@@ -57,21 +57,30 @@ public static class DiscordRelay
             .Distinct(StringComparer.OrdinalIgnoreCase).Select(ScoutingReport.EscapeText).ToList();
         if (names.Count > 0) details.Append($"\n\nScouts: {string.Join(", ", names)}");
 
-        var reportEmbeds = ChunkByLength(details.ToString(), DescriptionLimit)
-            .Select((description, i) => new DiscordEmbedPreview(
-                i == 0 ? "🔭 Scouting Report" : "🔭 Scouting Report (continued)", description)).ToList();
-        if (!PreparedDiscordReport.FitsOneMessage(reportEmbeds))
+        var reportText = details.ToString();
+        var combined = new DiscordEmbedPreview("🔭 Scouting Report", codeBlock, ScoutFields(reportText));
+        if (PreparedDiscordReport.FitsOneMessage(new[] { combined }))
+            return PreparedDiscordReport.FromMessages(new[] { combined });
+
+        // One Discord card can use its description plus stacked fields while
+        // respecting each component's individual limit.
+        var description = ChunkByLength(reportText, DescriptionLimit)[0];
+        var report = new DiscordEmbedPreview("🔭 Scouting Report", description,
+            ScoutFields(reportText[description.Length..]));
+        if (!PreparedDiscordReport.FitsOneMessage(new[] { report }))
             return new PreparedDiscordReport(Array.Empty<DiscordEmbedPreview>(), packEmbeds: true,
                 emptyMessage: "Scouting report not sent: the report details exceed Discord's single-message limit. Report a smaller train or shorten the scout credits. Nothing was posted.");
 
         var codeEmbed = new DiscordEmbedPreview("Import code", codeBlock);
-        var combined = new[] { codeEmbed }.Concat(reportEmbeds).ToList();
-        // Prefer one message. If it does not fit, the complete code stands alone
-        // in the first message and every report detail remains in the second.
-        return PreparedDiscordReport.FitsOneMessage(combined)
-            ? PreparedDiscordReport.FromMessages(combined)
-            : PreparedDiscordReport.FromMessages(new[] { codeEmbed }, reportEmbeds);
+        // The first message contains only the intact code; the second contains
+        // one complete report card. Both are validated before any HTTP request.
+        return PreparedDiscordReport.FromMessages(new[] { codeEmbed }, new[] { report });
     }
+
+    // Discord requires field names; an invisible name avoids repeated headings.
+    private static IReadOnlyList<DiscordEmbedFieldPreview>? ScoutFields(string text) => text.Length == 0 ? null
+        : ChunkByLength(text, 1024).Where(chunk => !string.IsNullOrWhiteSpace(chunk))
+            .Select(chunk => new DiscordEmbedFieldPreview("\u200b", chunk)).ToList();
 
     internal static Task<(bool Success, string Message)> PostPreparedReportAsync(List<WebhookEntry> webhooks,
         PreparedDiscordReport report, CancellationToken cancellationToken = default) =>

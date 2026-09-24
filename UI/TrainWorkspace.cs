@@ -257,6 +257,7 @@ public sealed partial class Plugin
                 ImGui.TextDisabled(i == 0 ? "Message 1 — import code" : "Message 2 — scouting report");
             if (embed.Description.StartsWith("```", StringComparison.Ordinal))
             {
+                if (embed.Title != "Import code") DrawSettingsHeading(embed.Title);
                 if (ImGui.CollapsingHeader("Import code"))
                 {
                     var code = embed.Description.Trim().Trim('`').Trim();
@@ -276,6 +277,12 @@ public sealed partial class Plugin
             {
                 DrawSettingsHeading(embed.Title);
                 ImGui.TextWrapped(embed.Description);
+            }
+            foreach (var field in embed.Fields ?? Array.Empty<DiscordEmbedFieldPreview>())
+            {
+                if (!string.IsNullOrWhiteSpace(field.Name.Replace("\u200b", string.Empty)))
+                    DrawSettingsHeading(field.Name);
+                ImGui.TextWrapped(field.Value);
             }
             ImGui.PopID();
         }
@@ -310,8 +317,8 @@ public sealed partial class Plugin
             AddRow(ImGui.GetFrameHeight());
             AddRow(TextHeight(TrainReportSendHint));
         }
-        if (TrainMutationBusy) AddRow(TextHeight(TrainReportBusyText));
-        if (!string.IsNullOrEmpty(_lastPostResult)) AddRow(TextHeight(_lastPostResult));
+        if (ShowTrainReportProgress) AddRow(TextHeight(TrainReportBusyText));
+        if (!string.IsNullOrEmpty(TrainWorkspaceResultText)) AddRow(TextHeight(TrainWorkspaceResultText));
         // EndChild and the separator each advance by ItemSpacing.Y. The last
         // footer row needs its visible height, without another trailing gap.
         return height + style.ItemSpacing.Y * 2;
@@ -320,7 +327,10 @@ public sealed partial class Plugin
     private const string TrainReviewCompletionLabel = "Review completion…";
     private const string TrainReportSendHint = "Hold Shift and click to send.";
     private bool HasTrainWorkspaceFooter => _trainWorkspacePage != TrainWorkspacePage.Setup
-        || TrainMutationBusy || !string.IsNullOrEmpty(_lastPostResult);
+        || !string.IsNullOrEmpty(TrainWorkspaceResultText);
+    private bool ShowTrainReportProgress => _trainWorkspacePage == TrainWorkspacePage.Reports && TrainMutationBusy;
+    private string TrainWorkspaceResultText => !_trainResultReportsOnly || _trainWorkspacePage == TrainWorkspacePage.Reports
+        ? _lastPostResult : string.Empty;
     private string TrainReportBusyText => _completion.IsBusy ? "Finishing report…" : "Sending report…";
 
     private string TrainRouteCountText()
@@ -380,8 +390,8 @@ public sealed partial class Plugin
             ImGui.EndDisabled();
             DrawTrainFooterMutedText(TrainReportSendHint);
         }
-        if (TrainMutationBusy) DrawTrainFooterMutedText(TrainReportBusyText);
-        if (!string.IsNullOrEmpty(_lastPostResult)) ImGui.TextWrapped(_lastPostResult);
+        if (ShowTrainReportProgress) DrawTrainFooterMutedText(TrainReportBusyText);
+        if (!string.IsNullOrEmpty(TrainWorkspaceResultText)) ImGui.TextWrapped(TrainWorkspaceResultText);
     }
 
     private void SetTrainReportPreview(PreparedDiscordReport report)
@@ -391,7 +401,9 @@ public sealed partial class Plugin
         // network await, so this matches that send's webhook snapshot.
         _trainReportDestinationCount = ReportDestinationCount();
         _trainReportDisplay = report.Embeds.Select(embed => new DiscordEmbedPreview(embed.Title,
-            embed.Description.StartsWith("```", StringComparison.Ordinal) ? embed.Description : TrainPreviewText(embed.Description))).ToArray();
+            embed.Description.StartsWith("```", StringComparison.Ordinal) ? embed.Description : TrainPreviewText(embed.Description),
+            embed.Fields?.Select(field => new DiscordEmbedFieldPreview(TrainPreviewText(field.Name),
+                TrainPreviewText(field.Value))).ToArray())).ToArray();
         _trainPreviewAt = DateTime.UtcNow;
         _trainPreviewError = string.Empty;
     }

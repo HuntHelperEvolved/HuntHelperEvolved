@@ -201,7 +201,17 @@ public sealed partial class Plugin : IDalamudPlugin
     // worlds is two marks, and the pointer has to say which.
     private (uint NameId, uint Instance, uint WorldId)? _currentMark;
 
-    private string _lastPostResult = string.Empty;
+    private string _trainResult = string.Empty;
+    private bool _trainResultReportsOnly;
+    private string _lastPostResult
+    {
+        get => _trainResult;
+        set
+        {
+            _trainResult = value;
+            _trainResultReportsOnly = false;
+        }
+    }
     private bool _reportPostBusy;
     private int _selectedNarrowRiftSpawn;
 
@@ -851,7 +861,7 @@ public sealed partial class Plugin : IDalamudPlugin
         if (_disposed) return;
         if (_reportPostBusy || _completion.IsBusy)
         {
-            _lastPostResult = "A Discord report is already being sent.";
+            SetReportPostResult("A Discord report is already being sent.");
             return;
         }
         _reportPostBusy = true;
@@ -865,7 +875,7 @@ public sealed partial class Plugin : IDalamudPlugin
             await _framework.RunOnFrameworkThread(() =>
             {
                 if (_disposed) return;
-                _lastPostResult = message;
+                SetReportPostResult(message);
                 if (success) onSuccess?.Invoke();
                 if (!success) _log.Error($"Hunt Helper Evolved Discord report failed: {message}");
             });
@@ -877,7 +887,7 @@ public sealed partial class Plugin : IDalamudPlugin
             if (!token.IsCancellationRequested)
                 await _framework.RunOnFrameworkThread(() =>
                 {
-                    if (!_disposed) _lastPostResult = "Report failed. See the plugin log.";
+                    if (!_disposed) SetReportPostResult("Report failed. See the plugin log.");
                 });
         }
         finally
@@ -885,6 +895,12 @@ public sealed partial class Plugin : IDalamudPlugin
             if (!token.IsCancellationRequested)
                 await _framework.RunOnFrameworkThread(() => _reportPostBusy = false);
         }
+    }
+
+    private void SetReportPostResult(string message)
+    {
+        _lastPostResult = message;
+        _trainResultReportsOnly = true;
     }
 
     private readonly TrainCompletionGuard _completion = new();
@@ -910,15 +926,15 @@ public sealed partial class Plugin : IDalamudPlugin
     private async Task EndTrainNowAsync()
     {
         if (_disposed) return;
-        if (_completion.IsBusy || _reportPostBusy) { _lastPostResult = "A Discord report is already being sent."; return; }
+        if (_completion.IsBusy || _reportPostBusy) { SetReportPostResult("A Discord report is already being sent."); return; }
         if (_config.SyncEnabled && _config.SyncShareTrain && (!_sync.IsConnected || !_sync.SupportsPartialFinish))
         {
-            _lastPostResult = "Shared report not sent: connect to a server with persistent partial-report support first. The train has been kept.";
+            SetReportPostResult("Shared report not sent: connect to a server with persistent partial-report support first. The train has been kept.");
             _chatGui.PrintError("[Hunt Helper Evolved] " + _lastPostResult);
             return;
         }
         var marks = BuildCurrentMarks();
-        if (marks.Count == 0) { _lastPostResult = "Nothing to post — the train is empty."; return; }
+        if (marks.Count == 0) { SetReportPostResult("Nothing to post — the train is empty."); return; }
 
         // A report covers only the expansions the train actually killed
         // something in, and only those come off the train when it posts. The
@@ -926,7 +942,7 @@ public sealed partial class Plugin : IDalamudPlugin
         var partial = CanReportPartially;
         var reportMarks = partial ? TrainReport.ForReport(marks) : marks;
         if (reportMarks.Count == 0)
-        { _lastPostResult = "Nothing to post — no marks were killed on this train."; return; }
+        { SetReportPostResult("Nothing to post — no marks were killed on this train."); return; }
 
         var (reportedWatches, keptWatches) = partial
             ? TrainReport.SplitWatches(_config.Flags, TrainReport.ReportedLegs(marks), marks.Select(m => m.WorldId))
@@ -953,11 +969,11 @@ public sealed partial class Plugin : IDalamudPlugin
             await _framework.RunOnFrameworkThread(() =>
             {
                 if (_disposal.IsCancellationRequested) return;
-                _lastPostResult = message;
+                SetReportPostResult(message);
                 if (!success) { _chatGui.PrintError($"[Hunt Helper Evolved] Failed to post to Discord: {message}"); return; }
                 if (CompletionSnapshot() != snapshot)
                 {
-                    _lastPostResult = "Discord posted; train changed while sending and was kept.";
+                    SetReportPostResult("Discord posted; train changed while sending and was kept.");
                     _chatGui.Print("[Hunt Helper Evolved] " + _lastPostResult);
                     return;
                 }
@@ -991,7 +1007,7 @@ public sealed partial class Plugin : IDalamudPlugin
                     if (_disposal.IsCancellationRequested) return;
                     if (result.Accepted && !serverSubmission.ClearShared && CompletionSnapshot()==snapshot)
                         ClearReportedMarks(submitted, keptWatches, partial);
-                    _lastPostResult = "Discord posted. " + result.Message;
+                    SetReportPostResult("Discord posted. " + result.Message);
                     _chatGui.Print("[Hunt Helper Evolved] " + _lastPostResult);
                 });
             }
@@ -1003,7 +1019,7 @@ public sealed partial class Plugin : IDalamudPlugin
                 await _framework.RunOnFrameworkThread(() =>
                 {
                     if (_disposal.IsCancellationRequested) return;
-                    _lastPostResult = "Report failed; the train has been preserved. See the plugin log.";
+                    SetReportPostResult("Report failed; the train has been preserved. See the plugin log.");
                     _chatGui.PrintError($"[Hunt Helper Evolved] {_lastPostResult}");
                 });
         }

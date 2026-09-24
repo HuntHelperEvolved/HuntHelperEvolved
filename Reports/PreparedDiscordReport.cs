@@ -4,7 +4,9 @@ using System.Linq;
 
 namespace HuntHelperEvolved;
 
-internal sealed record DiscordEmbedPreview(string Title, string Description);
+internal sealed record DiscordEmbedFieldPreview(string Name, string Value);
+internal sealed record DiscordEmbedPreview(string Title, string Description,
+    IReadOnlyList<DiscordEmbedFieldPreview>? Fields = null);
 
 /// <summary>A materialized report: the preview and HTTP payloads share the same text.</summary>
 internal sealed class PreparedDiscordReport
@@ -20,7 +22,8 @@ internal sealed class PreparedDiscordReport
 
     private PreparedDiscordReport(IReadOnlyList<IReadOnlyList<DiscordEmbedPreview>> messageEmbeds, string emptyMessage)
     {
-        var snapshot = messageEmbeds.Select(message => message.ToList().AsReadOnly()).ToList();
+        var snapshot = messageEmbeds.Select(message => message.Select(embed => embed with
+            { Fields = embed.Fields?.ToList().AsReadOnly() }).ToList().AsReadOnly()).ToList();
         if (snapshot.Any(message => !FitsOneMessage(message)))
             throw new ArgumentException("Discord message text exceeds its limit.", nameof(messageEmbeds));
         Embeds = snapshot.SelectMany(message => message).ToList().AsReadOnly();
@@ -30,8 +33,18 @@ internal sealed class PreparedDiscordReport
 
     internal static bool FitsOneMessage(IReadOnlyList<DiscordEmbedPreview> embeds) =>
         embeds.Count is > 0 and <= 10
-        && embeds.All(embed => embed.Title.Length <= 256 && embed.Description.Length <= 4096)
-        && embeds.Sum(embed => (long)embed.Title.Length + embed.Description.Length) <= 6000;
+        && embeds.All(ValidEmbed)
+        && embeds.Sum(TextLength) <= 6000;
+
+    private static bool ValidEmbed(DiscordEmbedPreview embed) =>
+        embed.Title.Length <= 256 && embed.Description.Length <= 4096
+        && (embed.Fields is null || embed.Fields.Count <= 25 && embed.Fields.All(field =>
+            field.Name.Length is > 0 and <= 256 && field.Value.Length is > 0 and <= 1024
+            && !string.IsNullOrWhiteSpace(field.Name) && !string.IsNullOrWhiteSpace(field.Value)));
+
+    private static long TextLength(DiscordEmbedPreview embed) =>
+        (long)embed.Title.Length + embed.Description.Length
+        + (embed.Fields?.Sum(field => (long)field.Name.Length + field.Value.Length) ?? 0);
 
     /// <summary>Preserves explicit message boundaries after validating every complete message.</summary>
     internal static PreparedDiscordReport FromMessages(params IReadOnlyList<DiscordEmbedPreview>[] messages) =>
@@ -41,12 +54,12 @@ internal sealed class PreparedDiscordReport
     {
         var messages = new List<IReadOnlyList<DiscordEmbedPreview>>();
         var batch = new List<DiscordEmbedPreview>();
-        var textLength = 0;
+        long textLength = 0;
         foreach (var embed in embeds)
         {
-            if (embed.Title.Length > 256 || embed.Description.Length > 4096)
+            if (!ValidEmbed(embed))
                 throw new ArgumentException("Discord embed text exceeds its limit.", nameof(embeds));
-            var length = embed.Title.Length + embed.Description.Length;
+            var length = TextLength(embed);
             if (batch.Count > 0 && (!packEmbeds || batch.Count == 10 || textLength + length > 6000))
             {
                 messages.Add(batch);
@@ -62,6 +75,17 @@ internal sealed class PreparedDiscordReport
 
     private static object Payload(IEnumerable<DiscordEmbedPreview> embeds) => new
     {
-        embeds = embeds.Select(e => new { title = e.Title, description = e.Description, color = 3066993 }).ToList().AsReadOnly(),
+        embeds = embeds.Select(EmbedPayload).ToList().AsReadOnly(),
     };
+
+    private static object EmbedPayload(DiscordEmbedPreview embed)
+    {
+        if (embed.Fields is not { Count: > 0 })
+            return new { title = embed.Title, description = embed.Description, color = 3066993 };
+        return new
+        {
+            title = embed.Title, description = embed.Description, color = 3066993,
+            fields = embed.Fields.Select(field => new { name = field.Name, value = field.Value, inline = false }).ToList().AsReadOnly(),
+        };
+    }
 }

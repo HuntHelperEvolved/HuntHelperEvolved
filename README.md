@@ -188,14 +188,15 @@ is not silently sent with a new train. Undo can restore a reset draft without
 replacing newer edits.
 
 The intact import code comes first, followed by the scouting summary,
-exceptions, notes and credits. These share one Discord message when they fit;
+exceptions, notes and credits. These share one card in one Discord message when they fit;
 otherwise the code is the first message and the full report is the second.
 The preview shows the outgoing message count per destination. If either part
 exceeds its own Discord limit, sending is blocked before anything is posted;
 Copy Export Code remains available in Setup. Sending refreshes the latest
 train snapshot. While posting, the
 captured report remains visible and subsequent note edits belong to the next
-report. Both train views show progress and results.
+report. The Reports page in both train views shows webhook progress and results;
+Route and Setup reserve no space for those messages.
 
 **Completed-train reports** summarize observed kills by world and expansion.
 Each overall respawn range runs from the earliest individual window opening to
