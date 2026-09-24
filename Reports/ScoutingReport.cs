@@ -76,7 +76,7 @@ public static class ScoutingReport
                     .OrderBy(p => p.Value.ZoneOrder).ThenBy(p => p.Value.Name)
                     .Select(p => EscapeText(p.Value.Name)).ToList();
                 if (absent.Count > 0)
-                    block.Append($"\nNot recorded: {string.Join(", ", absent)} (instances unknown)");
+                    block.Append($"\nNot recorded: {string.Join(", ", absent)}");
                 blocks.Add(block.ToString());
             }
         }
