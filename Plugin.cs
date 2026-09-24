@@ -813,16 +813,18 @@ public sealed partial class Plugin : IDalamudPlugin
     private Task SendTestAsync() => SendReportAsync(
         (webhooks, token) => DiscordRelay.PostTestAsync(webhooks, token));
 
-    private Task SendScoutingReportAsync()
+    private Task SendScoutingReportAsync() => SendReportAsync((webhooks, token) =>
     {
-        var list = _detector.Ordered().Where(d => !d.IsCustom).Select(d => new TrainMobRecord(
+        // Preparation also belongs inside the send guard: exporting can fail,
+        // and a rejected duplicate must not read the train or build an export.
+        var marks = _detector.Ordered();
+        var list = marks.Where(d => !d.IsCustom).Select(d => new TrainMobRecord(
             d.Name, d.NameId, d.TerritoryId, d.MapId, d.Instance,
             d.MapPosition, d.Dead, d.LastSeenUtc)).ToList();
         var names = CombinedTrainScouts();
-        var ownCode = TrainExchange.Export(_detector.Ordered());
-        return SendReportAsync((webhooks, token) =>
-            DiscordRelay.PostScoutingReportAsync(webhooks, list, names, ownCode, token));
-    }
+        var ownCode = TrainExchange.Export(marks);
+        return DiscordRelay.PostScoutingReportAsync(webhooks, list, names, ownCode, token);
+    });
 
     private async Task SendReportAsync(
         Func<List<WebhookEntry>, CancellationToken, Task<(bool Success, string Message)>> post)
