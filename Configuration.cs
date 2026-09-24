@@ -5,6 +5,7 @@ using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Diagnostics;
 using System.Numerics;
 
 namespace HuntHelperEvolved;
@@ -799,19 +800,17 @@ public class Configuration : IPluginConfiguration
         }
     }
 
-    [JsonIgnore] private bool _windowStateSavePending;
+    [JsonIgnore] private readonly DeferredSave _save = new();
+    [JsonIgnore] private readonly Stopwatch _saveClock = Stopwatch.StartNew();
 
-    // Visibility changes do not justify serializing hunt history in the draw callback.
-    public void DeferWindowStateSave() => _windowStateSavePending = true;
+    public void DeferWindowStateSave() => Save();
 
-    public void FlushWindowStateSave()
+    /// <summary>Queues a write; framework updates coalesce changes into one write every two seconds.</summary>
+    public void Save() => _save.MarkChanged(_saveClock.Elapsed);
+
+    public void Flush(bool force = false)
     {
-        if (_windowStateSavePending) Save();
-    }
-
-    public void Save()
-    {
-        _pluginInterface?.SavePluginConfig(this);
-        _windowStateSavePending = false;
+        if (_pluginInterface is not null)
+            _save.Flush(_saveClock.Elapsed, () => _pluginInterface.SavePluginConfig(this), force);
     }
 }

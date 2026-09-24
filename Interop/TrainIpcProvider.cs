@@ -4,6 +4,8 @@ using Dalamud.Plugin.Services;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace HuntHelperEvolved;
 
@@ -17,7 +19,11 @@ public sealed class TrainIpcProvider : IDisposable
     private const string OwnGetTrainListGate = "HuntHelperEvolved.GetTrainList";
     private const string OwnImportTrainListGate = "HuntHelperEvolved.ImportTrainList";
 
-    private bool _disposed;
+    private volatile bool _disposed;
+    private readonly IFramework _framework;
+    private sealed record Snapshot(TrainMobRecord[] Legacy, NativeTrainRecord[] Native);
+    private Snapshot _snapshot = new(Array.Empty<TrainMobRecord>(), Array.Empty<NativeTrainRecord>());
+    private double _secondsSinceSnapshot;
     private readonly MarkDetector _detector;
     private readonly IPluginLog _log;
 
@@ -28,19 +34,20 @@ public sealed class TrainIpcProvider : IDisposable
     private ICallGateProvider<List<TrainMobRecord>, bool>? _ownImportTrainList;
 
     public TrainIpcProvider(
-        IDalamudPluginInterface pluginInterface, MarkDetector detector, IPluginLog log)
+        IDalamudPluginInterface pluginInterface, IFramework framework, MarkDetector detector, IPluginLog log)
     {
         _detector = detector;
+        _framework = framework;
         _log = log;
+        RefreshSnapshot();
+        _framework.Update += UpdateSnapshot;
 
         try
         {
             _ownApiVersion = pluginInterface.GetIpcProvider<int>(OwnApiVersionGate);
             _ownApiVersion.RegisterFunc(() => ApiVersion);
             _nativeGet = pluginInterface.GetIpcProvider<List<NativeTrainRecord>>("HuntHelperEvolved.GetTrainListV2");
-            _nativeGet.RegisterFunc(() => _detector.Ordered().Where(m => !m.IsCustom).Select(m => new NativeTrainRecord(
-                m.Name, m.NameId, m.TerritoryId, m.MapId, m.Instance, m.WorldId, m.WorldName,
-                m.MapPosition, m.Dead, m.LastSeenUtc, m.DeathObservedAtUtc, m.SnipedAtUtc)).ToList());
+            _nativeGet.RegisterFunc(() => Volatile.Read(ref _snapshot).Native.ToList());
             _nativeImport = pluginInterface.GetIpcProvider<List<NativeTrainRecord>, bool>("HuntHelperEvolved.ImportTrainListV2");
             _nativeImport.RegisterAction(ImportNative);
 
@@ -67,22 +74,43 @@ public sealed class TrainIpcProvider : IDisposable
     /// Never throws: this runs inside somebody else's plugin's call, and an
     /// exception here would surface there as a fault in their code.
     /// </summary>
-    private List<TrainMobRecord> GetTrainList()
+    private List<TrainMobRecord> GetTrainList() => Volatile.Read(ref _snapshot).Legacy.ToList();
+
+    // Records contain copied values. IPC callers never enumerate the live detector,
+    // and each caller owns its returned list. Snapshot age is at most one scan tick.
+    private void UpdateSnapshot(IFramework framework)
+    {
+        if (_disposed) return;
+        _secondsSinceSnapshot += framework.UpdateDelta.TotalSeconds;
+        if (_secondsSinceSnapshot < 0.1) return;
+        _secondsSinceSnapshot = 0;
+        RefreshSnapshot();
+    }
+
+    private void RefreshSnapshot()
+    {
+        var marks = _detector.Ordered().Where(m => !m.IsCustom).ToList();
+        var legacy = marks.Select(m => new TrainMobRecord(m.Name, m.NameId, m.TerritoryId,
+            m.MapId, m.Instance, m.MapPosition, m.Dead, m.LastSeenUtc)).ToArray();
+        var native = marks.Select(m => new NativeTrainRecord(m.Name, m.NameId, m.TerritoryId,
+            m.MapId, m.Instance, m.WorldId, m.WorldName, m.MapPosition, m.Dead,
+            m.LastSeenUtc, m.DeathObservedAtUtc, m.SnipedAtUtc)).ToArray();
+        Volatile.Write(ref _snapshot, new Snapshot(legacy, native));
+    }
+
+    private async Task MergeOnFrameworkThread(List<DetectedMark> marks)
     {
         try
         {
-            return _detector.Ordered()
-                .Where(m => !m.IsCustom)
-                .Select(m => new TrainMobRecord(
-                    m.Name, m.NameId, m.TerritoryId, m.MapId, m.Instance,
-                    m.MapPosition, m.Dead, m.LastSeenUtc))
-                .ToList();
+            await _framework.RunOnFrameworkThread(() =>
+            {
+                if (_disposed) return;
+                var added = _detector.Merge(marks);
+                RefreshSnapshot();
+                _log.Information($"IPC import: {marks.Count} marks offered, {added} new.");
+            });
         }
-        catch (Exception ex)
-        {
-            _log.Error(ex, "Could not build the train list for an IPC caller.");
-            return new List<TrainMobRecord>();
-        }
+        catch (Exception ex) { _log.Error(ex, "Could not import a train list offered over IPC."); }
     }
 
     /// <summary>
@@ -97,9 +125,10 @@ public sealed class TrainIpcProvider : IDisposable
     {
         try
         {
-            if (incoming == null) return;
+            if (_disposed || incoming == null) return;
 
-            var marks = incoming.Select(m => new DetectedMark
+            var marks = incoming.Take(1000).Where(m => m.Instance <= 9
+                && float.IsFinite(m.Position.X) && float.IsFinite(m.Position.Y)).Select(m => new DetectedMark
             {
                 Name = m.Name,
                 NameId = m.MobID,
@@ -113,8 +142,7 @@ public sealed class TrainIpcProvider : IDisposable
                 DeathObservedAtUtc = null, // Legacy IPC carries no death timestamp.
             }).ToList();
 
-            var added = _detector.Merge(marks);
-            _log.Information($"IPC import: {marks.Count} marks offered, {added} new.");
+            _ = MergeOnFrameworkThread(marks);
         }
         catch (Exception ex)
         {
@@ -124,20 +152,26 @@ public sealed class TrainIpcProvider : IDisposable
 
     private void ImportNative(List<NativeTrainRecord> incoming)
     {
-        if (incoming is null) return;
-        var snapshot = incoming.Take(1000).Where(m => m is not null && m.WorldId != 0
-            && m.Instance <= 9 && float.IsFinite(m.Position.X) && float.IsFinite(m.Position.Y))
-            .Select(m => new DetectedMark { Name=m.Name, NameId=m.NameId,
-                TerritoryId=m.TerritoryId, MapId=m.MapId, Instance=m.Instance,
-                WorldId=m.WorldId, WorldName=m.WorldName, MapPosition=m.Position,
-                Dead=m.Dead, LastSeenUtc=m.LastSeenUtc, FirstSeenUtc=m.LastSeenUtc,
-                DeathObservedAtUtc=m.DeathObservedAtUtc, SnipedAtUtc=m.SnipedAtUtc }).ToList();
-        _ = HuntTally.Service.Framework.RunOnFrameworkThread(() => { if (!_disposed) _detector.Merge(snapshot); });
+        try
+        {
+            if (_disposed || incoming is null) return;
+            var snapshot = incoming.Take(1000).Where(m => m is not null && m.WorldId != 0
+                && m.Instance <= 9 && float.IsFinite(m.Position.X) && float.IsFinite(m.Position.Y))
+                .Select(m => new DetectedMark { Name=m.Name, NameId=m.NameId,
+                    TerritoryId=m.TerritoryId, MapId=m.MapId, Instance=m.Instance,
+                    WorldId=m.WorldId, WorldName=m.WorldName, MapPosition=m.Position,
+                    Dead=m.Dead, LastSeenUtc=m.LastSeenUtc, FirstSeenUtc=m.LastSeenUtc,
+                    DeathObservedAtUtc=m.DeathObservedAtUtc, SnipedAtUtc=m.SnipedAtUtc }).ToList();
+            _ = MergeOnFrameworkThread(snapshot);
+        }
+        catch (Exception ex) { _log.Error(ex, "Could not import a native train list offered over IPC."); }
     }
 
     public void Dispose()
     {
         _disposed = true;
+        _framework.Update -= UpdateSnapshot;
+        Volatile.Write(ref _snapshot, new Snapshot(Array.Empty<TrainMobRecord>(), Array.Empty<NativeTrainRecord>()));
         // Unregister rather than leave dangling: a gate still pointing at a
         // disposed plugin is a crash in whoever calls it next.
         try { _nativeGet?.UnregisterFunc(); } catch { }

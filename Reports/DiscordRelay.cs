@@ -1,8 +1,7 @@
-using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Net.Http;
+using System.Threading;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -10,12 +9,10 @@ namespace HuntHelperEvolved;
 
 public static class DiscordRelay
 {
-    private static readonly HttpClient Http = new();
-
     // Discord embed side-bar colour (a calm green). Decimal form of hex 2ECC71.
     private const int EmbedColor = 3066993;
 
-    public static Task<(bool Success, string Message)> PostTestAsync(List<WebhookEntry> webhooks)
+    public static Task<(bool Success, string Message)> PostTestAsync(List<WebhookEntry> webhooks, CancellationToken cancellationToken = default)
     {
         var payload = new
         {
@@ -30,50 +27,46 @@ public static class DiscordRelay
             },
         };
 
-        return SendToAllAsync(webhooks, payload);
+        return DiscordWebhookSender.SendAsync(webhooks, new[] { payload }, cancellationToken);
     }
 
-    public static Task<(bool Success, string Message)> PostScoutingReportAsync(List<WebhookEntry> webhooks, List<TrainMobRecord> marks, List<string> scoutNames, string exportCode)
+    public static Task<(bool Success, string Message)> PostScoutingReportAsync(List<WebhookEntry> webhooks, List<TrainMobRecord> marks, List<string> scoutNames, string exportCode, CancellationToken cancellationToken = default)
     {
         if (marks.Count == 0)
             return Task.FromResult((false, "Nothing to report — the train list is empty."));
 
-        var nowUnix = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-        var summary = ScoutingReport.BuildSummary(marks);
+        return DiscordWebhookSender.SendAsync(webhooks,
+            BuildScoutingMessages(marks, scoutNames, exportCode, DateTimeOffset.UtcNow.ToUnixTimeSeconds()), cancellationToken);
+    }
 
+    internal static IReadOnlyList<object> BuildScoutingMessages(List<TrainMobRecord> marks, List<string> scoutNames, string exportCode, long nowUnix)
+    {
+        var summary = ScoutingReport.BuildSummary(marks);
         var names = (scoutNames ?? new List<string>()).Where(n => !string.IsNullOrWhiteSpace(n)).ToList();
         var scoutedBy = names.Count > 0 ? $"\n\nScouted by {string.Join(", ", names)}" : "";
+        var details = $"Scouting done at <t:{nowUnix}:F>\n\n{summary}{scoutedBy}";
+        var codeBlock = $"```\n{exportCode}\n```";
+        var description = $"{codeBlock}\n{details}";
+        var descriptions = new List<string>();
 
-        string description;
-        if (exportCode.Length > 3800)
+        if (description.Length <= DescriptionLimit)
+            descriptions.Add(description);
+        else if (codeBlock.Length <= DescriptionLimit)
         {
-            // Discord embed descriptions cap at 4096 characters. Rather than ever
-            // post a code block that's been cut off mid-string (unusable to import),
-            // drop the code and say so plainly if a scout is genuinely too big.
-            description =
-                $"Scouting done at <t:{nowUnix}:F>\n\n{summary}\n\n" +
-                "(Export code omitted — this scout covers too many marks to fit in one " +
-                $"Discord message. Try sending separate reports per zone instead.){scoutedBy}";
+            // Keep the import code intact, even when the summary/scout list needs
+            // additional messages. Splitting the code would make it unusable.
+            descriptions.Add(codeBlock);
+            descriptions.AddRange(ChunkByLength(details, DescriptionLimit));
         }
         else
         {
-            description = $"```\n{exportCode}\n```\nScouting done at <t:{nowUnix}:F>\n\n{summary}{scoutedBy}";
+            descriptions.AddRange(ChunkByLength(
+                $"Scouting done at <t:{nowUnix}:F>\n\n{summary}\n\n" +
+                "(Export code omitted — this scout covers too many marks to fit in one " +
+                $"Discord message. Try sending separate reports per zone instead.){scoutedBy}", DescriptionLimit));
         }
 
-        var payload = new
-        {
-            embeds = new object[]
-            {
-                new
-                {
-                    title = "🔭 Scouting Report",
-                    description,
-                    color = EmbedColor,
-                },
-            },
-        };
-
-        return SendToAllAsync(webhooks, payload);
+        return BuildMessages("🔭 Scouting Report", descriptions);
     }
 
     /// <summary>
@@ -88,32 +81,33 @@ public static class DiscordRelay
     /// in-game preview reads from as well, so the preview and the post cannot
     /// disagree about what went out.
     /// </summary>
-    public static Task<(bool Success, string Message)> PostTrainCompleteAsync(List<WebhookEntry> webhooks, List<TrackedMark> marks, string? endedBy, List<FlagEntry>? flags = null)
+    public static Task<(bool Success, string Message)> PostTrainCompleteAsync(List<WebhookEntry> webhooks, List<TrackedMark> marks, string? endedBy, List<FlagEntry>? flags = null, CancellationToken cancellationToken = default)
     {
         if (marks.Count == 0)
             return Task.FromResult((false, "Nothing to report — no marks were killed on this train."));
 
-        var nowUnix = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        return DiscordWebhookSender.SendAsync(webhooks,
+            BuildTrainMessages(marks, endedBy, flags, DateTimeOffset.UtcNow.ToUnixTimeSeconds()), cancellationToken);
+    }
+
+    internal static IReadOnlyList<object> BuildTrainMessages(List<TrackedMark> marks, string? endedBy, List<FlagEntry>? flags, long nowUnix)
+    {
         var endedByLine = string.IsNullOrWhiteSpace(endedBy) ? "" : $"\nEnded by {endedBy}";
-        var body = BuildChronologicalBody(marks);
-        var flagFooter = BuildFlagFooter(flags);
+        var description = $"Finished <t:{nowUnix}:F> — {marks.Count(TrainReport.IsObservedKill)} observed kills{endedByLine}\n\n" +
+            BuildChronologicalBody(marks) + BuildFlagFooter(flags);
+        return BuildMessages("🚂 Train Complete", ChunkByLength(description, DescriptionLimit));
+    }
 
-        var chunks = ChunkByLength(body + flagFooter, 3800);
-        var embeds = new List<object>();
-        for (var i = 0; i < chunks.Count; i++)
+    private const int DescriptionLimit = 4096;
+
+    private static IReadOnlyList<object> BuildMessages(string title, IReadOnlyList<string> descriptions)
+    {
+        // One embed per message stays below both Discord's 4096-character
+        // description limit and its 6000-character combined embed-text limit.
+        return descriptions.Select((description, i) => (object)new
         {
-            embeds.Add(new
-            {
-                title = i == 0 ? "🚂 Train Complete" : "🚂 Train Complete (continued)",
-                description = i == 0
-                    ? $"Finished <t:{nowUnix}:F> — {marks.Count(TrainReport.IsObservedKill)} observed kills{endedByLine}\n\n{chunks[i]}"
-                    : chunks[i],
-                color = EmbedColor,
-            });
-        }
-
-        var payload = new { embeds };
-        return SendToAllAsync(webhooks, payload);
+            embeds = new[] { new { title = i == 0 ? title : title + " (continued)", description, color = EmbedColor } },
+        }).ToList();
     }
 
     /// <summary>
@@ -221,83 +215,26 @@ public static class DiscordRelay
     }
 
     /// <summary>
-    /// Splits text into chunks under the character limit, breaking only at line
-    /// boundaries. Used as a safety net for very large trains where the full
-    /// chronological list would exceed a single embed description's 4096-char
-    /// cap — extra chunks become additional embeds in the same message.
+    /// Preserves every character, preferring line boundaries. Oversized individual
+    /// lines are split too, without separating a UTF-16 surrogate pair.
     /// </summary>
-    private static List<string> ChunkByLength(string body, int limit)
+    internal static List<string> ChunkByLength(string body, int limit)
     {
-        var lines = body.Split('\n');
+        if (limit < 2) throw new ArgumentOutOfRangeException(nameof(limit));
         var chunks = new List<string>();
-        var current = new StringBuilder();
-
-        foreach (var line in lines)
+        for (var start = 0; start < body.Length;)
         {
-            if (current.Length > 0 && current.Length + line.Length + 1 > limit)
+            var length = Math.Min(limit, body.Length - start);
+            if (start + length < body.Length)
             {
-                chunks.Add(current.ToString());
-                current.Clear();
+                var newline = body.LastIndexOf('\n', start + length - 1, length);
+                if (newline >= start) length = newline - start + 1;
+                else if (char.IsHighSurrogate(body[start + length - 1]) && char.IsLowSurrogate(body[start + length])) length--;
             }
-            current.Append(line).Append('\n');
+            chunks.Add(body.Substring(start, length));
+            start += length;
         }
-
-        if (current.Length > 0) chunks.Add(current.ToString());
         if (chunks.Count == 0) chunks.Add(string.Empty);
-
         return chunks;
-    }
-
-    /// <summary>
-    /// Posts the same payload to every enabled, non-empty webhook (e.g. one per
-    /// Discord server) — disabled entries (like a testing channel toggled off)
-    /// are skipped entirely. Reports full success only if every enabled target
-    /// succeeded; otherwise names which ones failed and why.
-    /// </summary>
-    private static async Task<(bool Success, string Message)> SendToAllAsync(List<WebhookEntry>? webhooks, object payload)
-    {
-        var targets = (webhooks ?? new List<WebhookEntry>())
-            .Where(w => w.Enabled && !string.IsNullOrWhiteSpace(w.Url))
-            .Select(w => w.Url)
-            .Distinct()
-            .ToList();
-
-        if (targets.Count == 0)
-            return (false, "No enabled webhook configured.");
-
-        var json = JsonConvert.SerializeObject(payload);
-        var successCount = 0;
-        var failures = new List<string>();
-
-        foreach (var url in targets)
-        {
-            var (success, message) = await SendRawAsync(url, json);
-            if (success) successCount++;
-            else failures.Add(message);
-        }
-
-        if (failures.Count == 0)
-            return (true, $"Posted to {successCount} webhook{(successCount == 1 ? "" : "s")} at {DateTime.Now:T}.");
-
-        return (false, $"Posted to {successCount}/{targets.Count} webhooks. {string.Join(" | ", failures)}");
-    }
-
-    private static async Task<(bool Success, string Message)> SendRawAsync(string webhookUrl, string json)
-    {
-        try
-        {
-            using var content = new StringContent(json, Encoding.UTF8, "application/json");
-            var response = await Http.PostAsync(webhookUrl, content);
-
-            if (response.IsSuccessStatusCode)
-                return (true, "OK");
-
-            var body = await response.Content.ReadAsStringAsync();
-            return (false, $"Discord returned {(int)response.StatusCode}: {body}");
-        }
-        catch (Exception ex)
-        {
-            return (false, $"Request failed: {ex.Message}");
-        }
     }
 }

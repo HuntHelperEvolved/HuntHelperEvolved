@@ -53,6 +53,8 @@ public sealed partial class SyncCoordinator : IDisposable
     private readonly Dictionary<(uint NameId, uint Instance, uint WorldId, uint TerritoryId, uint EntityId), VisibleMark> _visibleMarks = new();
     public IReadOnlyCollection<VisibleMark> VisibleMarks => _visibleMarks.Values;
     private readonly ActiveMarkGrace _activeMarkGrace = new();
+    private readonly RemoteSightingClock _sightingClock = new();
+    public DateTime ServerTimeFor(DateTime localTime) => _sightingClock.ToServer(localTime);
     public IReadOnlyCollection<VisibleMark> ActiveMarkDisplay => _activeMarkGrace.Snapshot(DateTime.UtcNow);
     public string ClientId { get; private set; } = string.Empty;
     public bool SupportsVisibleMarks { get; private set; }
@@ -441,6 +443,7 @@ public sealed partial class SyncCoordinator : IDisposable
                 break;
 
             case ServerMessageTypes.Pong:
+                _sightingClock.Update(SyncProtocol.Deserialize<PongMessage>(payload)!.ServerTime, DateTime.UtcNow);
                 if (payload["faloop"] is JObject faloop)
                     _faloop = SyncProtocol.Deserialize<SyncFaloopStatus>(faloop)!;
                 break;
@@ -449,6 +452,8 @@ public sealed partial class SyncCoordinator : IDisposable
 
     private void ApplyWelcome(WelcomeMessage welcome)
     {
+        _sightingClock.Reset();
+        _sightingClock.Update(welcome.ServerTime, DateTime.UtcNow);
         SupportsTrainPresets = welcome.SupportsTrainPresets;
         TrainPresets = welcome.TrainPresets;
         PendingPresetRequest = null;
@@ -719,9 +724,9 @@ public sealed partial class SyncCoordinator : IDisposable
 
     private void ExpireRemote()
     {
-        foreach (var key in _visibleMarks.Where(p => DateTime.UtcNow - p.Value.Mark.SeenAt > RemoteSightingTtl).Select(p => p.Key).ToList())
+        var now = ServerTimeFor(DateTime.UtcNow);
+        foreach (var key in _visibleMarks.Where(p => now - p.Value.Mark.SeenAt > RemoteSightingTtl).Select(p => p.Key).ToList())
             _visibleMarks.Remove(key);
-        var now = DateTime.UtcNow;
         var stale = _remote.Where(kv => now - kv.Value.LastSeenUtc > RemoteSightingTtl).Select(kv => kv.Key).ToList();
         if (stale.Count == 0) return;
         foreach (var key in stale) _remote.Remove(key);
@@ -730,6 +735,7 @@ public sealed partial class SyncCoordinator : IDisposable
 
     private void ForgetRemoteState()
     {
+        _sightingClock.Reset();
         _trainSnapshotConnectionAt = null;
         SupportsTrainPresets = false;
         TrainPresets = new();
@@ -953,15 +959,16 @@ public sealed partial class SyncCoordinator : IDisposable
     {
         var key = (nameId, instance, worldId);
         var now = DateTime.UtcNow;
+        var serverNow = ServerTimeFor(now);
         var killed = StatusFor(nameId, worldId, instance)?.KilledAt;
         if (_detector.OtherRanks.TryGetValue((key.Item1,key.Item2,key.Item3,0,0), out var local) && ActiveSRankFilter.LivingObservation(
-            local.HealthPercent, local.LastSeenUtc, local.LastSeenUtc + RemoteSightingTtl, killed, now)) return true;
+            local.HealthPercent, ServerTimeFor(local.LastSeenUtc), local.LastSeenUtc + RemoteSightingTtl, killed, now, serverNow)) return true;
         if (!IsConnected) return false;
         // Match Active Marks. Legacy sightings can outlive the newer observer removal
         // stream; a previous-cycle sighting must not override the new kill clock.
-        if (SupportsVisibleMarks) return _activeMarkGrace.IsAlive(key, killed, now);
+        if (SupportsVisibleMarks) return _activeMarkGrace.IsAlive(key, killed, now, serverNow);
         return _remote.TryGetValue((key.Item1,key.Item2,key.Item3,0,0), out var remote) && ActiveSRankFilter.LivingObservation(
-            remote.HealthPercent, remote.LastSeenUtc, remote.LastSeenUtc + RemoteSightingTtl, killed, now);
+            remote.HealthPercent, remote.LastSeenUtc, _sightingClock.ToLocal(remote.LastSeenUtc) + RemoteSightingTtl, killed, now, serverNow);
     }
 
     public void SetManualMapping(uint territory, uint world, uint instance, int index, bool exclude, string source = "Manual")

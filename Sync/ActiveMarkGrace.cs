@@ -24,11 +24,11 @@ public sealed class ActiveMarkGrace
         foreach (var name in row.Observers) entry.Names[name] = until;
         entry.Row = new VisibleMark { Mark=row.Mark, DisplayUntil=until };
     }
-    public bool IsAlive((uint NameId, uint Instance, uint WorldId) key, DateTime? killedAt, DateTime now)
+    public bool IsAlive((uint NameId, uint Instance, uint WorldId) key, DateTime? killedAt, DateTime now, DateTime? observationNow = null)
     {
         foreach (var entry in _rows.Values)
             if (entry.Row.Mark.Key == key && ActiveSRankFilter.LivingObservation(
-                entry.Row.Mark.HpPercent, entry.Row.Mark.SeenAt, entry.Row.DisplayUntil ?? DateTime.MinValue, killedAt, now)) return true;
+                entry.Row.Mark.HpPercent, entry.Row.Mark.SeenAt, entry.Row.DisplayUntil ?? DateTime.MinValue, killedAt, now, observationNow)) return true;
         return false;
     }
 

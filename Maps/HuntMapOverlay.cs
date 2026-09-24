@@ -362,8 +362,8 @@ public sealed unsafe class HuntMapOverlay : IDisposable
     /// further to match.
     /// </param>
     /// <summary>Who saw a mark and how long ago, for anything that came through sync.</summary>
-    private static string SeenBy(OtherRankSighting sighting) =>
-        sighting.IsRemote ? $" — seen by {sighting.Reporter} {FormatAge(sighting.LastSeenUtc)} ago" : string.Empty;
+    private string SeenBy(OtherRankSighting sighting) =>
+        sighting.IsRemote ? $" — seen by {sighting.Reporter} {FormatAge(sighting.LastSeenUtc, _sync?.ServerTimeFor(DateTime.UtcNow))} ago" : string.Empty;
 
     private static string ClaimantName(SyncEliminatedPoint claim) =>
         claim.Rank == "Manual" ? $"Manual exclusion ({claim.Source ?? "Manual"}, {claim.Reporter ?? "Unknown"})" :
@@ -371,9 +371,9 @@ public sealed unsafe class HuntMapOverlay : IDisposable
         ?? ExpansionData.Lookup(claim.NameId)?.Name
         ?? $"{claim.Rank} rank";
 
-    private static string FormatAge(DateTime utc)
+    private static string FormatAge(DateTime utc, DateTime? now = null)
     {
-        var age = DateTime.UtcNow - utc;
+        var age = (now ?? DateTime.UtcNow) - utc;
         if (age < TimeSpan.Zero) age = TimeSpan.Zero;
         if (age.TotalMinutes < 1) return $"{(int)age.TotalSeconds}s";
         if (age.TotalHours < 1) return $"{(int)age.TotalMinutes}m";
@@ -978,10 +978,11 @@ public sealed unsafe class HuntMapOverlay : IDisposable
             if (_sync is not null && _sync.IsConnected && _config.SyncShowRemoteMarksOnMap)
             {
                 var localKeys = here.Select(o => o.LiveKey).ToHashSet();
+                var serverNow = _sync.ServerTimeFor(DateTime.UtcNow);
                 foreach (var remote in _sync.RemoteSightings.Values)
                 {
                     if (remote.TerritoryId != territory || remote.Instance != instance
-                        || remote.WorldId != worldId || DateTime.UtcNow - remote.LastSeenUtc > SyncCoordinator.RemoteSightingTtl) continue;
+                        || remote.WorldId != worldId || serverNow - remote.LastSeenUtc > SyncCoordinator.RemoteSightingTtl) continue;
                     if (localKeys.Contains(remote.LiveKey) || deadKeys.Contains(remote.Key)) continue;
                     here.Add(remote);
                 }

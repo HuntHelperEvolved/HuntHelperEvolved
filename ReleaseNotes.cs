@@ -285,15 +285,14 @@ public static class ReleaseNotes
     /// <summary>
     /// The running version, including a nonzero testing-build revision.
     /// </summary>
-    public static string CurrentVersion
+    public static string CurrentVersion { get; } = ReadCurrentVersion();
+
+    private static string ReadCurrentVersion()
     {
-        get
-        {
-            var version = Assembly.GetExecutingAssembly().GetName().Version;
-            return version is null
-                ? "unknown"
-                : version.Revision > 0 ? version.ToString(4) : version.ToString(3);
-        }
+        var version = Assembly.GetExecutingAssembly().GetName().Version;
+        return version is null
+            ? "unknown"
+            : version.Revision > 0 ? version.ToString(4) : version.ToString(3);
     }
 
     /// <summary>The notes for the running version, if they have been written.</summary>

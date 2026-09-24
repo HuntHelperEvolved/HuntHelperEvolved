@@ -70,6 +70,7 @@ public class OtherRankSighting
 public sealed class MarkDetector
 {
     private readonly NearbyPlayerCache _nearbyPlayers = new();
+    private readonly Dictionary<uint, string> _zoneNames = new();
     private bool _nearbyPlayersAvailable;
     private int? CountPlayers(Vector3 position) => _nearbyPlayersAvailable ? _nearbyPlayers.CountNear(position) : null;
 
@@ -516,11 +517,13 @@ public sealed class MarkDetector
     /// <summary>Zone name straight from the game's own data, so it's always correct.</summary>
     public string GetZoneName(uint territoryId)
     {
+        if (_zoneNames.TryGetValue(territoryId, out var cached)) return cached;
         try
         {
             var row = _dataManager.GetExcelSheet<TerritoryType>().GetRowOrDefault(territoryId);
             var name = row?.PlaceName.ValueNullable?.Name.ExtractText();
-            return string.IsNullOrWhiteSpace(name) ? $"Territory {territoryId}" : name;
+            if (!string.IsNullOrWhiteSpace(name)) return _zoneNames[territoryId] = name;
+            return $"Territory {territoryId}";
         }
         catch
         {

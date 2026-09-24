@@ -201,11 +201,8 @@ public sealed partial class Plugin : IDalamudPlugin
     // worlds is two marks, and the pointer has to say which.
     private (uint NameId, uint Instance, uint WorldId)? _currentMark;
 
-    // Measured on the previous frame. The drag threshold has to match the real
-    // on-screen row pitch (selectable + buttons + separator), not just a line of
-    // text — using a smaller value makes each swap jump further than the cursor
-    // moved, so the row visibly outruns the mouse.
     private string _lastPostResult = string.Empty;
+    private bool _reportPostBusy;
     private int _selectedNarrowRiftSpawn;
 
     public Plugin(
@@ -394,8 +391,8 @@ public sealed partial class Plugin : IDalamudPlugin
             _activeMarksWindow = new ActiveMarksWindow(_config, _sync, _worldData, _detector, _gameGui, _srankTravel, () => { _configWindowVisible=true; _selectActiveMarksSettings=true; });
             _srankWindow = new SRankWindow(_config, _sync, _worldData, _detector, _srankTravel);
             _arankWindow = new ARankWindow(_config, _sync, _worldData, _detector);
-            // After the detector exists, since the gates read straight off it.
-            _trainIpc = new TrainIpcProvider(_pluginInterface, _detector, _log);
+            // Publish framework-thread snapshots after the detector exists.
+            _trainIpc = new TrainIpcProvider(_pluginInterface, _framework, _detector, _log);
             startup.Add(_trainIpc.Dispose);
 
             // KamiToolKit needs one-time initialisation before any of its
@@ -415,6 +412,8 @@ public sealed partial class Plugin : IDalamudPlugin
             startup.Add(() => { _watcher.PersistRequested -= PersistTrain; });
             _watcher.PersistRequested += PersistTrain;
             RestoreSavedTrain();
+            startup.Add(() => { _clientState.Logout -= OnPluginLogout; });
+            _clientState.Logout += OnPluginLogout;
 
             startup.Add(UnregisterCommands);
             RegisterCommands();
@@ -515,8 +514,22 @@ public sealed partial class Plugin : IDalamudPlugin
     {
         if (_disposed) return;
         if (_commandHelpDirty) RefreshCommandHelp();
+        try { _config.Flush(); }
+        catch (Exception ex) { _log.Error(ex, "Could not save configuration; will retry."); }
         UpdateAutomaticTrainWatches();
         ApplyLocalTrainPreset();
+        if (_clientState.IsLoggedIn)
+        {
+            _secondsSinceAutoResetCheck += framework.UpdateDelta.TotalSeconds;
+            if (_secondsSinceAutoResetCheck >= 30)
+            {
+                _secondsSinceAutoResetCheck = 0;
+                _counter.ApplyAutoResets();
+            }
+            ProcessPendingCustomRemovals();
+            UpdateAutoAdvance();
+            DrainPendingSpawnAlerts();
+        }
         // During DC transfers the game hides its UI at character selection.
         // Only Active Marks is drawn there; normal hide preferences apply in game.
         _pluginInterface.UiBuilder.DisableUserUiHide = _releaseNotesChecked
@@ -533,9 +546,18 @@ public sealed partial class Plugin : IDalamudPlugin
 
     private void OnTallyLogout(int type, int code)
     {
+        try { _tallyConfig.Flush(force: true); }
+        catch (Exception ex) { _log.Error(ex, "Could not save the tally at logout."); }
+    }
+
+    private void OnPluginLogout(int type, int code)
+    {
         _config.ScanningPaused = true;
         _detector.ClearNearbyPlayers();
-        _tallyConfig.Flush(force: true);
+        try { PersistTrain(); }
+        catch (Exception ex) { _log.Error(ex, "Could not capture the train at logout."); }
+        try { _config.Flush(force: true); }
+        catch (Exception ex) { _log.Error(ex, "Could not save configuration at logout; will retry."); }
     }
 
     /// <summary>
@@ -545,7 +567,7 @@ public sealed partial class Plugin : IDalamudPlugin
     /// delay does not start seeding afterwards.
     /// </summary>
     private void ScheduleTallySeed() =>
-        HuntTally.Service.Framework.RunOnTick(_seeder.Start, LoginSeedDelay, 0, _disposal.Token);
+        _framework.RunOnTick(_seeder.Start, LoginSeedDelay, 0, _disposal.Token);
 
     private void AnnounceTallyKill(KillDetail kill)
     {
@@ -788,35 +810,61 @@ public sealed partial class Plugin : IDalamudPlugin
     /// <summary>Native report history, including removed dead rows and full world identity.</summary>
     private List<TrackedMark> BuildCurrentMarks() => _watcher.GetTrackedSnapshot().Values.ToList();
 
-    private async Task SendTestAsync()
-    {
-        var (success, message) = await DiscordRelay.PostTestAsync(_config.Webhooks);
-        _lastPostResult = message;
-        if (!success) _log.Error($"Hunt Helper Evolved test post failed: {message}");
-    }
+    private Task SendTestAsync() => SendReportAsync(
+        (webhooks, token) => DiscordRelay.PostTestAsync(webhooks, token));
 
-    private async Task SendScoutingReportAsync()
+    private Task SendScoutingReportAsync()
     {
         var list = _detector.Ordered().Where(d => !d.IsCustom).Select(d => new TrainMobRecord(
             d.Name, d.NameId, d.TerritoryId, d.MapId, d.Instance,
             d.MapPosition, d.Dead, d.LastSeenUtc)).ToList();
-
         var names = CombinedTrainScouts();
-
         var ownCode = TrainExchange.Export(_detector.Ordered());
-
-        var (success, message) = await DiscordRelay.PostScoutingReportAsync(_config.Webhooks, list, names, ownCode);
-        _lastPostResult = message;
-        if (!success) _log.Error($"Hunt Helper Evolved scouting report failed: {message}");
+        return SendReportAsync((webhooks, token) =>
+            DiscordRelay.PostScoutingReportAsync(webhooks, list, names, ownCode, token));
     }
 
-    /// <summary>
-    /// The only way a "Train Complete" report ever gets posted — reads the
-    /// current merged mark set and posts it sorted by the actual order things
-    /// died, plus any S-rank check results. Tracking and the watch list only
-    /// clear once the post is confirmed to have actually succeeded — if it
-    /// fails, everything stays put so this can just be tried again.
-    /// </summary>
+    private async Task SendReportAsync(
+        Func<List<WebhookEntry>, CancellationToken, Task<(bool Success, string Message)>> post)
+    {
+        if (_disposed) return;
+        if (_reportPostBusy || _completion.IsBusy)
+        {
+            _lastPostResult = "A Discord report is already being sent.";
+            return;
+        }
+        _reportPostBusy = true;
+        var token = _disposal.Token;
+        try
+        {
+            var webhooks = _config.Webhooks.Select(w => new WebhookEntry
+                { Enabled = w.Enabled, Label = w.Label, Url = w.Url }).ToList();
+            var (success, message) = await post(webhooks, token);
+            if (token.IsCancellationRequested) return;
+            await _framework.RunOnFrameworkThread(() =>
+            {
+                if (_disposed) return;
+                _lastPostResult = message;
+                if (!success) _log.Error($"Hunt Helper Evolved Discord report failed: {message}");
+            });
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { }
+        catch (Exception ex)
+        {
+            _log.Error(ex, "Discord report failed.");
+            if (!token.IsCancellationRequested)
+                await _framework.RunOnFrameworkThread(() =>
+                {
+                    if (!_disposed) _lastPostResult = "Report failed. See the plugin log.";
+                });
+        }
+        finally
+        {
+            if (!token.IsCancellationRequested)
+                await _framework.RunOnFrameworkThread(() => _reportPostBusy = false);
+        }
+    }
+
     private readonly TrainCompletionGuard _completion = new();
 
     private string CompletionSnapshot() => TrainCompletionSnapshot.Create(
@@ -830,9 +878,17 @@ public sealed partial class Plugin : IDalamudPlugin
     private bool CanReportPartially =>
         !_config.SyncEnabled || !_config.SyncShareTrain || _sync.SupportsPartialFinish;
 
+    /// <summary>
+    /// The only way a "Train Complete" report ever gets posted — reads the
+    /// current merged mark set and posts it sorted by the actual order things
+    /// died, plus any S-rank check results. Tracking and the watch list only
+    /// clear once the post is confirmed to have actually succeeded — if it
+    /// fails, everything stays put so this can just be tried again.
+    /// </summary>
     private async Task EndTrainNowAsync()
     {
-        if (_completion.IsBusy) { _lastPostResult = "A train report is already being sent."; return; }
+        if (_disposed) return;
+        if (_completion.IsBusy || _reportPostBusy) { _lastPostResult = "A Discord report is already being sent."; return; }
         if (_config.SyncEnabled && _config.SyncShareTrain && (!_sync.IsConnected || !_sync.SupportsPartialFinish))
         {
             _lastPostResult = "Shared report not sent: connect to a server with persistent partial-report support first. The train has been kept.";
@@ -863,13 +919,13 @@ public sealed partial class Plugin : IDalamudPlugin
         TrainFinishMessage? serverSubmission = null;
         try
         {
-            var flags = Newtonsoft.Json.JsonConvert.DeserializeObject<List<FlagEntry>>(
-                Newtonsoft.Json.JsonConvert.SerializeObject(reportedWatches))!;
+            var flags = CloneWatches(reportedWatches);
             var webhooks = Newtonsoft.Json.JsonConvert.DeserializeObject<List<WebhookEntry>>(
                 Newtonsoft.Json.JsonConvert.SerializeObject(_config.Webhooks))!;
-            var (success, message) = await DiscordRelay.PostTrainCompleteAsync(webhooks, reportMarks, endedBy, flags);
+            var (success, message) = await DiscordRelay.PostTrainCompleteAsync(webhooks, reportMarks, endedBy, flags, _disposal.Token);
+            if (_disposal.IsCancellationRequested) return;
             Task<TrainFinishResult>? serverTask = null;
-            await HuntTally.Service.Framework.RunOnFrameworkThread(() =>
+            await _framework.RunOnFrameworkThread(() =>
             {
                 if (_disposal.IsCancellationRequested) return;
                 _lastPostResult = message;
@@ -903,7 +959,8 @@ public sealed partial class Plugin : IDalamudPlugin
                 TrainFinishResult result;
                 try { result = await serverTask; }
                 catch (TimeoutException) { result = new() { Message="No server acknowledgement. Check the shared train before retrying; Undo is available if it was reset." }; }
-                await HuntTally.Service.Framework.RunOnFrameworkThread(() =>
+                if (_disposal.IsCancellationRequested) return;
+                await _framework.RunOnFrameworkThread(() =>
                 {
                     _sync.ForgetFinish(serverSubmission!.RequestId);
                     if (_disposal.IsCancellationRequested) return;
@@ -918,7 +975,7 @@ public sealed partial class Plugin : IDalamudPlugin
         {
             _log.Error(ex, "Train report failed; the train has been preserved.");
             if (!_disposal.IsCancellationRequested)
-                await HuntTally.Service.Framework.RunOnFrameworkThread(() =>
+                await _framework.RunOnFrameworkThread(() =>
                 {
                     if (_disposal.IsCancellationRequested) return;
                     _lastPostResult = "Report failed; the train has been preserved. See the plugin log.";
@@ -928,7 +985,7 @@ public sealed partial class Plugin : IDalamudPlugin
         finally
         {
             if (!_disposal.IsCancellationRequested)
-                await HuntTally.Service.Framework.RunOnFrameworkThread(_completion.Finish);
+                await _framework.RunOnFrameworkThread(_completion.Finish);
         }
     }
 
@@ -949,18 +1006,9 @@ public sealed partial class Plugin : IDalamudPlugin
             ShowReleaseNotesIfUpdated();
         }
 
-        _secondsSinceAutoResetCheck += ImGui.GetIO().DeltaTime;
-        if (_secondsSinceAutoResetCheck >= 30)
-        {
-            _secondsSinceAutoResetCheck = 0;
-            _counter.ApplyAutoResets();
-        }
-        ProcessPendingCustomRemovals();
-        UpdateAutoAdvance();
         DrawTrainPopout();
         DrawPresetEditor();
         DrawCounterPopout();
-        DrainPendingSpawnAlerts();
         _activeMarksWindow.Draw();
         _srankWindow.Draw();
         _arankWindow.Draw();
@@ -1179,18 +1227,6 @@ public sealed partial class Plugin : IDalamudPlugin
         ImGui.SetClipboardText(line);
     }
 
-    /// <summary>
-    /// Scanning play/pause plus the tidy-up actions. Shown on both the Train
-    /// tab and the popout, so a conductor working from the popout alone still
-    /// has everything they need mid-train.
-    /// </summary>
-
-    /// <summary>
-    /// Surfaces a problem everywhere it might be looked for: the status line in
-    /// the main window, the local chat log, and /xllog. Teleport errors were
-    /// previously only written to a field rendered inside the main window, so
-    /// clicking teleport from the popout failed in complete silence.
-    /// </summary>
     /// <summary>Pushes the saved blacklist into the teleport helper.</summary>
     private void SyncBlacklist()
     {
@@ -1206,12 +1242,25 @@ public sealed partial class Plugin : IDalamudPlugin
     /// </summary>
     private void PersistTrain()
     {
-        _config.ReportHistory = _watcher.GetTrackedSnapshot().Values.ToList();
+        var history = _watcher.GetTrackedSnapshot().Values.ToList();
         var marks = _detector.ToPersisted();
+        // Compare just the persisted train payload at the ten-second checkpoint.
+        // Ignore the checkpoint time itself so an unchanged train does not force a write.
+        var before = Newtonsoft.Json.JsonConvert.SerializeObject(new
+        {
+            Marks = _config.SavedTrain, History = _config.ReportHistory,
+            NameId = _config.SavedCurrentNameId, Instance = _config.SavedCurrentInstance,
+            WorldId = _config.SavedCurrentWorldId
+        });
+        var after = Newtonsoft.Json.JsonConvert.SerializeObject(new
+        {
+            Marks = marks, History = history,
+            NameId = _currentMark?.NameId, Instance = _currentMark?.Instance,
+            WorldId = _currentMark?.WorldId
+        });
+        if (before == after) return;
 
-        // Nothing to save and nothing saved: don't churn the config file.
-        if (marks.Count == 0 && _config.SavedTrain.Count == 0 && _config.ReportHistory.Count == 0) return;
-
+        _config.ReportHistory = history;
         _config.SavedTrain = marks;
         _config.SavedTrainAtUtc = marks.Count > 0 ? DateTime.UtcNow : null;
         _config.SavedCurrentNameId = _currentMark?.NameId;
@@ -2024,9 +2073,7 @@ public sealed partial class Plugin : IDalamudPlugin
         }
 
         // Only offered while the train is in blocks, since there is no next
-        // block to open without them. Hidden rather than greyed out, for the
-        // same reason the rest of this window greys nothing: BeginDisabled is
-        // an API this project has stayed off.
+        // block to open without them.
         if (grouped)
         {
             TrainControlSameLine("Open next automatically");
@@ -2039,6 +2086,19 @@ public sealed partial class Plugin : IDalamudPlugin
 
         }
 
+    }
+
+    private readonly TrainGroupingState _trainGroupingState = new();
+    private readonly List<((uint WorldId, string Expansion) Block, bool Dead)> _trainProgressInput = new();
+    private readonly Dictionary<(uint WorldId, string Expansion), int> _trainExpansionCounts = new();
+    private readonly Dictionary<(uint WorldId, string Expansion), int> _trainExpansionUpCounts = new();
+    private readonly List<(uint WorldId, string Expansion)> _trainPresentExpansions = new();
+    private readonly List<DetectedMark> _trainVisibleMarks = new();
+
+    private void ResetTrainExpansionProgress()
+    {
+        _trainProgressInput.Clear();
+        _expansionProgress.Reset();
     }
 
     /// <summary>
@@ -2055,19 +2115,6 @@ public sealed partial class Plugin : IDalamudPlugin
     /// payload; behaviour is the same, and it keeps to API already proven to
     /// compile in this project.
     /// </summary>
-    private readonly TrainGroupingState _trainGroupingState = new();
-    private readonly List<((uint WorldId, string Expansion) Block, bool Dead)> _trainProgressInput = new();
-    private readonly Dictionary<(uint WorldId, string Expansion), int> _trainExpansionCounts = new();
-    private readonly Dictionary<(uint WorldId, string Expansion), int> _trainExpansionUpCounts = new();
-    private readonly List<(uint WorldId, string Expansion)> _trainPresentExpansions = new();
-    private readonly List<DetectedMark> _trainVisibleMarks = new();
-
-    private void ResetTrainExpansionProgress()
-    {
-        _trainProgressInput.Clear();
-        _expansionProgress.Reset();
-    }
-
     private void DrawTrainList(bool showZones = true)
     {
         var allMarks = _detector.Ordered();
@@ -3762,6 +3809,7 @@ public sealed partial class Plugin : IDalamudPlugin
         cleanup.Run("_framework.Update", () => { _framework.Update -= OnPluginFrameworkUpdate; });
         cleanup.Run("HuntTally.Service.Framework.Update", () => { HuntTally.Service.Framework.Update -= OnTallyFrameworkUpdate; });
         cleanup.Run("_clientState.Login", () => { _clientState.Login -= PauseScoutingOnLogin; });
+        cleanup.Run("_clientState.Logout", () => { _clientState.Logout -= OnPluginLogout; });
         cleanup.Run("HuntTally.Service.ClientState.Login", () => { HuntTally.Service.ClientState.Login -= OnTallyLogin; });
         cleanup.Run("HuntTally.Service.ClientState.Logout", () => { HuntTally.Service.ClientState.Logout -= OnTallyLogout; });
         cleanup.Run("_watcher.PersistRequested", () => { _watcher.PersistRequested -= PersistTrain; });
@@ -3800,7 +3848,7 @@ public sealed partial class Plugin : IDalamudPlugin
         cleanup.Run("_detector.OtherRankDetected", () => { _detector.OtherRankDetected -= OnSightingDetected; });
         cleanup.Run("_clientState.TerritoryChanged", () => { _clientState.TerritoryChanged -= _detector.ResetAnnouncements; });
         cleanup.Run("PersistTrain", () => { PersistTrain(); });
-        cleanup.Run("Window state", () => _config.FlushWindowStateSave());
+        cleanup.Run("Configuration", () => _config.Flush(force: true));
         try { cleanup.ThrowIfFailed(); }
         catch (AggregateException ex) { _log.Error(ex, "Plugin cleanup encountered errors."); }
     }

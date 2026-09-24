@@ -4,9 +4,10 @@ namespace HuntHelperEvolved.Sync;
 
 public static class ActiveSRankFilter
 {
-    public static bool LivingObservation(float hp, DateTime seenAt, DateTime expiresAt, DateTime? killedAt, DateTime now) =>
+    public static bool LivingObservation(float hp, DateTime seenAt, DateTime expiresAt, DateTime? killedAt, DateTime now,
+        DateTime? observationNow = null) =>
         float.IsFinite(hp) && hp > 0 && hp <= 100 && expiresAt > now
-        && seenAt <= now.AddSeconds(10) && (killedAt is null || seenAt > killedAt);
+        && seenAt <= (observationNow ?? now).AddSeconds(10) && (killedAt is null || seenAt > killedAt);
 
     public static string? Status(SyncSRankStatus status, bool seenUp, DateTime now)
     {

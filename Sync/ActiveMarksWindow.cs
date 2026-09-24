@@ -46,6 +46,7 @@ public sealed class ActiveMarksWindow(Configuration config, SyncCoordinator sync
     private void DrawRows(string tab)
     {
         var now=DateTime.UtcNow;
+        var serverNow=sync.ServerTimeFor(now);
         var scope=(detector.CurrentTerritoryId,detector.CurrentWorldId(),MarkDetector.GetCurrentInstance());
         if (scope != _localScope) { _localGrace.Clear(); _localScope=scope; }
         var visible=sync.ActiveMarkDisplay.ToDictionary(v=>v.Mark.LiveKey);
@@ -57,7 +58,7 @@ public sealed class ActiveMarksWindow(Configuration config, SyncCoordinator sync
                 {
                     Mark=new SyncSighting { EntityId=local.EntityId,NameId=local.NameId,WorldId=local.WorldId,Instance=local.Instance,
                         TerritoryId=local.TerritoryId,MapId=local.MapId,Name=local.Name,Rank=SyncCoordinator.SsEventMobs.Contains(local.NameId) ? "SS" : previous?.Mark.Rank??local.Rank.ToString(),
-                        X=local.MapPosition.X,Y=local.MapPosition.Y,HpPercent=local.HealthPercent,NearbyPlayers=local.NearbyPlayers,InCombat=local.InCombat,SeenAt=local.LastSeenUtc },
+                        X=local.MapPosition.X,Y=local.MapPosition.Y,HpPercent=local.HealthPercent,NearbyPlayers=local.NearbyPlayers,InCombat=local.InCombat,SeenAt=sync.ServerTimeFor(local.LastSeenUtc) },
                     ObserverIds=new() { sync.ClientId },
                     Observers=new() { sync.DisplayName() }
                 }, local.LastSeenUtc);
@@ -76,7 +77,7 @@ public sealed class ActiveMarksWindow(Configuration config, SyncCoordinator sync
             }
         }
         else _localGrace.Clear();
-        var rows=ActiveMarkRows.Merge(visible.Values,sync.SRankStatuses,now).Select(row =>
+        var rows=ActiveMarkRows.Merge(visible.Values,sync.SRankStatuses,now,serverNow).Select(row =>
         {
             var dc=worlds.LocateWorld(row.Mark.WorldId) is { } loc ? worlds.DataCenters[loc.DcIndex] : default;
             var expansion=SRankTimerData.ForTerritory(row.Mark.TerritoryId)?.Expansion ?? "Unknown";
@@ -99,8 +100,8 @@ public sealed class ActiveMarksWindow(Configuration config, SyncCoordinator sync
                 var hp=row.HealthKnown ? $"{m.HpPercent:0.#}%" : "?%";
                 var instance=m.Instance>0 ? $" i{m.Instance}" : string.Empty;
                 var nearby=row.HealthKnown && m.NearbyPlayers is { } count ? $"[{count}]" : "[?]";
-                var faloopAge=row.Status?.FaloopActiveAt is { } released && row.Status.FaloopActiveUntil > now
-                    ? $" · Faloop {Elapsed(now-released)}" : string.Empty;
+                var faloopAge=row.Status?.FaloopActiveAt is { } released && row.Status.FaloopActiveUntil > serverNow
+                    ? $" · Faloop {Elapsed(serverNow-released)}" : string.Empty;
                 var dcLabel=config.VisibleMarkFilters.ShowDataCenter && !string.IsNullOrEmpty(r.Dc.Name) ? $" · {r.Dc.Name}" : string.Empty;
                 var label=$"{(tab=="All" ? m.Rank+": " : string.Empty)}{m.Name} - {hp} [{r.World}{dcLabel}{instance}] · {r.Zone} · {nearby}{faloopAge}";
                 ImGui.PushID($"{m.WorldId}:{m.Instance}:{m.NameId}:{m.TerritoryId}:{m.EntityId}");
@@ -138,7 +139,7 @@ public sealed class ActiveMarksWindow(Configuration config, SyncCoordinator sync
                     if(row.HasPosition) detail+=$" ({m.X:0.0}, {m.Y:0.0})";
                     if(!dead && row.Status?.SpawnedAt is { } spawned)
                     {
-                        var age=now-spawned;
+                        var age=serverNow-spawned;
                         detail+=$"\nActive for {(int)Math.Max(0,age.TotalHours):00}:{Math.Max(0,age.Minutes):00}:{Math.Max(0,age.Seconds):00}";
                     }
 

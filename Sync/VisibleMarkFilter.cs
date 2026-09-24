@@ -58,14 +58,15 @@ public static class ActiveMarkRows
         => Merge(visible, statuses.ToDictionary(s => s.Key), now);
 
     public static List<ActiveMarkRow> Merge(IEnumerable<VisibleMark> visible,
-        IReadOnlyDictionary<(uint NameId, uint Instance, uint WorldId), SyncSRankStatus> states, DateTime now)
+        IReadOnlyDictionary<(uint NameId, uint Instance, uint WorldId), SyncSRankStatus> states, DateTime now,
+        DateTime? serverNow = null)
     {
         var rows=visible.Where(v=>VisibleMarkFilter.Fresh(v,now))
             .ToDictionary(v=>v.Mark.LiveKey,v=>new ActiveMarkRow(v.Mark,v,states.GetValueOrDefault(v.Mark.Key)));
         var represented = rows.Values.Select(r => r.Mark.Key).ToHashSet();
         foreach(var status in states.Values)
         {
-            if(represented.Contains(status.Key) || ActiveSRankFilter.Status(status,false,now) is null
+            if(represented.Contains(status.Key) || ActiveSRankFilter.Status(status,false,serverNow ?? now) is null
                 || !SRankTimerData.ByNameId.TryGetValue(status.NameId,out var mark)) continue;
             rows[(status.NameId,status.Instance,status.WorldId,0,0)]=new(new SyncSighting { NameId=status.NameId,WorldId=status.WorldId,Instance=status.Instance,
                 TerritoryId=mark.TerritoryId,Name=mark.Name,Rank="S",X=status.SpawnX??float.NaN,Y=status.SpawnY??float.NaN },null,status);
