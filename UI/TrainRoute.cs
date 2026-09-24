@@ -204,6 +204,13 @@ public sealed partial class Plugin
             var rowActive = ImGui.IsItemActive();
             var rowFocused = ImGui.IsItemFocused();
             ImGui.SetItemAllowOverlap();
+            if (_config.ShowSpicing && !mark.IsCustom && ImGui.BeginPopupContextItem("Mark spicing"))
+            {
+                ImGui.BeginDisabled(TrainMutationBusy);
+                if (ImGui.MenuItem("Being spiced", "", mark.Spiced)) mark.Spiced = !mark.Spiced;
+                ImGui.EndDisabled();
+                ImGui.EndPopup();
+            }
             ImGui.SetCursorPos(new Vector2(rowStart.X, textY));
             ImGui.PushStyleColor(ImGuiCol.Text, isCurrent ? new Vector4(1f, 0.85f, 0.4f, 1f) : rowColour);
             ImGui.TextUnformatted(displayedName);
@@ -221,6 +228,7 @@ public sealed partial class Plugin
                 ImGui.TextUnformatted(name + instance);
                 ImGui.TextUnformatted(TrainWorldName(mark.WorldId, allMarks));
                 if (!string.IsNullOrEmpty(detail)) ImGui.TextWrapped(detail);
+                if (_config.ShowSpicing && !mark.IsCustom) ImGui.TextUnformatted("Right-click to change Being spiced.");
                 ImGui.EndTooltip();
             }
 
@@ -292,20 +300,12 @@ public sealed partial class Plugin
                 : "Found gone — record a missing mark without inventing a witnessed kill time");
 
             ImGui.SetCursorPos(new Vector2(rowStart.X + layout.X(3), actionsY));
-            var showSpiced = _config.ShowSpicing && mark.Spiced && !mark.Dead;
-            if (showSpiced) ImGui.PushStyleColor(ImGuiCol.Text, new Vector4(1f, 0.55f, 0.4f, 1f));
-            var morePressed = showSpiced ? TrainIconButton(FontAwesomeIcon.PepperHot, buttonSize)
-                : ImGui.Button("...", buttonSize);
-            if (showSpiced) ImGui.PopStyleColor();
-            if (morePressed) ImGui.OpenPopup("Row actions");
-            if (ImGui.IsItemHovered()) ImGui.SetTooltip(showSpiced ? "Being spiced · More actions" : "More actions");
-            if (ImGui.BeginPopup("Row actions"))
-            {
-                if (_config.ShowSpicing && !mark.IsCustom && ImGui.MenuItem("Being spiced", "", mark.Spiced))
-                    mark.Spiced = !mark.Spiced;
-                if (ImGui.MenuItem("Remove from route")) toRemove = mark.Key;
-                ImGui.EndPopup();
-            }
+            ImGui.BeginDisabled(!ImGui.GetIO().KeyCtrl);
+            if (ImGui.Button("X", buttonSize) && ImGui.GetIO().KeyCtrl) toRemove = mark.Key;
+            ImGui.EndDisabled();
+            if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled)) ImGui.SetTooltip(TrainMutationBusy
+                ? "Wait for the report operation to finish before editing the train"
+                : "Hold Ctrl and click to remove from route");
             ImGui.EndDisabled();
 
             if (dragging && _dragToIndex == i && _dragFromIndex != i)

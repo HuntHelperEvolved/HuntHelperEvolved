@@ -96,8 +96,8 @@ the preset and any ordering pause. Shared trains need the server update for
 this rally recovery behavior.
 
 Existing rally flags still support completion and removal while ordering is
-paused. Use the row's check button to complete or restore a stop, or its
-more-actions menu to remove it. Rally stops have no sniped state. Zones with no
+paused. Use the row's check button to complete or restore a stop, or hold Ctrl
+and click its X to remove it. Rally stops have no sniped state. Zones with no
 live marks lose their preset flags. Disabling rallies
 or choosing **Manual order** removes pending preset flags; manually placed
 custom flags remain. Personal teleport exclusions still apply to travel.

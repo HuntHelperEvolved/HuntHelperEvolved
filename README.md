@@ -219,8 +219,9 @@ appear under **Missing / not seen this train**, without an asserted respawn time
 Unfinished marks, unknown kill times and S-rank checks retain their own details.
 
 Manage S-rank watches in **Setup > S-rank watch setup**. Their Spawned / Didn't
-Spawn boxes remain under the route, including in the popout. The row's
-more-actions menu holds removal and spicing; spiced marks remain visibly marked.
+Spawn boxes remain under the route, including in the popout. Hold **Ctrl** and
+click a row's **X** to remove it. With **Show spicing markers** enabled, right-click
+the mark row and choose **Being spiced**; spiced marks remain visibly marked.
 
 A mark is ticked off when it dies, whoever killed it, even if you were not
 credited with the kill. Its health reaching zero is the signal, which carries as
