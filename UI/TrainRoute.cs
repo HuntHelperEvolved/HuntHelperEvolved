@@ -195,43 +195,6 @@ public sealed partial class Plugin
                 : mark.Spiced && _config.ShowSpicing ? new Vector4(1f, 0.55f, 0.4f, 1f)
                 : mark.IsCustom ? new Vector4(0.45f, 0.95f, 0.5f, 1f) : Vector4.One;
 
-            // One text hit region excludes the action buttons. Neither long
-            // names nor metadata can increase the row height or move controls.
-            ImGui.Selectable("##row", _dragFromIndex == i, ImGuiSelectableFlags.None,
-                new Vector2(layout.TextWidth, height));
-            var rowHovered = ImGui.IsItemHovered();
-            var dropHovered = ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenBlockedByActiveItem);
-            var rowActive = ImGui.IsItemActive();
-            var rowFocused = ImGui.IsItemFocused();
-            ImGui.SetItemAllowOverlap();
-            if (_config.ShowSpicing && !mark.IsCustom && ImGui.BeginPopupContextItem("Mark spicing"))
-            {
-                ImGui.BeginDisabled(TrainMutationBusy);
-                if (ImGui.MenuItem("Being spiced", "", mark.Spiced)) mark.Spiced = !mark.Spiced;
-                ImGui.EndDisabled();
-                ImGui.EndPopup();
-            }
-            ImGui.SetCursorPos(new Vector2(rowStart.X, textY));
-            ImGui.PushStyleColor(ImGuiCol.Text, isCurrent ? new Vector4(1f, 0.85f, 0.4f, 1f) : rowColour);
-            ImGui.TextUnformatted(displayedName);
-            ImGui.PopStyleColor();
-            if (!string.IsNullOrEmpty(displayedDetail))
-            {
-                ImGui.SetCursorPos(new Vector2(rowStart.X + displayedNameWidth, textY));
-                ImGui.PushStyleColor(ImGuiCol.Text, rowColour);
-                ImGui.TextUnformatted(displayedDetail);
-                ImGui.PopStyleColor();
-            }
-            if (rowHovered && _dragFromIndex == -1 && _dragExpansionFrom == -1)
-            {
-                ImGui.BeginTooltip();
-                ImGui.TextUnformatted(name + instance);
-                ImGui.TextUnformatted(TrainWorldName(mark.WorldId, allMarks));
-                if (!string.IsNullOrEmpty(detail)) ImGui.TextWrapped(detail);
-                if (_config.ShowSpicing && !mark.IsCustom) ImGui.TextUnformatted("Right-click to change Being spiced.");
-                ImGui.EndTooltip();
-            }
-
             ImGui.SetCursorPos(new Vector2(rowStart.X + layout.X(0), actionsY));
             var teleportPressed = false;
             if (_textureProvider.TryGetFromGameIcon(new GameIconLookup(AetheryteIconId), out var iconTex)
@@ -254,6 +217,44 @@ public sealed partial class Plugin
                     if (mark.IsCustom && !_pendingCustomRemovals.ContainsKey(mark.Key))
                         _pendingCustomRemovals[mark.Key] = DateTime.UtcNow.AddSeconds(CustomFlagRemovalDelaySeconds);
                 }
+            }
+
+            // One text hit region excludes the action buttons. Neither long
+            // names nor metadata can increase the row height or move controls.
+            ImGui.SetCursorPos(new Vector2(rowStart.X + layout.TextLeft, rowStart.Y));
+            ImGui.Selectable("##row", _dragFromIndex == i, ImGuiSelectableFlags.None,
+                new Vector2(layout.TextWidth, height));
+            var rowHovered = ImGui.IsItemHovered();
+            var dropHovered = ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenBlockedByActiveItem);
+            var rowActive = ImGui.IsItemActive();
+            var rowFocused = ImGui.IsItemFocused();
+            ImGui.SetItemAllowOverlap();
+            if (_config.ShowSpicing && !mark.IsCustom && ImGui.BeginPopupContextItem("Mark spicing"))
+            {
+                ImGui.BeginDisabled(TrainMutationBusy);
+                if (ImGui.MenuItem("Being spiced", "", mark.Spiced)) mark.Spiced = !mark.Spiced;
+                ImGui.EndDisabled();
+                ImGui.EndPopup();
+            }
+            ImGui.SetCursorPos(new Vector2(rowStart.X + layout.TextLeft, textY));
+            ImGui.PushStyleColor(ImGuiCol.Text, isCurrent ? new Vector4(1f, 0.85f, 0.4f, 1f) : rowColour);
+            ImGui.TextUnformatted(displayedName);
+            ImGui.PopStyleColor();
+            if (!string.IsNullOrEmpty(displayedDetail))
+            {
+                ImGui.SetCursorPos(new Vector2(rowStart.X + layout.TextLeft + displayedNameWidth, textY));
+                ImGui.PushStyleColor(ImGuiCol.Text, rowColour);
+                ImGui.TextUnformatted(displayedDetail);
+                ImGui.PopStyleColor();
+            }
+            if (rowHovered && _dragFromIndex == -1 && _dragExpansionFrom == -1)
+            {
+                ImGui.BeginTooltip();
+                ImGui.TextUnformatted(name + instance);
+                ImGui.TextUnformatted(TrainWorldName(mark.WorldId, allMarks));
+                if (!string.IsNullOrEmpty(detail)) ImGui.TextWrapped(detail);
+                if (_config.ShowSpicing && !mark.IsCustom) ImGui.TextUnformatted("Right-click to change Being spiced.");
+                ImGui.EndTooltip();
             }
 
             ImGui.BeginDisabled(TrainMutationBusy);

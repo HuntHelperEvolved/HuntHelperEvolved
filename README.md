@@ -150,9 +150,9 @@ across legs. Reports are sent explicitly from **Reports** with Shift-click.
 
 **Next Mark** selects, flags and announces the next live mark without recording
 a kill. **Next Aetheryte** announces and copies the next destination without
-teleporting or moving the flag. A row's **TP** button teleports to its nearest
-eligible aetheryte; travelling to a custom rally stop completes that stop after
-a short delay.
+teleporting or moving the flag. Each row's **TP** button sits to the left of its
+name and teleports to its nearest eligible aetheryte; travelling to a custom
+rally stop completes that stop after a short delay.
 
 Marks are recorded per world, so the same mark on Mateus and on Goblin are two
 marks and can't overwrite each other. The export code carries the world,
@@ -209,7 +209,8 @@ marks remain. Individual kill records are available under **Individual kill
 history**. Failed submission or concurrent changes keep the train. Check the
 shared state before retrying after an acknowledgement timeout.
 
-**Sniped marks** use the crosshairs button beside the witnessed-kill check button.
+**Sniped marks** use the crosshairs button beside the witnessed-kill check button
+on the right of the row, alongside **X** for removal.
 The check button records a kill now or restores a dead mark. Crosshairs marks a
 mark found gone; clearing that evidence leaves it dead with an unknown kill
 time. These remain separate report states.
@@ -220,7 +221,8 @@ Unfinished marks, unknown kill times and S-rank checks retain their own details.
 
 Manage S-rank watches in **Setup > S-rank watch setup**. Their Spawned / Didn't
 Spawn boxes remain under the route, including in the popout. Hold **Ctrl** and
-click a row's **X** to remove it. With **Show spicing markers** enabled, right-click
+click a row's **X** to remove it. **Setup > Route tools and view > Show spicing
+markers** uses the same preference as Settings > Train. When enabled, right-click
 the mark row and choose **Being spiced**; spiced marks remain visibly marked.
 
 A mark is ticked off when it dies, whoever killed it, even if you were not

@@ -135,6 +135,14 @@ public sealed partial class Plugin
         ImGui.Spacing();
         DrawSettingsHeading("Route tools and view");
         DrawTrainControls();
+        var spicing = _config.ShowSpicing;
+        if (ImGui.Checkbox("Show spicing markers", ref spicing))
+        {
+            _config.ShowSpicing = spicing;
+            _config.Save();
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Show spicing markers and enable right-click > Being spiced on mark rows.");
         ImGui.Spacing();
         DrawSettingsHeading("Scout credits");
         DrawTrainScouts();
