@@ -34,6 +34,20 @@ public static class ReleaseNotes
 
     public static readonly Release[] All =
     {
+        new("0.6.0", "2026-09-24", "A compact train workspace, clearer Discord reports and more reliable scouting.",
+        [
+            new("Train workspace", "The Train tab and /hht now share Route, Reports and Setup pages. Route keeps Next Mark, Next Aetheryte and the active preset context together; the pause/resume icon stays beside the page tabs. Compact rows and controls adapt to narrow windows.", Kihtli),
+            new("Route controls", "TP sits to the left of each mark or rally stop. Killed, Sniped and removal controls stay on the right; hold Ctrl and click X to remove a row. Last-seen ages use short brackets, with full details on hover.", Kihtli),
+            new("Spicing", "Show spicing markers is available in Setup > Route tools and view. Enable it, then right-click a mark and choose Being spiced to change its marker.", Kihtli),
+            new("Scout notes", "Add an optional note of up to 256 characters on Reports, alongside scout credits and a live Discord preview. Notes clear after successful delivery; failed sends and edits made while sending keep the draft. Notes from a previous train require an explicit choice to reuse.", Kihtli),
+            new("Scouting reports", "The intact import code appears first, followed by the report in one Discord card when it fits. Summaries show remaining/recorded counts by world and expansion, with separate details for sniped or killed marks, unknown death times and names not recorded. Larger reports use code first and report second; content too large for that is blocked before sending.", Kihtli),
+            new("Completed trains", "Respawn windows are summarized by world and expansion, using the overall range of observed kills. Individual sniped windows, missing marks, unknown death times and S-rank checks remain separate. Individual kill history is still available in game.", Kihtli),
+            new("Discord delivery", "Improved timeout and rate-limit handling, prevented overlapping reports and contained report-preparation errors. Partial or uncertain delivery keeps the train and notes for review, with a warning to check Discord before retrying. Posting results appear on Reports.", Kihtli),
+            new("Map", "Hold Ctrl and left-click spawn-point or SS-location dots to place a flag. Plain clicks no longer place plugin flags; Shift-click still toggles supported manual S-rank exclusions.", Kihtli),
+            new("Active Marks", "Known death updates remove stale living rows while retaining corpse rows; fresh sightings can establish activity again. Remote sightings account for clock differences between clients and the server. Full Faloop and late-observer protection also requires the matching server changes.", Kihtli),
+            new("Saving and background work", "Settings changes are saved in batches with retries and a final flush at logout or unload. Auto-advance, temporary-flag cleanup, counter resets and queued spawn alerts continue while plugin windows are closed.", Kihtli),
+            new("Integrations", "Optional Lifestream checks no longer repeatedly invoke missing functions. Train IPC returns stable snapshots and safely queues imports. Queued imports are ignored after unload, and report sending is cancelled on unload.", Kihtli),
+        ]),
         new("0.5.0.22", "2026-09-21", "Simpler scouting controls and configurable train spawn-point colours.",
         [
             new("Scouting", "Removed Tracking this train. Scanning/Paused now controls whether new marks join the train, and old saved tracking settings no longer block recording or automatic scout credit. Enable Sharing > The train to share contributions. Scouting still starts paused after login or reload.", Kihtli),

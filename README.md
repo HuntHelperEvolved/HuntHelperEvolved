@@ -6,8 +6,8 @@ summaries and sniped/missing-mark details, draws spawn points, your detection ra
 event locations on the **in-game map**, counts S-rank trigger mobs, and keeps a
 lifetime per-mark kill tally for every character you play.
 
-> **v0.5 beta.** This release appears in the plugin installer only when testing
-> builds are enabled.
+> **v0.6 local preview (0.6.0.0).** This version is staged locally. The published
+> installer remains on 0.5.0.22 and requires testing builds to be enabled.
 >
 > See [Where this came from](#where-this-came-from) if you are arriving from
 > Hunt Train Relay or Hunt Tally; your settings and your tally carry over.
@@ -59,8 +59,13 @@ kill credit. Hover details focus on live information and short action labels.
 
 ## Release notes
 
+The local 0.6.0.0 preview includes the redesigned Route / Reports / Setup train
+workspace, scout notes, compact Discord reports, safer map and removal controls,
+and reliability fixes. Its full notes are included in **What's new** in game.
+
 See [GitHub releases](https://github.com/HuntHelperEvolved/HuntHelperEvolved/releases)
-or **Settings → About → What's new** in game for patch notes.
+for published versions, or **Settings → About → What's new** in game for the
+loaded build's notes.
 
 ## The map
 
