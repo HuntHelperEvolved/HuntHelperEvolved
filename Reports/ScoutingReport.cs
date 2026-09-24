@@ -56,7 +56,7 @@ public static class ScoutingReport
                 var ordered = expansion.OrderBy(x => x.Info?.ZoneOrder ?? int.MaxValue)
                     .ThenBy(x => x.Mark.Name).ThenBy(x => x.Mark.Instance).Select(x => x.Mark).ToList();
                 var down = ordered.Where(m => m.Dead).ToList();
-                var block = new StringBuilder($"**{EscapeText(worldName)} / {EscapeText(expansion.Key)}** — {ordered.Count - down.Count} up · {down.Count} down");
+                var block = new StringBuilder($"**{EscapeText(worldName)} / {EscapeText(expansion.Key)}** — {ordered.Count - down.Count}/{ordered.Count}");
                 AppendExceptions(block, "Marked sniped", down.Where(m => m.SnipedAtUtc.HasValue));
                 AppendExceptions(block, "Killed", down.Where(m => !m.SnipedAtUtc.HasValue && m.DeathObservedAtUtc.HasValue));
                 AppendExceptions(block, "Down — time unknown", down.Where(m => !m.SnipedAtUtc.HasValue && !m.DeathObservedAtUtc.HasValue));

@@ -50,7 +50,6 @@ public static class DiscordRelay
 
         var details = new StringBuilder($"From the train list • Sent <t:{nowUnix}:F>\n\n");
         details.Append(ScoutingReport.BuildSummary(marks));
-        details.Append("\n\nUp is the last recorded state.");
         var normalizedNotes = ScoutingReport.NormalizeNotes(notes);
         if (normalizedNotes.Length > 0)
             details.Append($"\n\n**Scout notes**\n{ScoutingReport.EscapeText(normalizedNotes)}");

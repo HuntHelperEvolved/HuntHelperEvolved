@@ -283,23 +283,82 @@ public sealed partial class Plugin
 
     private float TrainWorkspaceFooterHeight()
     {
-        var height = _trainWorkspacePage == TrainWorkspacePage.Setup ? 0 : ImGui.GetFrameHeightWithSpacing() * 2;
-        if (TrainMutationBusy) height += ImGui.GetTextLineHeightWithSpacing();
-        if (!string.IsNullOrEmpty(_lastPostResult))
-            height += ImGui.CalcTextSize(_lastPostResult, false, Math.Max(1, ImGui.GetContentRegionAvail().X)).Y + ImGui.GetStyle().ItemSpacing.Y;
-        return height + ImGui.GetStyle().ItemSpacing.Y * 2;
+        if (!HasTrainWorkspaceFooter) return 0;
+        var style = ImGui.GetStyle();
+        var width = Math.Max(1, ImGui.GetContentRegionAvail().X);
+        var height = 0f;
+        void AddRow(float rowHeight)
+        {
+            if (height > 0) height += style.ItemSpacing.Y;
+            height += rowHeight;
+        }
+        float TextHeight(string text) => ImGui.CalcTextSize(text, false, width).Y;
+
+        if (_trainWorkspacePage == TrainWorkspacePage.Route)
+        {
+            var summary = TrainRouteCountText();
+            if (TrainFooterReviewFits(summary, width))
+                AddRow(Math.Max(TextHeight(summary), ImGui.GetFrameHeight()));
+            else
+            {
+                AddRow(TextHeight(summary));
+                AddRow(ImGui.GetFrameHeight());
+            }
+        }
+        else if (_trainWorkspacePage == TrainWorkspacePage.Reports)
+        {
+            AddRow(ImGui.GetFrameHeight());
+            AddRow(TextHeight(TrainReportSendHint));
+        }
+        if (TrainMutationBusy) AddRow(TextHeight(TrainReportBusyText));
+        if (!string.IsNullOrEmpty(_lastPostResult)) AddRow(TextHeight(_lastPostResult));
+        // EndChild and the separator each advance by ItemSpacing.Y. The last
+        // footer row needs its visible height, without another trailing gap.
+        return height + style.ItemSpacing.Y * 2;
+    }
+
+    private const string TrainReviewCompletionLabel = "Review completion…";
+    private const string TrainReportSendHint = "Hold Shift and click to send.";
+    private bool HasTrainWorkspaceFooter => _trainWorkspacePage != TrainWorkspacePage.Setup
+        || TrainMutationBusy || !string.IsNullOrEmpty(_lastPostResult);
+    private string TrainReportBusyText => _completion.IsBusy ? "Finishing report…" : "Sending report…";
+
+    private string TrainRouteCountText()
+    {
+        var recorded = 0;
+        var remaining = 0;
+        foreach (var mark in _detector.Marks.Values)
+        {
+            if (mark.IsCustom) continue;
+            recorded++;
+            if (!mark.Dead) remaining++;
+        }
+        return $"{recorded} records · {remaining} recorded up";
+    }
+
+    private static bool TrainFooterReviewFits(string summary, float width) =>
+        ImGui.CalcTextSize(summary).X + ImGui.GetStyle().ItemSpacing.X
+        + ImGui.CalcTextSize(TrainReviewCompletionLabel).X + ImGui.GetStyle().FramePadding.X * 2 <= width;
+
+    private static void DrawTrainFooterMutedText(string text)
+    {
+        ImGui.PushStyleColor(ImGuiCol.Text, ImGui.GetStyle().Colors[(int)ImGuiCol.TextDisabled]);
+        ImGui.TextWrapped(text);
+        ImGui.PopStyleColor();
     }
 
     private void DrawTrainWorkspaceFooter()
     {
+        if (!HasTrainWorkspaceFooter) return;
         ImGui.Separator();
         if (_trainWorkspacePage == TrainWorkspacePage.Route)
         {
-            var marks = _detector.Marks.Values.Where(m => !m.IsCustom).ToList();
-            ImGui.TextDisabled($"{marks.Count} records · {marks.Count(m => !m.Dead)} recorded up");
-            TrainControlSameLine("Review completion…");
+            var summary = TrainRouteCountText();
+            var reviewFits = TrainFooterReviewFits(summary, ImGui.GetContentRegionAvail().X);
+            DrawTrainFooterMutedText(summary);
+            if (reviewFits) ImGui.SameLine();
             ImGui.BeginDisabled(TrainMutationBusy);
-            if (ImGui.Button("Review completion…"))
+            if (ImGui.Button(TrainReviewCompletionLabel))
             {
                 _trainCompletionReport = true;
                 _trainReportPreview = null;
@@ -319,9 +378,9 @@ public sealed partial class Plugin
             }
             else if (ImGui.Button("Send scouting report")) _ = SendScoutingReportAsync();
             ImGui.EndDisabled();
-            ImGui.TextDisabled("Hold Shift and click to send.");
+            DrawTrainFooterMutedText(TrainReportSendHint);
         }
-        if (TrainMutationBusy) ImGui.TextDisabled(_completion.IsBusy ? "Finishing report…" : "Sending report…");
+        if (TrainMutationBusy) DrawTrainFooterMutedText(TrainReportBusyText);
         if (!string.IsNullOrEmpty(_lastPostResult)) ImGui.TextWrapped(_lastPostResult);
     }
 
