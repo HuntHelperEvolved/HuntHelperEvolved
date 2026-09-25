@@ -92,6 +92,7 @@ public sealed partial class Plugin : IDalamudPlugin
     private readonly HuntCounter _counter;
     private readonly SpawnWatchCounters _spawnWatch;
     private readonly TrainIpcProvider _trainIpc;
+    private readonly TrainStatusIpcProvider _trainStatusIpc;
     private readonly WorldData _worldData;
     private readonly HuntMapOverlay _mapOverlay;
     private readonly SsEventWatcher _ssEvent;
@@ -404,6 +405,9 @@ public sealed partial class Plugin : IDalamudPlugin
             // Publish framework-thread snapshots after the detector exists.
             _trainIpc = new TrainIpcProvider(_pluginInterface, _framework, _detector, _log);
             startup.Add(_trainIpc.Dispose);
+            _trainStatusIpc = new TrainStatusIpcProvider(_pluginInterface, _framework, _log,
+                CaptureTrainStatus, OpenTrainPopoutFromIpc, ToggleTrainPopoutFromIpc);
+            startup.Add(_trainStatusIpc.Dispose);
 
             // KamiToolKit needs one-time initialisation before any of its
             // controllers can be enabled — without it, AddonController.Enable()
@@ -3095,6 +3099,7 @@ public sealed partial class Plugin : IDalamudPlugin
         cleanup.Run("_reward.Dispose", () => { _reward.Dispose(); });
         cleanup.Run("_seeder.Dispose", () => { _seeder.Dispose(); });
         cleanup.Run("_trainIpc.Dispose", () => { _trainIpc.Dispose(); });
+        cleanup.Run("_trainStatusIpc.Dispose", () => { _trainStatusIpc.Dispose(); });
         cleanup.Run("_tallyWindows.RemoveAllWindows", () => { _tallyWindows.RemoveAllWindows(); });
         cleanup.Run("_tallyWindow.Dispose", () => { _tallyWindow.Dispose(); });
         cleanup.Run("_tallyConfig.Flush", () => { _tallyConfig.Flush(force: true); });

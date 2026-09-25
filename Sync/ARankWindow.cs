@@ -148,7 +148,7 @@ public sealed class ARankWindow
                 if (available && (_sync.Faloop.IsOffline(_worldData.NameOf(world)) || up || opens is null || now < opens)) continue;
                 var afterMaintenance=restart is not null && (kill is null || kill.At <= restart || kill.LastAliveAt <= restart);
                 var state=up ? 0 : !known ? 5 : now >= end ? 1 : now >= opens ? 2 : 4;
-                var percent=up ? 100 : known ? Math.Clamp((now-opens!.Value).TotalSeconds/(end!.Value-opens.Value).TotalSeconds*100,0,100) : 0;
+                var percent = (ARankSpawnProgress.Fraction(up, opens, end, now) ?? 0) * 100;
                 rows.Add(new(entry.Key,world,instance,info,kill,opens,end,up,sighting?.At,afterMaintenance,state,percent));
             }
         }

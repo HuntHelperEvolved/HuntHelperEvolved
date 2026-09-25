@@ -6,8 +6,9 @@ summaries and sniped/missing-mark details, draws spawn points, your detection ra
 event locations on the **in-game map**, counts S-rank trigger mobs, and keeps a
 lifetime per-mark kill tally for every character you play.
 
-> **v0.6 local preview (0.6.0.0).** This version is staged locally. The published
-> installer remains on 0.5.0.22 and requires testing builds to be enabled.
+> **v0.6 release candidate (0.6.0.0).** Prepared for the next testing release.
+> The published installer currently serves 0.5.0.22 and requires testing builds
+> to be enabled.
 >
 > See [Where this came from](#where-this-came-from) if you are arriving from
 > Hunt Train Relay or Hunt Tally; your settings and your tally carry over.
@@ -29,6 +30,47 @@ is needed. Keep a backup of your plugin configuration before updating.
 Hunt Helper is not required.
 
 If it does not appear, first check that testing builds are enabled in step 2.
+
+### Optional Umbra train widget
+
+[Hunt Helper Evolved for Umbra](https://github.com/HuntHelperEvolved/Umbra.HuntHelperEvolved)
+adds a toolbar button showing `DT:x/x, EW:x/x, ShB:x/x` for your current world.
+Each count is train-list A-ranks over the full expansion roster, including known
+zone instances. Killed or sniped marks are excluded from the first number even
+when retained in the train; the roster total stays unchanged. The progress bar
+averages known A-rank spawn-window progress below 100%. Marks at 100% are excluded
+until every mark in the displayed roster reaches 100%, when the bar fills
+completely. Unknown timers are excluded from the average and prevent full
+completion.
+Left-click toggles the train popout. Right-click cycles **All → DT → EW → ShB**,
+starting at All and remembering your selection.
+
+The companion requires **Umbra 3.1.18.0** and **HHE 0.6.0.0** with train-status
+IPC support. HHE 0.6 is currently a local release candidate; the published **0.5.0.22**
+build does not support this widget.
+
+Install the companion directly from GitHub through Umbra:
+
+1. Install and enable **Umbra** and the compatible **Hunt Helper Evolved** build.
+2. Open **Umbra → Settings → Plugins**. Enable custom plugins if prompted.
+3. Under **Install from repository**, enter:
+
+   | Field | Value |
+   | --- | --- |
+   | Author / owner | `HuntHelperEvolved` |
+   | Repository | `Umbra.HuntHelperEvolved` |
+
+4. Add the repository and confirm the **Hunt Helper Evolved for Umbra** release.
+5. Restart Umbra if prompted. In the toolbar configuration, choose **Add Widget**
+   and select **Hunt Helper Evolved**.
+
+Use just the two field values above; no URL or `repo.json` is needed in that
+dialog. Umbra downloads the companion and can discover future releases from
+the repository.
+
+If you installed an earlier companion with **Install from file**, remove its
+old entry from Umbra's Plugins list before adding the repository, so only one
+copy registers the widget. Keep the main Hunt Helper Evolved plugin enabled.
 
 ## Commands
 
@@ -59,9 +101,21 @@ kill credit. Hover details focus on live information and short action labels.
 
 ## Release notes
 
-The local 0.6.0.0 preview includes the redesigned Route / Reports / Setup train
-workspace, scout notes, compact Discord reports, safer map and removal controls,
-and reliability fixes. Its full notes are included in **What's new** in game.
+### 0.6.0 — changes since 0.5.0.22
+
+- **Train window:** Route, Reports and Setup organise the Train tab and `/hht`,
+  with compact rows, preset selection and flag controls on Route.
+- **Reports:** Preview before sending, add a 256-character scout note, and share
+  shorter Discord reports with full-roster counts and grouped respawn ranges.
+- **Controls:** Hold Shift to send reports or End train. Alt-click map spawn/event
+  points to flag them; Ctrl-click a route row's X to remove it. Right-click marks
+  to change Being spiced when spicing markers are enabled.
+- **Umbra:** Optional current-world DT, EW and ShB counts, spawn progress and a
+  click-to-toggle train popout. Killed/sniped marks leave only the listed count.
+  Follow the [direct GitHub installation steps](#optional-umbra-train-widget).
+- **Fixes:** More reliable Active Marks, Discord posting and settings saving.
+  Auto-advance and counter resets work with windows closed; preset-save
+  confirmations disappear after five seconds.
 
 See [GitHub releases](https://github.com/HuntHelperEvolved/HuntHelperEvolved/releases)
 for published versions, or **Settings → About → What's new** in game for the
@@ -320,6 +374,18 @@ HHE publishes its own Dalamud IPC endpoints: `HuntHelperEvolved.ApiVersion`,
 and observed death/sniped timestamps. The original HHE `.GetTrainList` and
 `.ImportTrainList` endpoints remain available for existing HHE consumers.
 Hunt Helper's `HH.*` endpoints are no longer registered.
+
+The optional [Umbra train widget](#optional-umbra-train-widget) uses the
+train-status IPC introduced in HHE 0.6.0.0.
+
+`HuntHelperEvolved.GetTrainStatusV1` returns a versioned JSON snapshot, and
+`HuntHelperEvolved.ToggleTrainPopout` toggles the popout, selecting Route when
+opening. `HuntHelperEvolved.OpenTrainPopout` remains available to open it without
+toggling it closed. The standalone contract is in `Interop/TrainStatusContract.cs`.
+Recorded counts exclude dead/sniped marks even when retained in the train, as
+well as custom flags. Totals and spawn progress still cover the full roster;
+unknown spawn timers are excluded from the mean and their coverage is supplied
+in the snapshot. Existing train IPC version and endpoints remain unchanged.
 
 ## Where this came from
 

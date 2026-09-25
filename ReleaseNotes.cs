@@ -34,14 +34,15 @@ public static class ReleaseNotes
 
     public static readonly Release[] All =
     {
-        new("0.6.0", "2026-09-24", "A tidier train window, scout notes and clearer Discord reports.",
+        new("0.6.0", "2026-09-25", "A clearer train workspace, shorter reports and an optional Umbra widget.",
         [
-            new("Train window", "The Train tab and /hht now have Route, Reports and Setup pages. Compact rows put TP before the mark name and status buttons on the right. While scanning, choose a preset or add a custom flag directly from Route. Setup holds the train options, including spicing markers.", Kihtli),
-            new("Scouting reports", "Add a scout note of up to 256 characters and preview your report before sending. Totals include the full roster and known zone instances. The import code comes first, with the report in the same Discord card when it fits. Larger scouting reports use two messages: code, then report.", Kihtli),
-            new("Completed trains", "Shorter reports summarise overall respawn ranges by world and expansion, with sniped and missing marks listed separately. Detailed kill history remains available in game.", Kihtli),
-            new("Safer controls", "Hold Alt when clicking a spawn-point or SS-location dot to place a map flag. Ctrl still hides the overlay; hold Ctrl when clicking a route row's X to remove it. With spicing markers enabled, right-click a mark to change its spicing status.", Kihtli),
-            new("Active Marks", "Improved removal of stale living entries after known deaths and made shared sightings more reliable when players' clocks differ.", Kihtli),
-            new("Reliability", "Improved Discord posting, settings saving and optional Lifestream support. Auto-advance, temporary-flag cleanup and counter resets keep working while plugin windows are closed.", Kihtli),
+            new("Train window", "Route, Reports and Setup organise the Train tab and /hht. Compact rows keep travel and mark status together. Choose presets and add flags from Route while scanning; preset-save confirmations clear after five seconds.", Kihtli),
+            new("Scouting reports", "Preview reports and add a scout note of up to 256 characters. Counts use the full roster and known instances. Discord puts the import code first and keeps the report in one card when it fits.", Kihtli),
+            new("Completed trains", "Shorter Discord reports group respawn ranges by world and expansion, with sniped and missing marks listed separately. Detailed kill history stays available in game.", Kihtli),
+            new("Controls", "Hold Shift to send reports or End train, Alt-click map spawn/event points to flag them, and Ctrl-click a route row's X to remove it. Right-click marks to change Being spiced when spicing markers are enabled.", Kihtli),
+            new("Umbra widget", "Optional DT, EW and ShB counts show remaining train marks against full roster totals for your current world. Killed/sniped marks leave the first count only. Left-click toggles the popout; right-click cycles All, DT, EW and ShB. The bar averages known spawn progress below 100%; it fills only when the displayed roster reaches 100%.", Kihtli),
+            new("Install the widget", "In Umbra > Settings > Plugins > Install from repository, enter HuntHelperEvolved as Author / owner and Umbra.HuntHelperEvolved as Repository. Confirm, restart Umbra if prompted, then choose Add Widget > Hunt Helper Evolved.", Kihtli),
+            new("Fixes", "Active Marks clears stale living entries after known deaths and handles differing player clocks better. Improved Discord delivery and settings saving. Auto-advance, temporary-flag cleanup and counter resets now work with plugin windows closed.", Kihtli),
         ]),
         new("0.5.0.22", "2026-09-21", "Simpler scouting controls and configurable train spawn-point colours.",
         [

@@ -8,7 +8,7 @@
     <Company></Company>
     <Version>0.6.0.0</Version>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <Description>Hunt tracking for FFXIV. Detects marks and records a train with exact kill times, posts Discord reports sorted by the order marks actually died, draws spawn points, your detection range and SS event locations on the in-game map, counts S-rank trigger mobs, and keeps a lifetime per-mark kill tally per character.</Description>
+    <Description>Hunt tracking for FFXIV. Scout and share trains, preview Discord reports with respawn summaries, track S/A-rank windows and live marks, map spawn points, pool trigger-mob kills and keep lifetime hunt tallies. Includes optional Lifestream travel and an Umbra train widget.</Description>
     <PackageProjectUrl></PackageProjectUrl>
   </PropertyGroup>
 

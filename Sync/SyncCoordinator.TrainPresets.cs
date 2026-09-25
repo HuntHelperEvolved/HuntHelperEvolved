@@ -11,10 +11,20 @@ public sealed partial class SyncCoordinator
         && _trainSnapshotConnectionAt == _client.ConnectedAtUtc;
     public bool SupportsTrainPresets { get; private set; }
     public PresetState TrainPresets { get; private set; } = new();
-    public string PresetStatus { get; private set; } = "";
+    public string PresetStatus
+    {
+        get => _presetStatus;
+        private set
+        {
+            _presetStatus = value;
+            _presetStatusExpiresAt = null;
+        }
+    }
     public string? PendingPresetRequest { get; private set; }
     public long? AcceptedPresetRevision { get; private set; }
     public string? CompletedPresetRequest { get; private set; }
+    private string _presetStatus = "";
+    private DateTime? _presetStatusExpiresAt;
     private DateTime _presetRequestAt;
 
     public bool SendPreset(string action, TrainPreset? preset = null, string? presetId = null, long? baseRevision = null,
@@ -56,6 +66,7 @@ public sealed partial class SyncCoordinator
             CompletedPresetRequest = message.RequestId;
             PendingPresetRequest = null;
             PresetStatus = message.Accepted ? "Preset change saved on the server." : message.Message;
+            if (message.Accepted) _presetStatusExpiresAt = DateTime.UtcNow.AddSeconds(5);
             AcceptedPresetRevision = message.Accepted ? message.State.Revision : null;
         }
         if (_config.SyncShareTrain) ApplyOrder(message.Order);
@@ -63,6 +74,8 @@ public sealed partial class SyncCoordinator
 
     private void CheckPresetRequest()
     {
+        if (_presetStatusExpiresAt is { } expiresAt && DateTime.UtcNow >= expiresAt)
+            PresetStatus = "";
         if (PendingPresetRequest is null || IsConnected && DateTime.UtcNow - _presetRequestAt < TimeSpan.FromSeconds(10)) return;
         PresetStatus = "The server has not confirmed the preset change. Reconnect to check the shared library before retrying.";
         PendingPresetRequest = null;
