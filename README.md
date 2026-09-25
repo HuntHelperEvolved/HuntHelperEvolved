@@ -6,9 +6,8 @@ summaries and sniped/missing-mark details, draws spawn points, your detection ra
 event locations on the **in-game map**, counts S-rank trigger mobs, and keeps a
 lifetime per-mark kill tally for every character you play.
 
-> **v0.6 release candidate (0.6.0.0).** Prepared for the next testing release.
-> The published installer currently serves 0.5.0.22 and requires testing builds
-> to be enabled.
+> **v0.6 testing release (0.6.0.0).** Enable plugin testing builds to install
+> or update through the existing repository feed.
 >
 > See [Where this came from](#where-this-came-from) if you are arriving from
 > Hunt Train Relay or Hunt Tally; your settings and your tally carry over.
@@ -46,8 +45,8 @@ Left-click toggles the train popout. Right-click cycles **All → DT → EW → 
 starting at All and remembering your selection.
 
 The companion requires **Umbra 3.1.18.0** and **HHE 0.6.0.0** with train-status
-IPC support. HHE 0.6 is currently a local release candidate; the published **0.5.0.22**
-build does not support this widget.
+IPC support. Update from **0.5.0.22** before adding the widget; that older build
+does not support it.
 
 Install the companion directly from GitHub through Umbra:
 
