@@ -406,7 +406,7 @@ public sealed partial class Plugin : IDalamudPlugin
             _trainIpc = new TrainIpcProvider(_pluginInterface, _framework, _detector, _log);
             startup.Add(_trainIpc.Dispose);
             _trainStatusIpc = new TrainStatusIpcProvider(_pluginInterface, _framework, _log,
-                CaptureTrainStatus, OpenTrainPopoutFromIpc, ToggleTrainPopoutFromIpc);
+                CaptureTrainStatus, OpenTrainPopoutFromIpc, ToggleTrainPopoutFromIpc, CaptureWorldTrainStatus);
             startup.Add(_trainStatusIpc.Dispose);
 
             // KamiToolKit needs one-time initialisation before any of its

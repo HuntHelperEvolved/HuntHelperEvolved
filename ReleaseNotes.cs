@@ -34,6 +34,10 @@ public static class ReleaseNotes
 
     public static readonly Release[] All =
     {
+        new("0.6.0.1", "2026-09-25", "Choose worlds and expansions for each Umbra widget.",
+        [
+            new("Umbra settings", "With companion 0.2.0.0, each widget can follow your current world or stay on a selected world. Enable any combination of ARR, Heavensward, Stormblood, Shadowbringers, Endwalker and Dawntrail. All and right-click cycling use that widget's enabled expansions. Fixed-world labels show the world name; counts and timers use data already available to HHE.", Kihtli),
+        ]),
         new("0.6.0", "2026-09-25", "A clearer train workspace, shorter reports and an optional Umbra widget.",
         [
             new("Train window", "Route, Reports and Setup organise the Train tab and /hht. Compact rows keep travel and mark status together. Choose presets and add flags from Route while scanning; preset-save confirmations clear after five seconds.", Kihtli),

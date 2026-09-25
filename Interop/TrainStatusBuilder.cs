@@ -26,12 +26,18 @@ internal sealed class TrainStatusInput
 internal static class TrainStatusBuilder
 {
     private static readonly (string Code, string Name)[] Expansions =
-        { ("DT", "Dawntrail"), ("EW", "Endwalker"), ("ShB", "Shadowbringers") };
+        { ("DT", "Dawntrail"), ("EW", "Endwalker"), ("ShB", "Shadowbringers"),
+            ("SB", "Stormblood"), ("HW", "Heavensward"), ("ARR", "ARR") };
 
-    internal static TrainStatusSnapshot Build(TrainStatusInput input)
+    internal static TrainStatusSnapshot Build(TrainStatusInput input) => Build(input, TrainStatusContract.Version, 3);
+
+    internal static TrainStatusSnapshot BuildWorld(TrainStatusInput input) =>
+        Build(input, TrainStatusContract.WorldSnapshotVersion, Expansions.Length);
+
+    private static TrainStatusSnapshot Build(TrainStatusInput input, int version, int expansionCount)
     {
         if (!input.LoggedIn || input.WorldId == 0)
-            return new(TrainStatusContract.Version, false, input.SyncConnected, 0, string.Empty,
+            return new(version, false, input.SyncConnected, 0, string.Empty,
                 false, input.NowUtc, Array.Empty<TrainExpansionStatus>());
 
         var marks = input.Marks.Where(m => !m.IsCustom && m.WorldId == input.WorldId
@@ -65,8 +71,8 @@ internal static class TrainStatusBuilder
             zones.Add(evidence.NameId, evidence.TerritoryId, input.WorldId, evidence.Instance);
         foreach (var status in statuses) zones.Add(0, status.TerritoryId, input.WorldId, status.Instance);
 
-        var results = new List<TrainExpansionStatus>(Expansions.Length);
-        foreach (var (code, name) in Expansions)
+        var results = new List<TrainExpansionStatus>(expansionCount);
+        foreach (var (code, name) in Expansions.Take(expansionCount))
         {
             var total = 0;
             var known = 0;
@@ -96,7 +102,7 @@ internal static class TrainStatusBuilder
                 && ExpansionData.Lookup(m.NameId)!.Expansion == name);
             results.Add(new(code, recorded, total, known, known > 0 ? progressSum / known : null, completed));
         }
-        return new(TrainStatusContract.Version, true, input.SyncConnected, input.WorldId, input.WorldName,
+        return new(version, true, input.SyncConnected, input.WorldId, input.WorldName,
             offline, input.NowUtc, results.ToArray());
     }
 }

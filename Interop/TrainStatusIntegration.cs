@@ -6,22 +6,30 @@ namespace HuntHelperEvolved;
 
 public sealed partial class Plugin
 {
-    private TrainStatusSnapshot CaptureTrainStatus()
+    private TrainStatusSnapshot CaptureTrainStatus() => TrainStatusBuilder.Build(CaptureTrainStatusInput(0));
+
+    private TrainStatusSnapshot CaptureWorldTrainStatus(uint worldId) =>
+        TrainStatusBuilder.BuildWorld(CaptureTrainStatusInput(worldId));
+
+    private TrainStatusInput CaptureTrainStatusInput(uint requestedWorld)
     {
         var now = DateTime.UtcNow;
         if (_disposed || !GameReadiness.CanReadCharacters)
-            return TrainStatusBuilder.Build(new() { NowUtc = now, SyncConnected = _sync.IsConnected });
+            return new() { NowUtc = now, SyncConnected = _sync.IsConnected };
 
-        var world = _detector.CurrentWorldId();
+        var currentWorld = _detector.CurrentWorldId();
+        var world = requestedWorld == 0 ? currentWorld : requestedWorld;
+        if (currentWorld == 0 || requestedWorld != 0 && _worldData.LocateWorld(world) is null)
+            return new() { NowUtc = now, SyncConnected = _sync.IsConnected };
         var evidence = _detector.OtherRanks.Values.Concat(_sync.RemoteSightings.Values)
             .Select(s => new TrainStatusInstanceEvidence(s.NameId, s.TerritoryId, s.WorldId, s.Instance)).ToList();
-        evidence.Add(new(0, _detector.CurrentTerritoryId, world, MarkDetector.GetCurrentInstance()));
-        return TrainStatusBuilder.Build(new()
+        evidence.Add(new(0, _detector.CurrentTerritoryId, currentWorld, MarkDetector.GetCurrentInstance()));
+        return new()
         {
             LoggedIn = _clientState.IsLoggedIn,
             SyncConnected = _sync.IsConnected,
             WorldId = world,
-            WorldName = _detector.CurrentWorldName(),
+            WorldName = requestedWorld == 0 ? _detector.CurrentWorldName() : _worldData.NameOf(world),
             NowUtc = now,
             Marks = _detector.Ordered(),
             Kills = _config.ARankKills,
@@ -29,7 +37,7 @@ public sealed partial class Plugin
             InstanceEvidence = evidence,
             SRankStatuses = _sync.SRankStatuses.Values.ToArray(),
             Faloop = _sync.Faloop,
-        });
+        };
     }
 
     private bool OpenTrainPopoutFromIpc()

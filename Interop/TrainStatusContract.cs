@@ -8,12 +8,18 @@ public static class TrainStatusContract
 {
     public const int Version = 1;
     public const string SnapshotGate = "HuntHelperEvolved.GetTrainStatusV1";
+    public const int WorldSnapshotVersion = 2;
+    public const string WorldSnapshotGate = "HuntHelperEvolved.GetTrainStatusV2";
     public const string OpenGate = "HuntHelperEvolved.OpenTrainPopout";
     public const string ToggleGate = "HuntHelperEvolved.ToggleTrainPopout";
 }
 
 /// <summary>
-/// Current-world snapshot, refreshed on the framework thread. UpdatedAtUtc is
+/// Snapshot refreshed on the framework thread. V1 covers the current world and
+/// DT/EW/ShB. V2 accepts a uint world ID (0 follows the current world) and covers
+/// DT/EW/ShB/SB/HW/ARR. An unavailable or pending world has LoggedIn false with
+/// WorldId 0 and no rows; callers must not retain the previous world's display.
+/// UpdatedAtUtc is
 /// the capture time, not the caller's read time. SyncConnected describes shared
 /// data availability; local train and timer data remain usable while disconnected.
 /// LoggedIn is false, with no world or expansion rows, until character/world

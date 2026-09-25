@@ -6,8 +6,8 @@ summaries and sniped/missing-mark details, draws spawn points, your detection ra
 event locations on the **in-game map**, counts S-rank trigger mobs, and keeps a
 lifetime per-mark kill tally for every character you play.
 
-> **v0.6 testing release (0.6.0.0).** Enable plugin testing builds to install
-> or update through the existing repository feed.
+> **0.6.0.1 local staging:** Adds fixed worlds and all-expansion settings for the
+> staged Umbra companion 0.2.0.0. The public testing feed currently serves 0.6.0.0.
 >
 > See [Where this came from](#where-this-came-from) if you are arriving from
 > Hunt Train Relay or Hunt Tally; your settings and your tally carry over.
@@ -33,7 +33,9 @@ If it does not appear, first check that testing builds are enabled in step 2.
 ### Optional Umbra train widget
 
 [Hunt Helper Evolved for Umbra](https://github.com/HuntHelperEvolved/Umbra.HuntHelperEvolved)
-adds a toolbar button showing `DT:x/x, EW:x/x, ShB:x/x` for your current world.
+adds a toolbar button showing train counts and spawn progress. The staged update
+supports ARR, HW, SB, ShB, EW and DT, with a current or fixed world and enabled
+expansions chosen separately for each widget. Existing defaults stay DT/EW/ShB.
 Each count is train-list A-ranks over the full expansion roster, including known
 zone instances. Killed or sniped marks are excluded from the first number even
 when retained in the train; the roster total stays unchanged. The progress bar
@@ -41,12 +43,15 @@ averages known A-rank spawn-window progress below 100%. Marks at 100% are exclud
 until every mark in the displayed roster reaches 100%, when the bar fills
 completely. Unknown timers are excluded from the average and prevent full
 completion.
-Left-click toggles the train popout. Right-click cycles **All → DT → EW → ShB**,
-starting at All and remembering your selection.
+Left-click toggles the train popout. Right-click cycles **All → each enabled
+expansion → All**, remembering your selection. All and the progress bar include
+only that widget's enabled expansions. Fixed-world labels include the world name.
+World selection uses data already available to HHE; it does not change worlds or
+create missing scouting/timer data.
 
-The companion requires **Umbra 3.1.18.0** and **HHE 0.6.0.0** with train-status
-IPC support. Update from **0.5.0.22** before adding the widget; that older build
-does not support it.
+The new settings require **Umbra 3.1.18.0**, staged companion **0.2.0.0** and
+**HHE 0.6.0.1**. The released companion 0.1.0.2 remains compatible with this HHE
+build. Current-world DT/EW/ShB views also remain available with HHE 0.6.0.0.
 
 Install the companion directly from GitHub through Umbra:
 
@@ -99,6 +104,15 @@ searchable explanations of the controls, timer colours, mapping, sharing and
 kill credit. Hover details focus on live information and short action labels.
 
 ## Release notes
+
+### 0.6.0.1 — staged changes since 0.6.0
+
+- Configure each Umbra widget with a current or fixed world and any combination
+  of ARR, HW, SB, ShB, EW and DT. All and right-click cycling use its enabled
+  expansions. Requires companion 0.2.0.0.
+- Existing companions keep their current-world DT/EW/ShB display. Counts still
+  exclude killed/sniped marks from the first number only; spawn-progress rules
+  are unchanged.
 
 ### 0.6.0 — changes since 0.5.0.22
 
@@ -385,6 +399,12 @@ Recorded counts exclude dead/sniped marks even when retained in the train, as
 well as custom flags. Totals and spawn progress still cover the full roster;
 unknown spawn timers are excluded from the mean and their coverage is supplied
 in the snapshot. Existing train IPC version and endpoints remain unchanged.
+
+HHE 0.6.0.1 adds `HuntHelperEvolved.GetTrainStatusV2(uint worldId)`: pass zero to
+follow the current world or a public world ID for a fixed view. V2 snapshots
+cover all six expansions. Requested worlds refresh on the framework thread;
+pending, invalid or unavailable worlds clear the display until ready. V1 retains
+its current-world DT/EW/ShB shape for existing companions.
 
 ## Where this came from
 
