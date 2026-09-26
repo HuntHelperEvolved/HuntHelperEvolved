@@ -1813,6 +1813,7 @@ public sealed partial class Plugin : IDalamudPlugin
             DrawMapBarZoneRow();
             DrawMapBarPlayerRow();
             DrawOccupiedSpawnPointSetting();
+            DrawMissingMarkSpawnPointSetting();
 
             _mapBarHeight = ImGui.GetWindowHeight();
         }

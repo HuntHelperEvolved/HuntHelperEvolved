@@ -6,8 +6,8 @@ summaries and sniped/missing-mark details, draws spawn points, your detection ra
 event locations on the **in-game map**, counts S-rank trigger mobs, and keeps a
 lifetime per-mark kill tally for every character you play.
 
-> **0.6.0.1 local staging:** Updates train popout, notification-sound and Umbra
-> settings (with staged companion 0.2.0.0). The public testing feed currently
+> **0.6.0.1 local staging:** Adds missing-mark map dimming and updates train,
+> notification-sound and Umbra settings (with staged companion 0.2.0.0). The public testing feed currently
 > serves 0.6.0.0.
 >
 > See [Where this came from](#where-this-came-from) if you are arriving from
@@ -115,6 +115,9 @@ same preference.
 
 ### 0.6.0.1 — staged changes since 0.6.0
 
+- While scanning, dim A-rank points used only by living, non-sniped marks
+  already in the train. Both marks alive in the list, neither alive, or scanning
+  paused restores normal points. Toggle it in Settings > Map or the map bar.
 - Individual bongo sound controls are grouped under Settings > Notifications.
   Mute zone-entry reminders or community spawn/release alerts independently.
 - Swap mark and zone names in the train popout to show the zone first. Available
@@ -153,6 +156,23 @@ in zones marks actually occur in. A two-row control bar sits above the map and
 appears and disappears with it.
 
 **Spawn points.** Every known spawn point in the zone, filtered by rank.
+
+**Missing A-ranks.** **Dim points for found A-ranks**, enabled by default in
+Settings > Map and the map bar, makes irrelevant A-rank locations faint while
+scanning an incomplete zone. It uses the current world's zone and instance:
+only alive, non-sniped marks already in the train count as found. If both
+marks are found, or neither is alive in the list, all points stay normal.
+Pausing scanning also restores normal points.
+
+Shared locations stay normal whenever a mark that can use them is still missing.
+For example, with Li'l Murderer alive in the list and Huracan absent, dead or sniped, Kholusia's
+seven southern Li'l-only points become faint; the ten shared points stay normal.
+If Li'l Murderer is then marked dead/sniped or removed, those points return to normal. Unknown
+point assignments stay normal. Living train locations, enabled B-rank points
+and S-rank candidate outlines/confirmed fills retain their usual appearance.
+Hover a point to see its eligible A-ranks. Mark assignments are adapted from
+[Turtle Scout](https://github.com/pm-wobbuffet/scout); see the source attribution
+in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
 
 **Marks.** Every mark that's up, drawn slightly larger than a spawn point and
 at its observed position, without snapping to the nearest spawn

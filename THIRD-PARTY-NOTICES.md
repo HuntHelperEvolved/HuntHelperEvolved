@@ -2,9 +2,8 @@
 
 Hunt Helper Evolved is itself MIT licensed; see [LICENSE](LICENSE).
 
-It includes and derives from the following, each MIT licensed.
-Their copyright and permission notices are reproduced in full below, as the MIT
-licence requires.
+It includes and derives from the projects and factual data listed below.
+Available copyright and permission notices are retained with their attribution.
 
 ---
 
@@ -80,3 +79,43 @@ here so their source is not lost.
 S-rank normal and maintenance respawn ranges in `Sync/SRankTimerData.cs` and
 its numerical test reference follow Faloop's published hunt data, checked
 10 September 2026. Fractional maintenance hours are retained exactly.
+
+---
+
+## Turtle Scout — pm-wobbuffet / Kaiden Alenko
+
+<https://github.com/pm-wobbuffet/scout>
+
+`GameData/ARankSpawnEligibilityData.cs` records which A-rank marks can use
+existing spawn points, from Turtle Scout's manually curated
+`resources/csv/SPAWN_POINT_MOBS.csv` and `resources/json/zones.json`, checked
+26 September 2026 at commit `e8f8dc9b528c5296dd8a04f7bddfe81b05fae4dd`.
+Turtle Scout credits Hunt Helper for the original spawn-point coordinates.
+HHE matches territory, mark names and exact coordinates; missing or unmatched
+assignments remain unknown rather than excluding a possible location.
+
+Turtle Scout's project `composer.json` declares the MIT licence. The repository
+does not supply a separate copyright notice or LICENSE file. Its author and
+source attribution are preserved above; the MIT permission text follows.
+
+```
+MIT License
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```

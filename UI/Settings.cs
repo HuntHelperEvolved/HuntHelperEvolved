@@ -270,6 +270,18 @@ public sealed partial class Plugin
             ImGui.SetTooltip("Hide the nearest matching spawn point while a live mark is shown within 2 map coordinates. Ambiguous matches stay visible. The point returns when the mark moves away, dies or is no longer visible.");
     }
 
+    private void DrawMissingMarkSpawnPointSetting()
+    {
+        var dim = _config.DimFoundARankSpawnPoints;
+        if (ImGui.Checkbox("Dim points for found A-ranks", ref dim))
+        {
+            _config.DimFoundARankSpawnPoints = dim;
+            _config.DeferWindowStateSave();
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("While scanning, dim points that only living, non-sniped A-ranks already in this world's train can use. Dead or sniped rows do not count as found. Shared points stay normal if a possible mark is missing. Pausing or finding every A-rank alive in this zone/instance restores all points. Unknown locations and enabled B-rank points stay normal.");
+    }
+
     private void DrawMapPreferences()
     {
         var mapPoints = _config.ShowSpawnPointsOnMap;
@@ -280,6 +292,7 @@ public sealed partial class Plugin
         }
         ImGui.TextDisabled("Where a mark could be. A zone's B-rank points alone can run to sixty dots.");
         DrawOccupiedSpawnPointSetting();
+        DrawMissingMarkSpawnPointSetting();
 
         var mapMarks = _config.ShowMarksOnMap;
         if (ImGui.Checkbox("Show live marks on the in-game map", ref mapMarks))

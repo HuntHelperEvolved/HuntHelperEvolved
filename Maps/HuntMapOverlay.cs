@@ -75,6 +75,8 @@ public sealed unsafe class HuntMapOverlay : IDisposable
     private readonly HashSet<int> _nextTrainPoints = new();
     private readonly HashSet<int> _occupiedPoints = new();
     private readonly HashSet<int> _nextOccupiedPoints = new();
+    private readonly HashSet<int> _dimmedPoints = new();
+    private readonly HashSet<int> _nextDimmedPoints = new();
     private uint _lastTerritory;
 
     // Instance and world are part of "which map am I looking at" just as much
@@ -730,7 +732,7 @@ public sealed unsafe class HuntMapOverlay : IDisposable
         + $"{_config.ShowPlayerGuides}{_config.ShowPlayerFacingOnMap}{_config.ShowPlayerDirectionLine}{_config.ShowPlayerPositionDot}{_config.ShowSsEventOnMap}{_ssEvent.Pins.Count}{_ssEvent.Active}{_config.SpawnDotSize}{_config.PlayerCircleRadiusScale}{_config.PlayerDirectionLineThickness}{_config.PlayerPositionDotSize}"
         + $"{_config.ShowMarkLabelsOnMap}{DotTextures.HexOf(_config.MarkLabelColour)}{DotTextures.HexOf(_config.MarkLabelOutlineColour)}{_config.MarkLabelFontSize}"
         + $"{_config.ShowSRankCandidatesOnMap}{_config.SyncShowRemoteMarksOnMap}"
-        + $"{_config.ClickSpawnPointToFlag}";
+        + $"{_config.ClickSpawnPointToFlag}{_config.DimFoundARankSpawnPoints}{_config.ScanningPaused}";
 
     /// <summary>
     /// The configured colours, as a string. Used both to name the files and to
@@ -781,10 +783,16 @@ public sealed unsafe class HuntMapOverlay : IDisposable
             // a dot looks like stretched across a long quad.
             //
             // Bump Revision when what a kind DRAWS changes at the same colour.
+            var dimmedFill = _config.SpawnDotColourEmpty;
+            dimmedFill.W *= 0.25f;
             var wanted = new List<(string Key, string Name, Func<byte[]> Render)>
             {
                 Texture("empty", "dot", _config.SpawnDotColourEmpty,
                     c => DotTextures.Render(c)),
+                Texture("dim", "dot", dimmedFill,
+                    c => DotTextures.Render(c)),
+                Texture("dim-scand", "outlined-" + _config.SpawnCandidateOutlineWidth + "-" + DotTextures.HexOf(dimmedFill), _config.SpawnDotColourSCandidate,
+                    c => DotTextures.RenderOutlined(dimmedFill, c, _config.SpawnCandidateOutlineWidth)),
                 Texture("train", "dot", _config.SpawnDotColourInTrain,
                     c => DotTextures.Render(c)),
                 Texture("train-scand", "outlined-" + _config.SpawnCandidateOutlineWidth + "-" + DotTextures.HexOf(_config.SpawnDotColourInTrain), _config.SpawnDotColourSCandidate,
@@ -1068,6 +1076,27 @@ public sealed unsafe class HuntMapOverlay : IDisposable
                 _trainPoints.UnionWith(_nextTrainPoints);
                 _needsRefresh = true;
             }
+
+            _nextDimmedPoints.Clear();
+            if (_config.ShowSpawnPointsOnMap && _config.ShowARankPoints && _config.DimFoundARankSpawnPoints)
+            {
+                var found = MissingMarkSpawnPoints.FoundMarks(_detector.Marks.Values,
+                    territory, worldId, instance, ARankSpawnEligibilityData.MarksFor(territory), !_config.ScanningPaused);
+                if (found.Count > 0)
+                    for (var i = 0; i < points.Length; i++)
+                        if (!_trainPoints.Contains(i)
+                            && !(_config.ShowBRankPoints && points[i].Ranks.HasFlag(SpawnRanks.B))
+                            && MissingMarkSpawnPoints.ShouldDim(points[i], ARankSpawnEligibilityData.For(territory, points[i]), found))
+                            _nextDimmedPoints.Add(i);
+            }
+            // List completeness and alive/dead/sniped changes must update the
+            // static point layer even when no new live observation arrives.
+            if (!_dimmedPoints.SetEquals(_nextDimmedPoints))
+            {
+                _dimmedPoints.Clear();
+                _dimmedPoints.UnionWith(_nextDimmedPoints);
+                _needsRefresh = true;
+            }
             _nextOccupiedPoints.Clear();
             if (_config.HideOccupiedSpawnPoints && _config.ShowSpawnPointsOnMap && _config.ShowMarksOnMap)
             {
@@ -1140,6 +1169,14 @@ public sealed unsafe class HuntMapOverlay : IDisposable
                 var ranks = canSpawn.Count > 0 ? string.Join("/", canSpawn) : "?";
                 var dot = "empty";
                 var tooltip = $"Spawn point ({ranks})\n{point.X:F1}, {point.Y:F1}";
+                if (point.Ranks.HasFlag(SpawnRanks.A))
+                {
+                    var eligibleARanks = ARankSpawnEligibilityData.For(territory, point);
+                    if (eligibleARanks is { Length: > 0 })
+                        tooltip += "\nA-ranks: " + string.Join(", ", eligibleARanks.Select(id => ExpansionData.Lookup(id)!.Name)) + ".";
+                    else if (_config.DimFoundARankSpawnPoints)
+                        tooltip += "\nA-rank eligibility unknown; kept normal.";
+                }
                 // Where the zone's S can still spawn, from what the group
                 // has seen: an A or B on a point since the S last died
                 // rules it out, and so does the point it died on.
@@ -1178,6 +1215,12 @@ public sealed unsafe class HuntMapOverlay : IDisposable
                 var inTrain = _trainPoints.Contains(pointIndex);
                 dot = SpawnPointVisibility.TextureKey(dot, inTrain);
                 if (inTrain) tooltip += "\nLiving mark in the train (last recorded location).";
+                else if (_dimmedPoints.Contains(pointIndex) && (dot is "empty" or "scand"))
+                {
+                    dot = dot == "scand" ? "dim-scand" : "dim";
+                    tooltip += "\nDimmed for A-rank scouting: its eligible A-ranks are alive in this train.";
+                    if (dot == "dim-scand") tooltip += "\nGold outline: still a possible S-rank point.";
+                }
 
                 var world = MapCoordinates.ToWorld(_dataManager, mapId, point.X, point.Y);
 

@@ -308,6 +308,8 @@ public class Configuration : IPluginConfiguration
     /// </summary>
     public bool ShowSpawnPointsOnMap { get; set; } = false;
     public bool HideOccupiedSpawnPoints { get; set; }
+    /// <summary>While scouting an incomplete zone, dim points used only by living A-ranks already in the train.</summary>
+    public bool DimFoundARankSpawnPoints { get; set; } = true;
 
     /// <summary>
     /// Map icon ids for spawn points. Configurable because there's no reliable
