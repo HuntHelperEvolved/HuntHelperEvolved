@@ -6,8 +6,9 @@ summaries and sniped/missing-mark details, draws spawn points, your detection ra
 event locations on the **in-game map**, counts S-rank trigger mobs, and keeps a
 lifetime per-mark kill tally for every character you play.
 
-> **0.6.0.1 local staging:** Adds fixed worlds and all-expansion settings for the
-> staged Umbra companion 0.2.0.0. The public testing feed currently serves 0.6.0.0.
+> **0.6.0.1 local staging:** Adds a zone-first train popout option and fixed-world,
+> all-expansion settings for staged Umbra companion 0.2.0.0. The public testing
+> feed currently serves 0.6.0.0.
 >
 > See [Where this came from](#where-this-came-from) if you are arriving from
 > Hunt Train Relay or Hunt Tally; your settings and your tally carry over.
@@ -45,7 +46,8 @@ completely. Unknown timers are excluded from the average and prevent full
 completion.
 Left-click toggles the train popout. Right-click cycles **All → each enabled
 expansion → All**, remembering your selection. All and the progress bar include
-only that widget's enabled expansions. Fixed-world labels include the world name.
+only that widget's enabled expansions. Fixed-world labels include the world name
+by default; turn off **Show world name** to save space while keeping it in the tooltip.
 World selection uses data already available to HHE; it does not change worlds or
 create missing scouting/timer data.
 
@@ -107,6 +109,8 @@ kill credit. Hover details focus on live information and short action labels.
 
 ### 0.6.0.1 — staged changes since 0.6.0
 
+- Swap mark and zone names in the train popout to show the zone first. Available
+  in Setup > Route tools and view and Settings > Train; off by default.
 - Configure each Umbra widget with a current or fixed world and any combination
   of ARR, HW, SB, ShB, EW and DT. All and right-click cycling use its enabled
   expansions. Requires companion 0.2.0.0.
@@ -204,6 +208,12 @@ Mark** and **Next Aetheryte** appear below the tabs only on **Route**, alongside
 local/shared and preset context above compact, single-line mark rows.
 Last-seen ages use concise brackets, such as `(5m)` or `(1h 12m)`.
 Switching pages does not change the train or recording state.
+
+**Swap mark and zone names in the train popout**, under **Setup > Route tools
+and view** or **Settings > Train**, shows the zone first and the mark name
+second. It is off by default and applies only to the popout. **Hide zone names**
+takes priority; rows without a known zone keep their mark name first. Hover a
+row to read its full names when the window is narrow.
 
 **Route presets** save a conductor's expansion and zone order, optional strict
 mark order, and rally preferences for future trains. Choose a preset in

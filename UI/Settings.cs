@@ -145,12 +145,7 @@ public sealed partial class Plugin
             _config.Save();
         }
 
-        var hideZones = _config.HideZonesInPopout;
-        if (ImGui.Checkbox("Hide zone names in the train popout", ref hideZones))
-        {
-            _config.HideZonesInPopout = hideZones;
-            _config.Save();
-        }
+        DrawTrainPopoutNamePreferences();
 
         var spicing = _config.ShowSpicing;
         if (ImGui.Checkbox("Show spicing markers", ref spicing))
@@ -225,6 +220,28 @@ public sealed partial class Plugin
         ImGui.Spacing();
 
 
+    }
+
+    private void DrawTrainPopoutNamePreferences()
+    {
+        var hideZones = _config.HideZonesInPopout;
+        if (ImGui.Checkbox("Hide zone names in the train popout", ref hideZones))
+        {
+            _config.HideZonesInPopout = hideZones;
+            _config.Save();
+        }
+
+        ImGui.BeginDisabled(hideZones);
+        var swapNames = _config.SwapMarkAndZoneInPopout;
+        if (ImGui.Checkbox("Swap mark and zone names in the train popout", ref swapNames))
+        {
+            _config.SwapMarkAndZoneInPopout = swapNames;
+            _config.Save();
+        }
+        ImGui.EndDisabled();
+        if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+            ImGui.SetTooltip(hideZones ? "Show zone names to swap their position with mark names."
+                : "Show the zone first, followed by the mark name. Applies only to the train popout.");
     }
 
     private void DrawCounterPreferences()

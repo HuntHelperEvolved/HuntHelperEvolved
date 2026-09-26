@@ -92,7 +92,8 @@ public sealed partial class Plugin
             switch (_trainWorkspacePage)
             {
                 case TrainWorkspacePage.Route:
-                    DrawTrainList(showZones: !popout || !_config.HideZonesInPopout);
+                    DrawTrainList(showZones: !popout || !_config.HideZonesInPopout,
+                        swapMarkAndZone: popout && _config.SwapMarkAndZoneInPopout);
                     break;
                 case TrainWorkspacePage.Reports:
                     DrawTrainReports();
@@ -155,6 +156,7 @@ public sealed partial class Plugin
         ImGui.Spacing();
         DrawSettingsHeading("Route tools and view");
         DrawTrainControls();
+        DrawTrainPopoutNamePreferences();
         var spicing = _config.ShowSpicing;
         if (ImGui.Checkbox("Show spicing markers", ref spicing))
         {

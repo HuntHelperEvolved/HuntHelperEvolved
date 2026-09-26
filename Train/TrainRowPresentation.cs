@@ -44,10 +44,10 @@ internal static class TrainRowPresentation
         return (recorded, remaining);
     }
 
-    internal static string Describe(DetectedMark mark, DateTime now, string? zone, bool showAge, bool showSpicing)
+    internal static string Describe(DetectedMark mark, DateTime now, string? secondaryLabel, bool showAge, bool showSpicing)
     {
         var parts = new List<string>();
-        if (!string.IsNullOrWhiteSpace(zone)) parts.Add(zone);
+        if (!string.IsNullOrWhiteSpace(secondaryLabel)) parts.Add(secondaryLabel);
         if (mark.IsCustom) parts.Add(mark.Dead ? "Stop complete" : "Rally stop");
         else if (mark.Dead)
         {

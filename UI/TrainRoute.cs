@@ -24,7 +24,7 @@ public sealed partial class Plugin
     /// payload; behaviour is the same, and it keeps to API already proven to
     /// compile in this project.
     /// </summary>
-    private void DrawTrainList(bool showZones = true)
+    private void DrawTrainList(bool showZones = true, bool swapMarkAndZone = false)
     {
         var allMarks = _detector.Ordered();
         if (TrainMutationBusy) ClearTrainDrag();
@@ -176,10 +176,12 @@ public sealed partial class Plugin
             var layout = TrainRowLayout.Create(width, buttonHeight, buttonGap);
             var buttonSize = new Vector2(layout.ButtonWidth, buttonHeight);
             var isCurrent = _currentMark == mark.Key;
-            var name = $"{(isCurrent ? "> " : "")}{mark.Name}";
             var instance = ExpansionData.InstanceGlyph(mark.Instance);
             var zone = ExpansionData.Lookup(mark.NameId)?.Location ?? (mark.IsCustom ? mark.ZoneName : "?");
-            var detail = TrainRowPresentation.Describe(mark, now, showZones ? zone : null,
+            var swapNames = swapMarkAndZone && showZones && !string.IsNullOrWhiteSpace(zone) && zone != "?";
+            var name = $"{(isCurrent ? "> " : "")}{(swapNames ? zone : mark.Name)}";
+            var secondaryLabel = showZones ? (swapNames ? mark.Name : zone) : null;
+            var detail = TrainRowPresentation.Describe(mark, now, secondaryLabel,
                 _config.ShowMarkAge, _config.ShowSpicing);
             var displayedName = TrainRowPresentation.FitText(name, layout.TextWidth,
                 static text => ImGui.CalcTextSize(text).X, instance);

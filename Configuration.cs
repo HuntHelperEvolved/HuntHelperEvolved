@@ -206,9 +206,13 @@ public class Configuration : IPluginConfiguration
     /// <summary>Teleporting to a mark also drops the map flag on it.</summary>
     public bool TeleportAlsoFlags { get; set; } = true;
 
-    /// <summary>Drop the zone column in the train popout to keep it narrow.</summary>
     public bool TrainPopoutControlsExpanded { get; set; } = true;
+
+    /// <summary>Hide zone names in train popout rows to keep them narrow.</summary>
     public bool HideZonesInPopout { get; set; } = false;
+
+    /// <summary>Show the zone before the mark name in popout rows when zones are visible.</summary>
+    public bool SwapMarkAndZoneInPopout { get; set; } = false;
 
     /// <summary>Show how long ago each mark was last seen, on its row.</summary>
     public bool ShowMarkAge { get; set; } = true;

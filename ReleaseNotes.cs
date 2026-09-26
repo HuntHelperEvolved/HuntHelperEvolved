@@ -34,9 +34,10 @@ public static class ReleaseNotes
 
     public static readonly Release[] All =
     {
-        new("0.6.0.1", "2026-09-25", "Choose worlds and expansions for each Umbra widget.",
+        new("0.6.0.1", "2026-09-26", "Customise train popout names and Umbra world views.",
         [
-            new("Umbra settings", "With companion 0.2.0.0, each widget can follow your current world or stay on a selected world. Enable any combination of ARR, Heavensward, Stormblood, Shadowbringers, Endwalker and Dawntrail. All and right-click cycling use that widget's enabled expansions. Fixed-world labels show the world name; counts and timers use data already available to HHE.", Kihtli),
+            new("Train popout", "Swap mark and zone names in Setup > Route tools and view or Settings > Train to show the zone first. The main Train tab keeps its usual layout.", Kihtli),
+            new("Umbra settings", "With companion 0.2.0.0, each widget can follow your current world or stay on a selected world. Enable any combination of ARR, Heavensward, Stormblood, Shadowbringers, Endwalker and Dawntrail. All and right-click cycling use that widget's enabled expansions. Fixed-world names can be hidden to save space; counts and timers use data already available to HHE.", Kihtli),
         ]),
         new("0.6.0", "2026-09-25", "A clearer train workspace, shorter reports and an optional Umbra widget.",
         [
