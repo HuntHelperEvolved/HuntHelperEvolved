@@ -83,6 +83,8 @@ public sealed partial class Plugin
                     DrawRemoteMapPreferences();
                     break;
                 case SettingsPage.Notifications:
+                    DrawSettingsHeading("Bongo sounds");
+                    DrawBongoSoundPreferences();
                     DrawDetectionNotificationSettings();
                     DrawSettingsHeading("Community S-rank alerts");
                     DrawCommunityAlertPreferences();
@@ -201,7 +203,7 @@ public sealed partial class Plugin
         {
             ImGui.SameLine();
             var reminderSound = _config.SRankZoneReminderSound;
-            if (ImGui.Checkbox("with sound", ref reminderSound))
+            if (ImGui.Checkbox("with bongo sound", ref reminderSound))
             {
                 _config.SRankZoneReminderSound = reminderSound;
                 _config.Save();
@@ -569,12 +571,28 @@ public sealed partial class Plugin
 
     }
 
+    private void DrawBongoSoundPreferences()
+    {
+        var reminderSound = _config.SRankZoneReminderSound;
+        if (ImGui.Checkbox("S-rank zone-entry reminders", ref reminderSound))
+        {
+            _config.SRankZoneReminderSound = reminderSound;
+            _config.Save();
+        }
+
+        var spawnSound = _config.SyncSpawnSound;
+        if (ImGui.Checkbox("Community S-rank spawn/release alerts", ref spawnSound))
+        {
+            _config.SyncSpawnSound = spawnSound;
+            _config.Save();
+        }
+        ImGui.TextWrapped("Turn off either sound to keep its notification without the bongo.");
+    }
+
     private void DrawCommunityAlertPreferences()
     {
         var alerts = _config.SyncSpawnAlerts;
         if (ImGui.Checkbox("Chat alerts for group S sightings and Faloop spawns/releases", ref alerts)) { _config.SyncSpawnAlerts = alerts; _config.Save(); }
-        var sound = _config.SyncSpawnSound;
-        if (ImGui.Checkbox("Play an alert sound", ref sound)) { _config.SyncSpawnSound = sound; _config.Save(); }
         var currentDc = _config.SyncSpawnCurrentDc;
         if (ImGui.Checkbox("Only my current data centre", ref currentDc)) { _config.SyncSpawnCurrentDc = currentDc; _config.Save(); }
         if (!currentDc)

@@ -6,9 +6,9 @@ summaries and sniped/missing-mark details, draws spawn points, your detection ra
 event locations on the **in-game map**, counts S-rank trigger mobs, and keeps a
 lifetime per-mark kill tally for every character you play.
 
-> **0.6.0.1 local staging:** Adds a zone-first train popout option and fixed-world,
-> all-expansion settings for staged Umbra companion 0.2.0.0. The public testing
-> feed currently serves 0.6.0.0.
+> **0.6.0.1 local staging:** Updates train popout, notification-sound and Umbra
+> settings (with staged companion 0.2.0.0). The public testing feed currently
+> serves 0.6.0.0.
 >
 > See [Where this came from](#where-this-came-from) if you are arriving from
 > Hunt Train Relay or Hunt Tally; your settings and your tally carry over.
@@ -105,10 +105,18 @@ Notifications, Travel, Sharing, Active Marks, Discord and Tally. The **Help** ta
 searchable explanations of the controls, timer colours, mapping, sharing and
 kill credit. Hover details focus on live information and short action labels.
 
+Under **Notifications > Bongo sounds**, control **S-rank zone-entry reminders**
+and **Community S-rank spawn/release alerts** separately. Turning a sound off
+keeps that notification enabled. Existing sound preferences are preserved; the
+zone reminder's **with bongo sound** checkbox in Settings > Train controls the
+same preference.
+
 ## Release notes
 
 ### 0.6.0.1 — staged changes since 0.6.0
 
+- Individual bongo sound controls are grouped under Settings > Notifications.
+  Mute zone-entry reminders or community spawn/release alerts independently.
 - Swap mark and zone names in the train popout to show the zone first. Available
   in Setup > Route tools and view and Settings > Train; off by default.
 - Configure each Umbra widget with a current or fixed world and any combination
