@@ -115,8 +115,9 @@ same preference.
 
 ### 0.6.0.1 — staged changes since 0.6.0
 
-- While scanning, dim A-rank points used only by living, non-sniped marks
-  already in the train. Both marks alive in the list, neither alive, or scanning
+- While scanning, dim A-rank points and their S-rank candidate rings when only
+  living, non-sniped marks already in the train can use those A-rank points.
+  Both marks alive in the list, neither alive, or scanning
   paused restores normal points. Toggle it in Settings > Map or the map bar.
 - Individual bongo sound controls are grouped under Settings > Notifications.
   Mute zone-entry reminders or community spawn/release alerts independently.
@@ -168,8 +169,9 @@ Shared locations stay normal whenever a mark that can use them is still missing.
 For example, with Li'l Murderer alive in the list and Huracan absent, dead or sniped, Kholusia's
 seven southern Li'l-only points become faint; the ten shared points stay normal.
 If Li'l Murderer is then marked dead/sniped or removed, those points return to normal. Unknown
-point assignments stay normal. Living train locations, enabled B-rank points
-and S-rank candidate outlines/confirmed fills retain their usual appearance.
+point assignments stay normal. S-rank candidate rings dim with their points.
+Living train locations, enabled B-rank points and confirmed S-rank fills retain
+their usual appearance.
 Hover a point to see its eligible A-ranks. Mark assignments are adapted from
 [Turtle Scout](https://github.com/pm-wobbuffet/scout); see the source attribution
 in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).

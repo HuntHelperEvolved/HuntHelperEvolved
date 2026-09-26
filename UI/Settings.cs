@@ -279,7 +279,7 @@ public sealed partial class Plugin
             _config.DeferWindowStateSave();
         }
         if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("While scanning, dim points that only living, non-sniped A-ranks already in this world's train can use. Dead or sniped rows do not count as found. Shared points stay normal if a possible mark is missing. Pausing or finding every A-rank alive in this zone/instance restores all points. Unknown locations and enabled B-rank points stay normal.");
+            ImGui.SetTooltip("While scanning, dim points that only living, non-sniped A-ranks already in this world's train can use, including their S-rank candidate rings. Dead or sniped rows do not count as found. Shared points stay normal if a possible mark is missing. Pausing or finding every A-rank alive in this zone/instance restores all points. Unknown locations and enabled B-rank points stay normal.");
     }
 
     private void DrawMapPreferences()

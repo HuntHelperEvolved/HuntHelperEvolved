@@ -785,13 +785,15 @@ public sealed unsafe class HuntMapOverlay : IDisposable
             // Bump Revision when what a kind DRAWS changes at the same colour.
             var dimmedFill = _config.SpawnDotColourEmpty;
             dimmedFill.W *= 0.25f;
+            var dimmedOutline = _config.SpawnDotColourSCandidate;
+            dimmedOutline.W *= 0.25f;
             var wanted = new List<(string Key, string Name, Func<byte[]> Render)>
             {
                 Texture("empty", "dot", _config.SpawnDotColourEmpty,
                     c => DotTextures.Render(c)),
                 Texture("dim", "dot", dimmedFill,
                     c => DotTextures.Render(c)),
-                Texture("dim-scand", "outlined-" + _config.SpawnCandidateOutlineWidth + "-" + DotTextures.HexOf(dimmedFill), _config.SpawnDotColourSCandidate,
+                Texture("dim-scand", "outlined-" + _config.SpawnCandidateOutlineWidth + "-" + DotTextures.HexOf(dimmedFill), dimmedOutline,
                     c => DotTextures.RenderOutlined(dimmedFill, c, _config.SpawnCandidateOutlineWidth)),
                 Texture("train", "dot", _config.SpawnDotColourInTrain,
                     c => DotTextures.Render(c)),
@@ -1219,7 +1221,7 @@ public sealed unsafe class HuntMapOverlay : IDisposable
                 {
                     dot = dot == "scand" ? "dim-scand" : "dim";
                     tooltip += "\nDimmed for A-rank scouting: its eligible A-ranks are alive in this train.";
-                    if (dot == "dim-scand") tooltip += "\nGold outline: still a possible S-rank point.";
+                    if (dot == "dim-scand") tooltip += "\nDimmed gold outline: still a possible S-rank point.";
                 }
 
                 var world = MapCoordinates.ToWorld(_dataManager, mapId, point.X, point.Y);
