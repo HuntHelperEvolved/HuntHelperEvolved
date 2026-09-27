@@ -34,12 +34,16 @@ public static class ReleaseNotes
 
     public static readonly Release[] All =
     {
-        new("0.6.0.1", "2026-09-26", "Focus missing-mark scouting and customise train, sound and Umbra settings.",
+        new("0.6.0.1", "2026-09-27", "Clearer hunt maps, grouped settings resets and configurable Umbra views.",
         [
-            new("Missing-mark map points", "While scanning, dim points used only by living, non-sniped A-ranks already in the train, including their S-rank candidate rings. Shared locations stay normal for missing marks; dead/sniped rows do not count as found. Both marks alive, neither alive, or scanning paused restores normal points. Toggle Dim points for found A-ranks in Settings > Map or the map bar.", Kihtli),
-            new("Train popout", "Swap mark and zone names in Setup > Route tools and view or Settings > Train to show the zone first. The main Train tab keeps its usual layout.", Kihtli),
-            new("Bongo sounds", "Settings > Notifications now groups the individual bongo controls for S-rank zone-entry reminders and community spawn/release alerts. Turn either sound off while keeping its notification. Your existing sound preferences are preserved.", Kihtli),
-            new("Umbra settings", "With companion 0.2.0.0, each widget can follow your current world or stay on a selected world. Enable any combination of ARR, Heavensward, Stormblood, Shadowbringers, Endwalker and Dawntrail. All and right-click cycling use that widget's enabled expansions. Fixed-world names can be hidden to save space; counts and timers use data already available to HHE.", Kihtli),
+            new("Settings resets", "Restore individual settings categories or all preferences from Settings > Reset settings. Train data, presets, kill counts and saved connections are kept; clearing connection details is separate. Reset all turns sharing off.", Kihtli),
+            new("Map colours", "New defaults use slate empty points, violet train locations, cyan B-ranks, coral A-ranks and yellow S-ranks. Saved colours stay unchanged. Use Settings > Reset settings > Map colours to adopt the new palette.", Kihtli),
+            new("Map outlines", "Optional dark dot outlines improve contrast on pale maps and keep gold S-rank candidate rings outside the dot, clearer while scouting. Off by default. The candidate-width slider now clearly reads 1–12.", Kihtli),
+            new("Default settings", "New configurations and explicit resets use 1-second polling, hidden dead marks, 14px train rows, visible spawn points, 10px dots, 14px mark labels and detection-ring width 4. Existing saved values are retained.", Kihtli),
+            new("Missing-mark scouting", "While scanning an incomplete zone, dim known points used only by A-ranks already alive in the train. Dead or sniped marks still count as missing; shared or unknown points stay normal. Pausing restores normal points. Enabled by default; toggle it in Settings > Map or the map bar.", Kihtli),
+            new("Train popout", "Optionally show zone names before mark names in the popout. Enable Swap mark and zone names in Settings > Train or Setup > Route tools and view. Off by default.", Kihtli),
+            new("Bongo sounds", "Settings > Notifications now groups the existing sound controls for zone-entry reminders and community spawn/release alerts. Mute either sound while keeping its notification; saved choices are preserved.", Kihtli),
+            new("Umbra companion", "With companion 0.2.0.0, choose the current world or a fixed world and any combination of ARR through Dawntrail separately for each widget. Cycling and progress follow enabled expansions. Fixed-world names can be hidden; older companions remain compatible.", Kihtli),
         ]),
         new("0.6.0", "2026-09-25", "A clearer train workspace, shorter reports and an optional Umbra widget.",
         [

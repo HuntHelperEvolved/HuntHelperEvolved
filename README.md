@@ -6,9 +6,9 @@ summaries and sniped/missing-mark details, draws spawn points, your detection ra
 event locations on the **in-game map**, counts S-rank trigger mobs, and keeps a
 lifetime per-mark kill tally for every character you play.
 
-> **0.6.0.1 local staging:** Adds missing-mark map dimming and updates train,
-> notification-sound and Umbra settings (with staged companion 0.2.0.0). The public testing feed currently
-> serves 0.6.0.0.
+> **0.6.0.1 release preparation:** Clearer map colours, optional dot outlines, grouped
+> settings resets, revised defaults and missing-mark scouting, plus train, sound
+> and Umbra settings with companion 0.2.0.0. The public testing feed still serves 0.6.0.0.
 >
 > See [Where this came from](#where-this-came-from) if you are arriving from
 > Hunt Train Relay or Hunt Tally; your settings and your tally carry over.
@@ -101,7 +101,7 @@ support. Entries reset on the next S kill; undo leaves automatic evidence intact
 ## Settings and help
 
 Settings uses a category sidebar, or a dropdown in narrow windows: Train, S Ranks, Map,
-Notifications, Travel, Sharing, Active Marks, Discord and Tally. The **Help** tab has
+Notifications, Travel, Sharing, Active Marks, Discord, Tally and Reset settings. The **Help** tab has
 searchable explanations of the controls, timer colours, mapping, sharing and
 kill credit. Hover details focus on live information and short action labels.
 
@@ -111,24 +111,26 @@ keeps that notification enabled. Existing sound preferences are preserved; the
 zone reminder's **with bongo sound** checkbox in Settings > Train controls the
 same preference.
 
+Under **Reset settings**, restore defaults for individual preference groups or all
+preferences at once. Each action previews its scope before confirmation. Map display,
+map colours and player guides have separate resets. Trains, presets, counters and
+tally totals are kept. Resetting tally preferences restores the history limit;
+older detail entries can be trimmed as new kills are recorded. Sharing resets turn
+sync off while keeping connection details. Saved sync credentials and Discord
+destinations have separate clearing actions and are excluded from reset-all.
+
 ## Release notes
 
-### 0.6.0.1 — staged changes since 0.6.0
+### 0.6.0.1 — prepared changes since 0.6.0
 
-- While scanning, dim A-rank points and their S-rank candidate rings when only
-  living, non-sniped marks already in the train can use those A-rank points.
-  Both marks alive in the list, neither alive, or scanning
-  paused restores normal points. Toggle it in Settings > Map or the map bar.
-- Individual bongo sound controls are grouped under Settings > Notifications.
-  Mute zone-entry reminders or community spawn/release alerts independently.
-- Swap mark and zone names in the train popout to show the zone first. Available
-  in Setup > Route tools and view and Settings > Train; off by default.
-- Configure each Umbra widget with a current or fixed world and any combination
-  of ARR, HW, SB, ShB, EW and DT. All and right-click cycling use its enabled
-  expansions. Requires companion 0.2.0.0.
-- Existing companions keep their current-world DT/EW/ShB display. Counts still
-  exclude killed/sniped marks from the first number only; spawn-progress rules
-  are unchanged.
+- **Settings resets:** Restore individual settings categories or all preferences from Settings > Reset settings. Train data, presets, kill counts and saved connections are kept; clearing connection details is separate. Reset all turns sharing off.
+- **Map colours:** New defaults use slate empty points, violet train locations, cyan B-ranks, coral A-ranks and yellow S-ranks. Saved colours stay unchanged. Use Settings > Reset settings > Map colours to adopt the new palette.
+- **Map outlines:** Optional dark dot outlines improve contrast on pale maps and keep gold S-rank candidate rings outside the dot, clearer while scouting. Off by default. The candidate-width slider now clearly reads 1–12.
+- **Default settings:** New configurations and explicit resets use 1-second polling, hidden dead marks, 14px train rows, visible spawn points, 10px dots, 14px mark labels and detection-ring width 4. Existing saved values are retained.
+- **Missing-mark scouting:** While scanning an incomplete zone, dim known points used only by A-ranks already alive in the train. Dead or sniped marks still count as missing; shared or unknown points stay normal. Pausing restores normal points. Enabled by default; toggle it in Settings > Map or the map bar.
+- **Train popout:** Optionally show zone names before mark names in the popout. Enable Swap mark and zone names in Settings > Train or Setup > Route tools and view. Off by default.
+- **Bongo sounds:** Settings > Notifications now groups the existing sound controls for zone-entry reminders and community spawn/release alerts. Mute either sound while keeping its notification; saved choices are preserved.
+- **Umbra companion:** With companion 0.2.0.0, choose the current world or a fixed world and any combination of ARR through Dawntrail separately for each widget. Cycling and progress follow enabled expansions. Fixed-world names can be hidden; older companions remain compatible.
 
 ### 0.6.0 — changes since 0.5.0.22
 
@@ -180,6 +182,18 @@ in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
 at its observed position, without snapping to the nearest spawn
 point. A mark near a point is only *near* it, and an SS event's mobs don't
 spawn on those points at all.
+
+Default live-mark colours use more saturated versions of the **FOUND** chat colour
+families: **B cyan**, **A coral** and **S yellow**. Recorded train spots are **violet**,
+keeping them distinct from live B-ranks. Empty spawn points use a muted slate fill (`#667080`), separating them from the bright gold S-rank candidate ring.
+**Settings > Map > Dark outlines around map dots** adds a thin dark edge for contrast
+on pale terrain. It defaults to off, preserving the original dot shapes for existing
+users. When enabled, S-rank candidate rings sit outside the full-size dot with dark
+edges; scouting dims the centre to 25% opacity while keeping the ring at 60%.
+With outlines off, the original gold band and dimming are unchanged.
+Saved custom colours are preserved. To adopt the palette, use
+**Settings > Reset settings > Map colours**, or **Reset map colours** under
+**Settings > Map > Dot colours**.
 
 The two have **separate switches, and separate B / A / S filters**, because they
 answer different questions: the points are where a mark *could* be, the marks

@@ -7,7 +7,7 @@ using System.Numerics;
 namespace HuntHelperEvolved;
 
 /// <summary>
-/// Draws the spawn point dots, as 32x32 RGBA PNGs written to the plugin's own
+/// Draws the spawn point dots and their candidate halos as RGBA PNGs written to the plugin's own
 /// config folder on first use.
 ///
 /// They used to be four fixed base64 blobs — grey, blue, red and green — baked
@@ -94,18 +94,71 @@ public static class DotTextures
         return EncodePng(size, size, pixels);
     }
 
-    /// <summary>An ordinary filled point with a separately coloured outline.</summary>
-    public static byte[] RenderOutlined(Vector4 fill, Vector4 outline, int width = 6)
+    /// <summary>
+    /// A small map point with an optional dark rim, about one screen pixel at the default
+    /// 10px marker size. The rim follows the fill alpha, including dimmed points.
+    /// Player-guide discs use <see cref="Render"/> and keep their plain fill.
+    /// </summary>
+    public static byte[] RenderMarker(Vector4 colour, bool darkOutline = false)
     {
-        const int size = Size;
+        if (!darkOutline) return Render(colour);
+        colour.W = Math.Clamp(colour.W, 0f, 1f);
+        var rim = ContrastRim(colour.W);
+        return RenderRadial(Size, distance => distance >= 13f * 13f ? rim : colour);
+    }
+
+    // The halo clears both the 32px spawn dot and a live mark (1.35 times
+    // larger). Its dark inner edge separates the gold from either fill.
+    private const int CandidateRingInner = 22;
+    private const int CandidateRimWidth = 2;
+
+    /// <summary>
+    /// Texture diameter for a candidate halo. Display at this fraction of
+    /// <see cref="Size"/> to keep the central dot at the configured spawn size.
+    /// The adjustable band grows outwards instead of consuming the dot's fill.
+    /// </summary>
+    public static int OutlinedSize(int width = 6, bool darkOutline = false) =>
+        darkOutline ? 2 * (CandidateRingInner + Math.Clamp(width, 1, 12) + CandidateRimWidth) : Size;
+
+    /// <summary>
+    /// With contrast enabled, a full-size point inside a coloured halo with dark inner and
+    /// outer edges. The halo follows the outline alpha independently of the
+    /// point, so A-rank scouting can dim the point without hiding S mapping.
+    /// </summary>
+    public static byte[] RenderOutlined(Vector4 fill, Vector4 outline, int width = 6, bool darkOutline = false)
+    {
+        fill.W = Math.Clamp(fill.W, 0f, 1f);
+        outline.W = Math.Clamp(outline.W, 0f, 1f);
+        if (!darkOutline)
+        {
+            // Preserve the original gold band and dot footprint when the
+            // optional contrast outlines are disabled (including older configs).
+            var inner = Size / 2f - Math.Clamp(width, 1, 12);
+            return RenderRadial(Size, distance => distance >= inner * inner ? outline : fill);
+        }
+        var dotRim = ContrastRim(fill.W);
+        var ringRim = ContrastRim(outline.W);
+        var bandOuter = CandidateRingInner + Math.Clamp(width, 1, 12);
+        var rimInner = CandidateRingInner - CandidateRimWidth;
+        return RenderRadial(OutlinedSize(width, darkOutline), distance =>
+            distance >= bandOuter * bandOuter ? ringRim
+            : distance >= CandidateRingInner * CandidateRingInner ? outline
+            : distance >= rimInner * rimInner ? ringRim
+            : distance > 16f * 16f ? Vector4.Zero
+            : distance >= 13f * 13f ? dotRim : fill);
+    }
+
+    private static Vector4 ContrastRim(float alpha) => new(0.055f, 0.055f, 0.055f, alpha);
+
+    private static byte[] RenderRadial(int size, Func<float, Vector4> colourAtDistanceSquared)
+    {
         var pixels = new byte[size * size * 4];
         var centre = (size - 1) / 2f;
         var outer = size / 2f;
-        var inner = outer - Math.Clamp(width, 1, 12);
         for (var y = 0; y < size; y++)
         for (var x = 0; x < size; x++)
         {
-            var sum = Vector4.Zero;
+            double red = 0, green = 0, blue = 0, alpha = 0;
             for (var sy = 0; sy < Samples; sy++)
             for (var sx = 0; sx < Samples; sx++)
             {
@@ -113,15 +166,19 @@ public static class DotTextures
                 var dy = y + (sy + 0.5f) / Samples - 0.5f - centre;
                 var distance = dx * dx + dy * dy;
                 if (distance > outer * outer) continue;
-                var c = distance >= inner * inner ? outline : fill;
-                sum += new Vector4(c.X * c.W, c.Y * c.W, c.Z * c.W, c.W);
+                var c = colourAtDistanceSquared(distance);
+                var sampleAlpha = (double)c.W;
+                red += c.X * sampleAlpha;
+                green += c.Y * sampleAlpha;
+                blue += c.Z * sampleAlpha;
+                alpha += sampleAlpha;
             }
-            if (sum.W <= 0) continue;
+            if (alpha <= 0) continue;
             var i = (y * size + x) * 4;
-            pixels[i] = ToByte(sum.X / sum.W);
-            pixels[i + 1] = ToByte(sum.Y / sum.W);
-            pixels[i + 2] = ToByte(sum.Z / sum.W);
-            pixels[i + 3] = ToByte(sum.W / (Samples * Samples));
+            pixels[i] = ToByte((float)(red / alpha));
+            pixels[i + 1] = ToByte((float)(green / alpha));
+            pixels[i + 2] = ToByte((float)(blue / alpha));
+            pixels[i + 3] = ToByte((float)(alpha / (Samples * Samples)));
         }
         return EncodePng(size, size, pixels);
     }

@@ -23,12 +23,13 @@ namespace HuntHelperEvolved;
 
 public sealed partial class Plugin
 {
-    private enum SettingsPage { Train, Counters, Map, Notifications, Travel, Sharing, ActiveMarks, Discord, Tally }
+    private enum SettingsPage { Train, Counters, Map, Notifications, Travel, Sharing, ActiveMarks, Discord, Tally, Reset }
     private SettingsPage _settingsPage;
     private static string SettingsPageLabel(SettingsPage page) => page switch
     {
         SettingsPage.Counters => "S Ranks",
         SettingsPage.ActiveMarks => "Active Marks",
+        SettingsPage.Reset => "Reset settings",
         _ => page.ToString()
     };
 
@@ -49,7 +50,10 @@ public sealed partial class Plugin
         {
             if (ImGui.BeginChild("Settings navigation", new Vector2(130 * scale, 0), true))
                 foreach (var page in Enum.GetValues<SettingsPage>())
+                {
+                    if (page == SettingsPage.Reset) ImGui.Separator();
                     if (ImGui.Selectable(SettingsPageLabel(page), _settingsPage == page)) _settingsPage = page;
+                }
             ImGui.EndChild();
             ImGui.SameLine();
         }
@@ -100,6 +104,7 @@ public sealed partial class Plugin
                     break;
                 case SettingsPage.Discord: DrawDiscordPreferences(); break;
                 case SettingsPage.Tally: DrawTallyTab(); break;
+                case SettingsPage.Reset: DrawSettingsResets(); break;
             }
             ImGui.PopID();
         }
@@ -399,6 +404,14 @@ public sealed partial class Plugin
             if (ImGui.CollapsingHeader("Dot colours")) DrawDotColours();
             ImGui.Spacing();
 
+            var darkOutlines = _config.OutlineMapDots;
+            if (ImGui.Checkbox("Dark outlines around map dots", ref darkOutlines))
+            {
+                _config.OutlineMapDots = darkOutlines;
+                _config.Save();
+            }
+            ImGui.TextWrapped("Adds contrast on pale maps. Off by default. When enabled, S-rank candidate rings sit outside the dot and stay clearer while scouting.");
+
             var dotSize = _config.SpawnDotSize;
             ImGui.SetNextItemWidth(90);
             if (ImGui.InputFloat("Dot size", ref dotSize, 2f))
@@ -569,7 +582,7 @@ public sealed partial class Plugin
 
         const ImGuiColorEditFlags flags = ImGuiColorEditFlags.AlphaBar | ImGuiColorEditFlags.AlphaPreviewHalf;
         var outlineWidth = _config.SpawnCandidateOutlineWidth;
-        if (ImGui.SliderInt("S candidate outline width", ref outlineWidth, 1, 12, "%d / 32"))
+        if (ImGui.SliderInt("S candidate outline width", ref outlineWidth, 1, 12, "%d"))
         {
             _config.SpawnCandidateOutlineWidth = outlineWidth;
             _config.Save();

@@ -31,10 +31,10 @@ public sealed class MarkNotifier : IDisposable
     private readonly SpeechAnnouncements _speech;
     private bool _disposed;
 
-    // Hunt Helper's chat palette.
-    private const ushort AColour = 12;   // pinkish red
-    private const ushort BColour = 34;   // blue
-    private const ushort SColour = 506;  // gold
+    // Shared with the default live-mark map palette.
+    private const ushort AColour = HuntRankPalette.ChatA; // coral
+    private const ushort BColour = HuntRankPalette.ChatB; // cyan
+    private const ushort SColour = HuntRankPalette.ChatS; // yellow
     private const ushort FlagColour = 64; // white
 
     // Its fly text palette, which is not the same: the rank and the name are

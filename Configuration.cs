@@ -91,7 +91,7 @@ public class Configuration : IPluginConfiguration
     /// <summary>
     /// How often (in seconds) to record new train marks and process queued kill evidence.
     /// </summary>
-    public int PollIntervalSeconds { get; set; } = 3;
+    public int PollIntervalSeconds { get; set; } = 1;
 
     /// <summary>
     /// When Hunt Tally (kihtli/HuntTally) is installed, automatically mark a
@@ -232,7 +232,7 @@ public class Configuration : IPluginConfiguration
     /// train and still appear in reports with their kill times — this only
     /// shortens what's on screen.
     /// </summary>
-    public bool HideDeadMarks { get; set; } = false;
+    public bool HideDeadMarks { get; set; } = true;
 
     /// <summary>
     /// Aetheryte ids never to route to — e.g. The Macarenses Angle in The
@@ -302,11 +302,9 @@ public class Configuration : IPluginConfiguration
     public bool AutoExpandNextExpansion { get; set; } = true;
 
     /// <summary>
-    /// Draw A-rank spawn points on the real in-game map. Currently a proof of
-    /// concept covering Urqopacha only, and the one feature here that depends
-    /// on a third-party library, so it's off by default.
+    /// Draw spawn points on the real in-game map, subject to the rank filters.
     /// </summary>
-    public bool ShowSpawnPointsOnMap { get; set; } = false;
+    public bool ShowSpawnPointsOnMap { get; set; } = true;
     public bool HideOccupiedSpawnPoints { get; set; }
     /// <summary>While scouting an incomplete zone, dim points used only by living A-ranks already in the train.</summary>
     public bool DimFoundARankSpawnPoints { get; set; } = true;
@@ -351,30 +349,31 @@ public class Configuration : IPluginConfiguration
     public bool ShowMarksOnMap { get; set; } = true;
 
     /// <summary>Dot size in pixels. KamiToolKit's default marker is 32x32.</summary>
-    public float SpawnDotSize { get; set; } = 16f;
+    public float SpawnDotSize { get; set; } = 10f;
 
     /// <summary>
-    /// Dot colour for each state a spawn point can be in. Defaults are the
-    /// exact colours the dots shipped as before they were configurable, so
-    /// nothing changes on screen until someone picks something.
-    ///
-    /// Alpha is honoured, which is the point of making them editable at all —
-    /// a zone with sixty ARR spawn points is a wall of solid dots, and dropping
-    /// the empty ones to half opacity makes the occupied ones readable.
+    /// Optional dark borders for map dots. Off when absent from saved configs
+    /// so updates preserve the existing map appearance.
     /// </summary>
-    public Vector4 SpawnDotColourEmpty { get; set; } = new(0.502f, 0.502f, 0.502f, 1f);
+    public bool OutlineMapDots { get; set; } = false;
 
-    /// <summary>Spawn point matched to a living, non-sniped mark in the train.</summary>
-    public Vector4 SpawnDotColourInTrain { get; set; } = new(0f, 0.9f, 0.9f, 1f);
+    /// <summary>
+    /// Muted slate separates empty points from the bright gold S-candidate
+    /// ring, including when dark outlines are disabled.
+    /// </summary>
+    public Vector4 SpawnDotColourEmpty { get; set; } = new(102f / 255f, 112f / 255f, 128f / 255f, 1f);
 
-    /// <summary>Colour when a B rank is sitting on the point.</summary>
-    public Vector4 SpawnDotColourB { get; set; } = new(0f, 0.549f, 0.933f, 1f);
+    /// <summary>Violet identifies a recorded train location separately from live rank colours.</summary>
+    public Vector4 SpawnDotColourInTrain { get; set; } = new(0.68f, 0.25f, 1f, 1f);
 
-    /// <summary>Colour when an A rank is sitting on the point.</summary>
-    public Vector4 SpawnDotColourA { get; set; } = new(0.886f, 0.231f, 0.055f, 1f);
+    /// <summary>Live B-rank colour; a stronger cyan from the FOUND chat colour family.</summary>
+    public Vector4 SpawnDotColourB { get; set; } = HuntRankPalette.MapB;
 
-    /// <summary>Colour when an S rank is sitting on the point.</summary>
-    public Vector4 SpawnDotColourS { get; set; } = new(0f, 0.827f, 0f, 1f);
+    /// <summary>Live A-rank colour; a stronger coral from the FOUND chat colour family.</summary>
+    public Vector4 SpawnDotColourA { get; set; } = HuntRankPalette.MapA;
+
+    /// <summary>Live S-rank colour; a stronger yellow from the FOUND chat colour family.</summary>
+    public Vector4 SpawnDotColourS { get; set; } = HuntRankPalette.MapS;
 
     /// <summary>
     /// Alt-click a spawn point on the map to drop the flag on it.
@@ -406,8 +405,8 @@ public class Configuration : IPluginConfiguration
 
     public Vector4 MarkLabelOutlineColour { get; set; } = new(0f, 0f, 0f, 1f);
 
-    /// <summary>Label text size. 12 is close to the game's own map lettering.</summary>
-    public float MarkLabelFontSize { get; set; } = 12f;
+    /// <summary>Label text size.</summary>
+    public float MarkLabelFontSize { get; set; } = 14f;
 
     /// <summary>
     /// Mark where an SS event's minions were found, from the announcement until
@@ -448,10 +447,9 @@ public class Configuration : IPluginConfiguration
     /// <summary>
     /// Ring line width, as a fraction of the ring texture's 256 pixels. It is
     /// drawn into the image rather than stroked on screen, so the line thickens
-    /// and thins with the map's zoom along with the ring itself. 8 lands at
-    /// roughly 3 pixels at the default zoom, which is Hunt Helper's width.
+    /// and thins with the map's zoom along with the ring itself.
     /// </summary>
-    public float PlayerCircleThickness { get; set; } = 8f;
+    public float PlayerCircleThickness { get; set; } = 4f;
 
     /// <summary>
     /// Master switch for everything drawn around your character — the range
@@ -569,7 +567,7 @@ public class Configuration : IPluginConfiguration
     public uint? SavedCurrentWorldId { get; set; }
 
     /// <summary>Height of a train list row, in pixels.</summary>
-    public int TrainRowHeight { get; set; } = 22;
+    public int TrainRowHeight { get; set; } = 14;
 
     public bool AutoTrainWatches { get; set; }
 
@@ -768,6 +766,9 @@ public class Configuration : IPluginConfiguration
         }
     }
 
+    /// <summary>Fresh list for both first-install seeding and the travel preference reset.</summary>
+    internal static List<uint> CreateDefaultAetheryteBlacklist() => new() { 148, 181, 203 }; // Macarenses Angle, Base Omicron, Many Fires
+
     public void Initialize(IDalamudPluginInterface pluginInterface)
     {
         _pluginInterface = pluginInterface;
@@ -796,7 +797,7 @@ public class Configuration : IPluginConfiguration
         // Seeded once only, so removing one makes it stay removed.
         if (!BlacklistSeeded)
         {
-            foreach (var id in new uint[] { 148, 181, 203 }) // Macarenses Angle, Base Omicron, Many Fires
+            foreach (var id in CreateDefaultAetheryteBlacklist())
             {
                 if (!BlacklistedAetherytes.Contains(id))
                     BlacklistedAetherytes.Add(id);

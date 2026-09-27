@@ -14,6 +14,7 @@ public sealed class ActiveMarksWindow(Configuration config, SyncCoordinator sync
     private (uint Zone, uint World, uint Instance) _localScope;
     private string _search = string.Empty;
     public void Toggle() { config.ActiveSRankWindowOpen = !config.ActiveSRankWindowOpen; config.DeferWindowStateSave(); }
+    public void OnSettingsReset() => _search = string.Empty;
     public void Draw()
     {
         if (!sync.IsConnected) _localGrace.Clear();

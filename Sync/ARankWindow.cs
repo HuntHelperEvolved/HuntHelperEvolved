@@ -21,6 +21,7 @@ public sealed class ARankWindow
     public ARankWindow(Configuration config, SyncCoordinator sync, WorldData worlds, MarkDetector detector)
     { _config = config; _sync = sync; _worldData = worlds; _detector = detector; }
     public void Toggle() { _board.Invalidate(); _config.ARankWindowOpen = !_config.ARankWindowOpen; _config.DeferWindowStateSave(); }
+    public void OnSettingsReset() => _board.Invalidate();
 
     public void Draw()
     {

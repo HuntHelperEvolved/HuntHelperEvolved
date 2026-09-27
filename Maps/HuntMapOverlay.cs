@@ -739,7 +739,7 @@ public sealed unsafe class HuntMapOverlay : IDisposable
     /// notice when they need drawing again.
     /// </summary>
     private string DotSignature() =>
-        DotTextures.HexOf(_config.SpawnDotColourEmpty) + "-"
+        _config.OutlineMapDots + "-" + DotTextures.HexOf(_config.SpawnDotColourEmpty) + "-"
         + DotTextures.HexOf(_config.SpawnDotColourInTrain) + "-"
         + DotTextures.HexOf(_config.SpawnDotColourB) + "-"
         + DotTextures.HexOf(_config.SpawnDotColourA) + "-"
@@ -786,36 +786,40 @@ public sealed unsafe class HuntMapOverlay : IDisposable
             var dimmedFill = _config.SpawnDotColourEmpty;
             dimmedFill.W *= 0.25f;
             var dimmedOutline = _config.SpawnDotColourSCandidate;
-            dimmedOutline.W *= 0.25f;
+            // Contrast mode keeps S-rank mapping readable during A-rank
+            // scouting. Otherwise retain the original appearance and dimming.
+            dimmedOutline.W *= _config.OutlineMapDots ? 0.60f : 0.25f;
+            var dotKind = _config.OutlineMapDots ? "bordered" : "dot";
+            var candidateKind = _config.OutlineMapDots ? "halo-" : "outlined-";
             var wanted = new List<(string Key, string Name, Func<byte[]> Render)>
             {
-                Texture("empty", "dot", _config.SpawnDotColourEmpty,
-                    c => DotTextures.Render(c)),
-                Texture("dim", "dot", dimmedFill,
-                    c => DotTextures.Render(c)),
-                Texture("dim-scand", "outlined-" + _config.SpawnCandidateOutlineWidth + "-" + DotTextures.HexOf(dimmedFill), dimmedOutline,
-                    c => DotTextures.RenderOutlined(dimmedFill, c, _config.SpawnCandidateOutlineWidth)),
-                Texture("train", "dot", _config.SpawnDotColourInTrain,
-                    c => DotTextures.Render(c)),
-                Texture("train-scand", "outlined-" + _config.SpawnCandidateOutlineWidth + "-" + DotTextures.HexOf(_config.SpawnDotColourInTrain), _config.SpawnDotColourSCandidate,
-                    c => DotTextures.RenderOutlined(_config.SpawnDotColourInTrain, c, _config.SpawnCandidateOutlineWidth)),
-                Texture("b", "dot", _config.SpawnDotColourB,
-                    c => DotTextures.Render(c)),
-                Texture("a", "dot", _config.SpawnDotColourA,
-                    c => DotTextures.Render(c)),
-                Texture("s", "dot", _config.SpawnDotColourS,
-                    c => DotTextures.Render(c)),
+                Texture("empty", dotKind, _config.SpawnDotColourEmpty,
+                    c => DotTextures.RenderMarker(c, _config.OutlineMapDots)),
+                Texture("dim", dotKind, dimmedFill,
+                    c => DotTextures.RenderMarker(c, _config.OutlineMapDots)),
+                Texture("dim-scand", candidateKind + _config.SpawnCandidateOutlineWidth + "-" + DotTextures.HexOf(dimmedFill), dimmedOutline,
+                    c => DotTextures.RenderOutlined(dimmedFill, c, _config.SpawnCandidateOutlineWidth, _config.OutlineMapDots)),
+                Texture("train", dotKind, _config.SpawnDotColourInTrain,
+                    c => DotTextures.RenderMarker(c, _config.OutlineMapDots)),
+                Texture("train-scand", candidateKind + _config.SpawnCandidateOutlineWidth + "-" + DotTextures.HexOf(_config.SpawnDotColourInTrain), _config.SpawnDotColourSCandidate,
+                    c => DotTextures.RenderOutlined(_config.SpawnDotColourInTrain, c, _config.SpawnCandidateOutlineWidth, _config.OutlineMapDots)),
+                Texture("b", dotKind, _config.SpawnDotColourB,
+                    c => DotTextures.RenderMarker(c, _config.OutlineMapDots)),
+                Texture("a", dotKind, _config.SpawnDotColourA,
+                    c => DotTextures.RenderMarker(c, _config.OutlineMapDots)),
+                Texture("s", dotKind, _config.SpawnDotColourS,
+                    c => DotTextures.RenderMarker(c, _config.OutlineMapDots)),
 
                 // S-rank elimination: a point the S may still use, and one
                 // it cannot. Candidates remain provisional until the kill cycle is known.
-                Texture("scand", "outlined-" + _config.SpawnCandidateOutlineWidth + "-" + DotTextures.HexOf(_config.SpawnDotColourEmpty), _config.SpawnDotColourSCandidate,
-                    c => DotTextures.RenderOutlined(_config.SpawnDotColourEmpty, c, _config.SpawnCandidateOutlineWidth)),
-                Texture("sconfirmed", "dot", _config.SpawnDotColourSCandidate,
-                    c => DotTextures.Render(c)),
-                Texture("sout", "dot", _config.SpawnDotColourSRuledOut,
-                    c => DotTextures.Render(c)),
-                Texture("ssminion", "dot", _config.SsMinionColour,
-                    c => DotTextures.Render(c)),
+                Texture("scand", candidateKind + _config.SpawnCandidateOutlineWidth + "-" + DotTextures.HexOf(_config.SpawnDotColourEmpty), _config.SpawnDotColourSCandidate,
+                    c => DotTextures.RenderOutlined(_config.SpawnDotColourEmpty, c, _config.SpawnCandidateOutlineWidth, _config.OutlineMapDots)),
+                Texture("sconfirmed", dotKind, _config.SpawnDotColourSCandidate,
+                    c => DotTextures.RenderMarker(c, _config.OutlineMapDots)),
+                Texture("sout", dotKind, _config.SpawnDotColourSRuledOut,
+                    c => DotTextures.RenderMarker(c, _config.OutlineMapDots)),
+                Texture("ssminion", dotKind, _config.SsMinionColour,
+                    c => DotTextures.RenderMarker(c, _config.OutlineMapDots)),
 
                 // Not dots: an outline stretched to the circle's width, and a
                 // flat block of colour stretched into the path band.
@@ -876,7 +880,7 @@ public sealed unsafe class HuntMapOverlay : IDisposable
     /// Bumped when an existing kind's drawing changes but its name would not,
     /// so the files on disk are replaced rather than reused.
     /// </summary>
-    private const int TextureRevision = 2;
+    private const int TextureRevision = 4;
 
     private static (string Key, string Name, Func<byte[]> Render) Texture(
         string key, string kind, System.Numerics.Vector4 colour, Func<System.Numerics.Vector4, byte[]> render) =>
@@ -1225,6 +1229,11 @@ public sealed unsafe class HuntMapOverlay : IDisposable
                 }
 
                 var world = MapCoordinates.ToWorld(_dataManager, mapId, point.X, point.Y);
+                // Candidate textures include an external halo; scale the whole
+                // image so its central point retains the ordinary dot size.
+                var markerSize = _config.SpawnDotSize;
+                if (dot is "scand" or "dim-scand" or "train-scand")
+                    markerSize *= DotTextures.OutlinedSize(_config.SpawnCandidateOutlineWidth, _config.OutlineMapDots) / (float)DotTextures.Size;
 
                 _overlay.AddMarker(new MapMarkerNode
                 {
@@ -1232,7 +1241,7 @@ public sealed unsafe class HuntMapOverlay : IDisposable
                     MapId = mapId,
                     Position = world,
                     TexturePath = dots[dot],
-                    Size = new Vector2(_config.SpawnDotSize, _config.SpawnDotSize),
+                    Size = new Vector2(markerSize, markerSize),
                     TextTooltip = tooltip + ClickHint + (point.Ranks.HasFlag(SpawnRanks.S) && _sync?.SupportsManualMapping == true ? "\nShift-click: toggle manual S-rank exclusion." : ""),
                     OnClick = SpawnPointClick(territory, worldId, instance, mapId, pointIndex, point),
                 });

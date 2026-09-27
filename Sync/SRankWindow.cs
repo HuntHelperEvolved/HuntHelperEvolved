@@ -61,6 +61,7 @@ public sealed class SRankWindow
     }
 
     public void Toggle() => Visible = !Visible;
+    public void OnSettingsReset() => _board.Invalidate();
 
     public void Draw()
     {

@@ -1695,6 +1695,8 @@ public sealed partial class Plugin : IDalamudPlugin
     private void DrawDotColours()
     {
         ImGui.TextWrapped("Dot colours");
+        ImGui.TextWrapped("Default live marks use stronger versions of the FOUND chat colours: B cyan, A coral and S yellow. "
+            + "Recorded train spots are violet; empty points are slate so gold S-rank rings stand out. Optional dark outlines add contrast on pale maps.");
 
         const ImGuiColorEditFlags flags =
             ImGuiColorEditFlags.AlphaBar | ImGuiColorEditFlags.AlphaPreviewHalf;
@@ -1716,21 +1718,21 @@ public sealed partial class Plugin : IDalamudPlugin
             ImGui.SetTooltip("Visible spawn points matched to living marks in the current world's train. Returns to the normal colour when dead, sniped or removed. S-rank candidate outlines are preserved.");
 
         var b = _config.SpawnDotColourB;
-        if (ImGui.ColorEdit4("B rank on it", ref b, flags))
+        if (ImGui.ColorEdit4("Live B rank", ref b, flags))
         {
             _config.SpawnDotColourB = b;
             _config.Save();
         }
 
         var a = _config.SpawnDotColourA;
-        if (ImGui.ColorEdit4("A rank on it", ref a, flags))
+        if (ImGui.ColorEdit4("Live A rank", ref a, flags))
         {
             _config.SpawnDotColourA = a;
             _config.Save();
         }
 
         var sRank = _config.SpawnDotColourS;
-        if (ImGui.ColorEdit4("S rank on it", ref sRank, flags))
+        if (ImGui.ColorEdit4("Live S rank", ref sRank, flags))
         {
             _config.SpawnDotColourS = sRank;
             _config.Save();
@@ -1758,21 +1760,13 @@ public sealed partial class Plugin : IDalamudPlugin
         }
         ImGui.TextDisabled("The outline is what keeps the text readable over a pale map. Dropping its alpha to nothing removes it.");
 
-        if (ImGui.Button("Reset dot colours"))
+        if (ImGui.Button("Reset map colours"))
         {
-            var defaults = new Configuration();
-            _config.SpawnDotColourEmpty = defaults.SpawnDotColourEmpty;
-            _config.SpawnDotColourInTrain = defaults.SpawnDotColourInTrain;
-            _config.SpawnDotColourB = defaults.SpawnDotColourB;
-            _config.SpawnDotColourA = defaults.SpawnDotColourA;
-            _config.SpawnDotColourS = defaults.SpawnDotColourS;
-            _config.SsMinionColour = defaults.SsMinionColour;
-            _config.MarkLabelColour = defaults.MarkLabelColour;
-            _config.MarkLabelOutlineColour = defaults.MarkLabelOutlineColour;
+            SettingsReset.Apply(_config, _tallyConfig, SettingsResetCategory.MapColours);
             _config.Save();
         }
         ImGui.SameLine();
-        ImGui.TextDisabled("Restore the default dot colours.");
+        ImGui.TextDisabled("Includes labels and S-rank mapping colours.");
     }
 
     /// <summary>
