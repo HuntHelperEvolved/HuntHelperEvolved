@@ -6,16 +6,12 @@ summaries and sniped/missing-mark details, draws spawn points, your detection ra
 event locations on the **in-game map**, counts S-rank trigger mobs, and keeps a
 lifetime per-mark kill tally for every character you play.
 
-> **0.6.0.1:** Clearer map colours, optional dot outlines, grouped settings resets,
-> revised defaults and missing-mark scouting, plus train, sound and Umbra settings
-> with companion 0.2.0.0. Available through the existing testing feed.
+> **0.6.0.2:** Choose when to follow a train with `/hht on/off` or the Follow train
+> button. Recalculate rally flags after manually adjusting a paused preset's route.
+> Available through the existing testing feed.
 >
 > See [Where this came from](#where-this-came-from) if you are arriving from
 > Hunt Train Relay or Hunt Tally; your settings and your tally carry over.
-
-Local staging **0.6.0.2** adds a saved train-follow switch and rally recalculation
-for paused presets. The installer feed still selects the published 0.6.0.1 build.
-Shared rally recalculation needs the staged server **0.3.31**.
 
 ## Install
 
@@ -126,7 +122,7 @@ destinations have separate clearing actions and are excluded from reset-all.
 
 ## Release notes
 
-### 0.6.0.2 — local staging
+### 0.6.0.2 — changes since 0.6.0.1
 
 - **Following the train:** `/hht on` and `/hht off`, or **Follow train: On/Off** beside the train page tabs, control automatic next-mark flags and chat echoes. The choice is saved and starts on for existing users. Scouting, sharing and manual route actions remain available when off.
 - **Rally flags:** **Setup > Calculate Rally Flags** recalculates pending rallies from the current mark order and the paused preset's rally settings. Mark order and the pause are retained; completed rallies stay completed. Disabled in Manual order or with an active preset. Shared trains require server **0.3.31**.
