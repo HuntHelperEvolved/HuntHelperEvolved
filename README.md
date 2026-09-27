@@ -6,9 +6,9 @@ summaries and sniped/missing-mark details, draws spawn points, your detection ra
 event locations on the **in-game map**, counts S-rank trigger mobs, and keeps a
 lifetime per-mark kill tally for every character you play.
 
-> **0.6.0.1 release preparation:** Clearer map colours, optional dot outlines, grouped
-> settings resets, revised defaults and missing-mark scouting, plus train, sound
-> and Umbra settings with companion 0.2.0.0. The public testing feed still serves 0.6.0.0.
+> **0.6.0.1:** Clearer map colours, optional dot outlines, grouped settings resets,
+> revised defaults and missing-mark scouting, plus train, sound and Umbra settings
+> with companion 0.2.0.0. Available through the existing testing feed.
 >
 > See [Where this came from](#where-this-came-from) if you are arriving from
 > Hunt Train Relay or Hunt Tally; your settings and your tally carry over.
@@ -34,7 +34,7 @@ If it does not appear, first check that testing builds are enabled in step 2.
 ### Optional Umbra train widget
 
 [Hunt Helper Evolved for Umbra](https://github.com/HuntHelperEvolved/Umbra.HuntHelperEvolved)
-adds a toolbar button showing train counts and spawn progress. The staged update
+adds a toolbar button showing train counts and spawn progress. The 0.2.0.0 companion
 supports ARR, HW, SB, ShB, EW and DT, with a current or fixed world and enabled
 expansions chosen separately for each widget. Existing defaults stay DT/EW/ShB.
 Each count is train-list A-ranks over the full expansion roster, including known
@@ -51,7 +51,7 @@ by default; turn off **Show world name** to save space while keeping it in the t
 World selection uses data already available to HHE; it does not change worlds or
 create missing scouting/timer data.
 
-The new settings require **Umbra 3.1.18.0**, staged companion **0.2.0.0** and
+The new settings require **Umbra 3.1.18.0**, companion **0.2.0.0** and
 **HHE 0.6.0.1**. The released companion 0.1.0.2 remains compatible with this HHE
 build. Current-world DT/EW/ShB views also remain available with HHE 0.6.0.0.
 
@@ -121,7 +121,7 @@ destinations have separate clearing actions and are excluded from reset-all.
 
 ## Release notes
 
-### 0.6.0.1 — prepared changes since 0.6.0
+### 0.6.0.1 — changes since 0.6.0
 
 - **Settings resets:** Restore individual settings categories or all preferences from Settings > Reset settings. Train data, presets, kill counts and saved connections are kept; clearing connection details is separate. Reset all turns sharing off.
 - **Map colours:** New defaults use slate empty points, violet train locations, cyan B-ranks, coral A-ranks and yellow S-ranks. Saved colours stay unchanged. Use Settings > Reset settings > Map colours to adopt the new palette.
