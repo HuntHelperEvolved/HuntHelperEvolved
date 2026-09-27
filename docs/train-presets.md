@@ -60,6 +60,16 @@ any preset, including the same one, to resume and recalculate. Saving an
 edited preset while paused does not resume ordering. Shared adjustments send
 the order and pause together, so everyone receives the accepted route.
 
+Use **Setup > Calculate Rally Flags** after adjusting the route to update
+pending rally locations and placement. The paused preset determines which
+expansion and instance rallies are needed, including fixed aetherytes and
+exclusions; the current train order determines the first live mark and automatic
+rally location. Hunt marks and manually added custom flags keep their relative
+order. The preset stays paused, and completed or removed rallies are not
+restarted. The button is disabled for **Manual order** or an unpaused preset.
+Shared calculation requires server **0.3.31** and updates the train for everyone;
+it is also unavailable while disconnected or waiting for another preset change.
+
 **Manual order** releases the preset without clearing hunt marks. Deleting
 the active preset also returns to manual order. Older plugins cannot override
 an active shared preset with ordinary reorder messages; update the conducting
@@ -84,7 +94,8 @@ removal shortly after a successful teleport.
   starting point for automatic mark ordering.
 
 An expansion entry and instance entry at the same stop produce one flag.
-Expansion rallies follow the first scouted live zone in preset order.
+Expansion rallies follow the first scouted live zone in preset order, or the
+current order when explicitly calculating rallies for a paused preset.
 Completing or removing a stop records that entry, so more scouting during the
 same zone/instance visit and reconnects do not recreate it. Once that visit has
 no live marks, scouting live marks there again restores its rallies. Other

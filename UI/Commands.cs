@@ -17,7 +17,7 @@ public sealed partial class Plugin
     private void RegisterCommands()
     {
         Pair("/hh", ConfigCommand, OnCommand, "Open the main window.");
-        Pair("/hht", TrainCommand, OnTrainCommand, "Open the train list popout.");
+        Pair("/hht", TrainCommand, OnTrainCommand, "Toggle the train popout; on/off enables or pauses following the train.");
         Pair("/hhn", "/htrn", OnNextMarkCommand, "Move to the next live mark and flag it.");
         Pair("/hhna", NextAetheryteCommand, OnNextAetheryteCommand, "Name the closest aetheryte to the next mark.");
         Pair("/hhc", CounterCommand, OnCounterCommand, "Open the S-rank counter popout.");

@@ -224,6 +224,12 @@ public class Configuration : IPluginConfiguration
     /// </summary>
     public bool AutoAdvance { get; set; } = true;
 
+    /// <summary>
+    /// Follow automatic train progression on this client. Independent of
+    /// scouting and sharing, and retained when the train or preferences reset.
+    /// </summary>
+    public bool FollowTrain { get; set; } = true;
+
     /// <summary>Echo (and flag) the new current mark when the pointer advances.</summary>
     public bool EchoOnAdvance { get; set; } = true;
 

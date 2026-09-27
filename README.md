@@ -13,6 +13,10 @@ lifetime per-mark kill tally for every character you play.
 > See [Where this came from](#where-this-came-from) if you are arriving from
 > Hunt Train Relay or Hunt Tally; your settings and your tally carry over.
 
+Local staging **0.6.0.2** adds a saved train-follow switch and rally recalculation
+for paused presets. The installer feed still selects the published 0.6.0.1 build.
+Shared rally recalculation needs the staged server **0.3.31**.
+
 ## Install
 
 1. In-game, type `/xlsettings`, go to the **Experimental** tab.
@@ -84,6 +88,7 @@ copy registers the widget. Keep the main Hunt Helper Evolved plugin enabled.
 |---|---|
 | `/hh` or `/htr` | the main window: Train, S Ranks, Settings and Help |
 | `/hht` or `/htrt` | the train workspace as a popout: Route, Reports and Setup |
+| `/hht on` / `/hht off` | turn automatic train following on or off; `/htrt on/off` also works |
 | `/hhc` or `/htrc` | the trigger-mob counter popout, including Narrow-rift's Wee Ea headcount and Nunyunuwi's no-FATE-failed clock |
 | `/hhn` or `/htrn` | move to the next live mark and flag it |
 | `/hhna` or `/htra` | name the closest aetheryte to the next mark |
@@ -120,6 +125,11 @@ sync off while keeping connection details. Saved sync credentials and Discord
 destinations have separate clearing actions and are excluded from reset-all.
 
 ## Release notes
+
+### 0.6.0.2 — local staging
+
+- **Following the train:** `/hht on` and `/hht off`, or **Follow train: On/Off** beside the train page tabs, control automatic next-mark flags and chat echoes. The choice is saved and starts on for existing users. Scouting, sharing and manual route actions remain available when off.
+- **Rally flags:** **Setup > Calculate Rally Flags** recalculates pending rallies from the current mark order and the paused preset's rally settings. Mark order and the pause are retained; completed rallies stay completed. Disabled in Manual order or with an active preset. Shared trains require server **0.3.31**.
 
 ### 0.6.0.1 — changes since 0.6.0
 
@@ -253,6 +263,15 @@ local/shared and preset context above compact, single-line mark rows.
 Last-seen ages use concise brackets, such as `(5m)` or `(1h 12m)`.
 Switching pages does not change the train or recording state.
 
+**Follow train: On/Off**, beside the page tabs, controls automatic next-mark
+flags and their local chat echoes. `/hht off` stops following and `/hht on`
+resumes it; `/htrt on/off` also works. The choice is saved across reloads and
+reconnects, and existing users start with following on. Scanning and sharing
+keep their separate settings. Next Mark, clicking a row and deliberate travel
+still work while following is off. The **Auto-advance to the next mark when the current one dies** preference
+in Settings > Train also applies when following is on. Turning following back on resumes from the
+current route without replaying missed marks.
+
 **Swap mark and zone names in the train popout**, under **Setup > Route tools
 and view** or **Settings > Train**, shows the zone first and the mark name
 second. It is off by default and applies only to the popout. **Hide zone names**
@@ -265,7 +284,11 @@ mark order, and rally preferences for future trains. Choose a preset in
 active, Route shows a preset dropdown so you can change it without leaving the
 route. Choosing or reselecting a preset resumes its ordering and rally stops.
 Dragging a mark or expansion pauses automatic ordering until a preset is
-reselected. Shared presets require server **0.3.26 or later**; older plugins
+reselected. While paused, **Setup > Calculate Rally Flags** updates pending
+rallies using the current mark order and that preset's rally preferences,
+without resuming ordering. Completed rallies stay completed. The button is
+greyed out for Manual order or an unpaused preset; shared calculation also
+requires server **0.3.31**. Shared presets require server **0.3.26 or later**; older plugins
 receive the same train order and ordinary rally flags. See the
 [train preset guide](docs/train-presets.md) for setup and routing details.
 

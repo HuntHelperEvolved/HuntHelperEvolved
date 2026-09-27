@@ -6,7 +6,7 @@
     <Deterministic>true</Deterministic>
     <Authors>MusicManBowls, kihtli</Authors>
     <Company></Company>
-    <Version>0.6.0.1</Version>
+    <Version>0.6.0.2</Version>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <Description>Hunt tracking for FFXIV. Scout and share trains, preview Discord reports with respawn summaries, track S/A-rank windows and live marks, map spawn points, pool trigger-mob kills and keep lifetime hunt tallies. Includes optional Lifestream travel and an Umbra train widget.</Description>
     <PackageProjectUrl></PackageProjectUrl>

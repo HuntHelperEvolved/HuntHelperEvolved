@@ -49,6 +49,7 @@ public sealed partial class Plugin
         DrawPresetSelector("Route preset", Math.Min(280, Math.Max(120, ImGui.GetContentRegionAvail().X - 100)));
         TrainControlSameLine("Manage presets");
         if (ImGui.Button("Manage presets")) _presetEditorOpen = true;
+        DrawCalculateRallyFlags();
         if (!showStatus) return;
         if (ActivePresetId is not null && PresetOrderingPaused)
             ImGui.TextWrapped("Automatic ordering is paused. Reselect a preset to resume, including for future trains.");
@@ -57,6 +58,41 @@ public sealed partial class Plugin
         else if (SharingPresetTrain && !_sync.SupportsTrainPresets)
             ImGui.TextWrapped("Shared presets require server 0.3.26 or later. Other train sharing remains available.");
         if (!string.IsNullOrEmpty(_sync.PresetStatus)) ImGui.TextWrapped(_sync.PresetStatus);
+    }
+
+    private string? RallyCalculationUnavailable
+    {
+        get
+        {
+            if (TrainMutationBusy) return "Wait for the current train operation to finish.";
+            var presets = SharingPresetTrain ? _sync.TrainPresets.Presets : _config.TrainPresets;
+            var preset = presets.FirstOrDefault(p => p.Id == ActivePresetId);
+            if (preset is null) return "Select a route preset and adjust the train order to pause it first.";
+            if (!PresetOrderingPaused) return "Adjust the train order to pause this preset first. Active presets calculate rally flags automatically.";
+            if (SharingPresetTrain)
+            {
+                if (!_sync.HasCurrentTrainSnapshot) return "Wait for the server's current train before calculating rally flags.";
+                if (!_sync.SupportsTrainPresets || !_sync.SupportsRallyRecalculation)
+                    return "Shared rally calculation needs server 0.3.31 or later.";
+                if (_sync.PendingPresetRequest is not null) return "Wait for the pending preset change to finish.";
+            }
+            return RouteCatalog.Validate(preset);
+        }
+    }
+
+    private void DrawCalculateRallyFlags()
+    {
+        var unavailable = RallyCalculationUnavailable;
+        ImGui.BeginDisabled(unavailable is not null);
+        if (ImGui.Button("Calculate Rally Flags") && RallyCalculationUnavailable is null)
+        {
+            if (SharingPresetTrain) _sync.SendPreset("recalculate-rallies");
+            else ApplyLocalTrainPreset(force: true, recalculateRallies: true);
+        }
+        ImGui.EndDisabled();
+        if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+            ImGui.SetTooltip(unavailable ?? "Update pending rally flags for the current train order using this preset's rally settings.\nThe mark order stays unchanged and the preset stays paused. Completed rallies stay completed."
+                + (SharingPresetTrain ? "\nUpdates the shared train for everyone." : ""));
     }
 
     private void SelectTrainPreset(string? id)
@@ -93,7 +129,7 @@ public sealed partial class Plugin
         return true;
     }
 
-    private void ApplyLocalTrainPreset(bool force = false, bool restartRallies = false)
+    private void ApplyLocalTrainPreset(bool force = false, bool restartRallies = false, bool recalculateRallies = false)
     {
         if (SharingPresetTrain
             || _dragFromIndex != -1 || _dragExpansionFrom != -1
@@ -101,6 +137,7 @@ public sealed partial class Plugin
         _lastPresetApply = DateTime.UtcNow;
         var preset = _config.TrainPresets.FirstOrDefault(p => p.Id == _config.ActiveTrainPresetId);
         if (preset is not null && RouteCatalog.Validate(preset) is not null) return;
+        if (recalculateRallies && (preset is null || !_config.TrainPresetOrderingPaused)) return;
         var marks = _detector.Ordered();
         var flagChanged = false;
         var route = PresetRallies.Reconcile(marks, preset, _config.LocalPresetRallies,
@@ -120,7 +157,8 @@ public sealed partial class Plugin
                 flag.WorldName = lead.WorldName;
                 flag.ZoneName = RouteCatalog.ByTerritory[stop.Key.TerritoryId].Name;
                 return flag;
-            }, orderingPaused: _config.TrainPresetOrderingPaused, restartRallies: restartRallies);
+            }, orderingPaused: _config.TrainPresetOrderingPaused, restartRallies: restartRallies,
+            recalculateRallies: recalculateRallies);
         var order = route.Rows;
         foreach (var removed in marks.Except(order)) _detector.Remove(removed.Key);
         _detector.Merge(order.Where(m => !_detector.Marks.ContainsKey(m.Key)));

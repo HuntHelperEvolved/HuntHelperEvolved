@@ -455,6 +455,7 @@ public sealed partial class SyncCoordinator : IDisposable
         _sightingClock.Reset();
         _sightingClock.Update(welcome.ServerTime, DateTime.UtcNow);
         SupportsTrainPresets = welcome.SupportsTrainPresets;
+        SupportsRallyRecalculation = welcome.SupportsRallyRecalculation;
         TrainPresets = welcome.TrainPresets;
         PendingPresetRequest = null;
         AcceptedPresetRevision = null;
@@ -742,6 +743,7 @@ public sealed partial class SyncCoordinator : IDisposable
         _sightingClock.Reset();
         _trainSnapshotConnectionAt = null;
         SupportsTrainPresets = false;
+        SupportsRallyRecalculation = false;
         TrainPresets = new();
         PendingPresetRequest = null;
         AcceptedPresetRevision = null;

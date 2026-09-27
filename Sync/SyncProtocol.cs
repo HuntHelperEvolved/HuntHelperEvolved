@@ -322,6 +322,7 @@ public static class ServerMessageTypes
 public sealed class WelcomeMessage
 {
     public bool SupportsTrainPresets { get; set; }
+    public bool SupportsRallyRecalculation { get; set; }
     public TrainPresets.PresetState TrainPresets { get; set; } = new();
     public bool SupportsTrainFinish { get; set; }
 

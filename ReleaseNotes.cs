@@ -34,6 +34,11 @@ public static class ReleaseNotes
 
     public static readonly Release[] All =
     {
+        new("0.6.0.2", "2026-09-27", "Choose when to follow a train and recalculate rallies after manual route changes.",
+        [
+            new("Following the train", "Use /hht on or /hht off, or the Follow train button beside the train page tabs, to control automatic next-mark flags and chat echoes. The choice is saved. Following starts on for existing users; turning it off keeps scouting and sharing available. Manual Next Mark, row flags and travel remain usable.", Kihtli),
+            new("Rally flags", "Setup > Calculate Rally Flags updates pending rallies from the current train order using the paused preset's rally settings. Mark order stays unchanged, the preset stays paused and completed rallies stay completed. The button is disabled in Manual order or while a preset is active. Shared trains need server 0.3.31 or later.", Kihtli),
+        ]),
         new("0.6.0.1", "2026-09-27", "Clearer hunt maps, grouped settings resets and configurable Umbra views.",
         [
             new("Settings resets", "Restore individual settings categories or all preferences from Settings > Reset settings. Train data, presets, kill counts and saved connections are kept; clearing connection details is separate. Reset all turns sharing off.", Kihtli),

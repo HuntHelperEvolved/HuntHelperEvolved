@@ -10,6 +10,7 @@ public sealed partial class SyncCoordinator
     public bool HasCurrentTrainSnapshot => IsConnected && _trainSnapshotConnectionAt is not null
         && _trainSnapshotConnectionAt == _client.ConnectedAtUtc;
     public bool SupportsTrainPresets { get; private set; }
+    public bool SupportsRallyRecalculation { get; private set; }
     public PresetState TrainPresets { get; private set; } = new();
     public string PresetStatus
     {
@@ -37,9 +38,18 @@ public sealed partial class SyncCoordinator
             PresetStatus = "Connect to a server that supports train presets.";
             return false;
         }
-        if ((action == "select" || action == "reorder") && (!_config.SyncShareTrain || !HasCurrentTrainSnapshot))
+        if ((action == "select" || action == "reorder" || action == "recalculate-rallies")
+            && (!_config.SyncShareTrain || !HasCurrentTrainSnapshot))
         {
             PresetStatus = "Wait for the shared train before changing its preset or order.";
+            return false;
+        }
+        if (action == "recalculate-rallies"
+            && (!SupportsRallyRecalculation || TrainPresets.ActivePresetId is null || !TrainPresets.OrderingPaused))
+        {
+            PresetStatus = !SupportsRallyRecalculation
+                ? "Shared rally calculation needs server 0.3.31 or later."
+                : "Pause a selected preset by adjusting the train order before calculating rally flags.";
             return false;
         }
         PresetStatus = "Waiting for the server...";
@@ -47,7 +57,7 @@ public sealed partial class SyncCoordinator
         CompletedPresetRequest = null;
         AcceptedPresetRevision = null;
         _presetRequestAt = DateTime.UtcNow;
-        if (action == "reorder") DiffTrain();
+        if (action == "reorder" || action == "recalculate-rallies") DiffTrain();
         _client.Send(new TrainPresetMessage
         {
             RequestId = PendingPresetRequest, Action = action, Preset = preset?.Copy(), PresetId = presetId,

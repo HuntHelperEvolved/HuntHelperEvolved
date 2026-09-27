@@ -52,6 +52,8 @@ public sealed partial class Plugin
             if (ImGui.Button(page.ToString())) SelectTrainPage(page);
             if (selected) ImGui.PopStyleColor();
         }
+        TrainControlSameLine("Follow train: Off", reservedRight);
+        DrawTrainFollowButton();
         var tabsEnd = ImGui.GetCursorPos();
         ImGui.SetCursorPos(new Vector2(operatingStart.X + Math.Max(0, operatingWidth - scanButtonSize), operatingStart.Y));
         ImGui.BeginDisabled(TrainMutationBusy);

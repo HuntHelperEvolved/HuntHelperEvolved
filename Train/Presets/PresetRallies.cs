@@ -25,7 +25,7 @@ public static class PresetRallies
 {
     public static RallyRoute<T> Reconcile<T>(IReadOnlyList<T> input, TrainPreset? preset, RallyProgress progress,
         Func<T, RoutePoint> point, Func<RallyStop, uint, T?, T> flag, bool orderingPaused = false,
-        bool restartRallies = false) where T : class
+        bool restartRallies = false, bool recalculateRallies = false) where T : class
     {
         static (uint, uint, uint) Identity(RoutePoint p) => (p.NameId, p.Instance, p.WorldId);
         static (uint, uint, uint) RowIdentity(RallyRow r) => (r.NameId, r.Visit.Key.Instance, r.Visit.Key.WorldId);
@@ -50,7 +50,7 @@ public static class PresetRallies
             || !before.Completed.SequenceEqual(progress.Completed)
             || (before.LiveVisits is null ? progress.LiveVisits is not null
                 : progress.LiveVisits is null || !before.LiveVisits.SequenceEqual(progress.LiveVisits));
-        if (preset is not null && orderingPaused)
+        if (preset is not null && orderingPaused && !recalculateRallies)
         {
             // Manual adjustments freeze pending rally positions too. Continue
             // tracking completed flags and removing flags whose live marks are gone.
@@ -60,7 +60,9 @@ public static class PresetRallies
             var frozen = input.Where(m => !owned.ContainsKey(Identity(point(m))) || retained.Contains(Identity(point(m)))).ToList();
             return new(frozen, ProgressChanged());
         }
-        var ordered = preset is null ? ordinary : PresetRouter.Order(ordinary, preset, point);
+        // Explicit recalculation uses the manually adjusted order without
+        // resuming the preset or restarting already completed rally visits.
+        var ordered = preset is null || orderingPaused ? ordinary : PresetRouter.Order(ordinary, preset, point);
         if (preset is not null) RememberCompletedEntries(ordered.Select(point), preset, progress.Completed);
         var stops = preset is null ? new List<RallyStop>() : Plan(ordered.Select(point), preset, progress.Completed);
         var pending = new Dictionary<RallyKey, T>();
@@ -87,7 +89,8 @@ public static class PresetRallies
         foreach (var row in ordered)
         {
             var p = point(row);
-            if (pending.Remove(new(p.WorldId, p.TerritoryId, p.Instance), out var rally)) result.Add(rally);
+            if ((!recalculateRallies || !p.IsCustom && !p.Dead)
+                && pending.Remove(new(p.WorldId, p.TerritoryId, p.Instance), out var rally)) result.Add(rally);
             result.Add(row);
         }
         progress.Rows = rows;
