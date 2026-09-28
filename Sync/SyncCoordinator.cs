@@ -271,6 +271,7 @@ public sealed partial class SyncCoordinator : IDisposable
 
         try
         {
+            CaptureARankLocations();
             SaveARankSightings();
             if (!_config.SyncEnabled) return;
             DrainInbox();
@@ -344,6 +345,7 @@ public sealed partial class SyncCoordinator : IDisposable
                 break;
             case "marks.visible":
                 var visible = SyncProtocol.Deserialize<VisibleMarksBroadcast>(payload)!;
+                RememberSharedARankLocations(ARankLocations.FromSightings(visible.Marks.Select(m => m.Mark)));
                 RememberARankSightings(ARankSightings.FromSightings(visible.Marks.Select(m => m.Mark)));
                 foreach (var mark in visible.Marks) { _visibleMarks[mark.Mark.LiveKey] = mark; _activeMarkGrace.Update(mark, DateTime.UtcNow); }
                 foreach (var key in visible.Removed) _visibleMarks.Remove(key.ToLiveKey());
@@ -379,6 +381,7 @@ public sealed partial class SyncCoordinator : IDisposable
             case ServerMessageTypes.TrainUpsert:
             {
                 var marks = SyncProtocol.Deserialize<TrainUpsertBroadcast>(payload)!.Marks;
+                RememberSharedARankLocations(ARankLocations.FromMarks(marks));
                 RememberARankSightings(ARankSightings.FromMarks(marks));
                 if (ARankHistory.Merge(_config.ARankKills, ARankHistory.FromMarks(marks), DateTime.UtcNow)) _config.Save();
                 if (_config.SyncShareTrain) ApplyMarks(marks);
@@ -405,10 +408,15 @@ public sealed partial class SyncCoordinator : IDisposable
 
             case ServerMessageTypes.Sightings:
                 var sightings = SyncProtocol.Deserialize<SightingsBroadcast>(payload)!.Sightings;
+                RememberSharedARankLocations(ARankLocations.FromSightings(sightings));
                 if (!SupportsVisibleMarks) RememberARankSightings(ARankSightings.FromSightings(sightings));
                 foreach (var s in sightings)
                     AddRemoteSighting(s);
                 Bump();
+                break;
+
+            case ServerMessageTypes.ARankLocations:
+                RememberSharedARankLocations(SyncProtocol.Deserialize<ARankLocationsBroadcast>(payload)!.Locations);
                 break;
 
             case ServerMessageTypes.SightingsExpired:
@@ -466,6 +474,9 @@ public sealed partial class SyncCoordinator : IDisposable
         _trainScouts=welcome.TrainScouts;
         SupportsScoutRemoval=welcome.SupportsScoutRemoval; ApplyScoutCredits(welcome.ScoutCredits);
         _watchSent = null;
+        RememberSharedARankLocations(welcome.ARankLocations.Concat(ARankLocations.FromMarks(welcome.Marks))
+            .Concat(ARankLocations.FromSightings(welcome.Sightings))
+            .Concat(ARankLocations.FromSightings(welcome.VisibleMarks.Select(m => m.Mark))));
         RememberARankSightings(ARankSightings.FromMarks(welcome.Marks).Concat(ARankSightings.FromSightings(
             welcome.SupportsVisibleMarks ? welcome.VisibleMarks.Select(m => m.Mark) : welcome.Sightings)));
         if (ARankHistory.Merge(_config.ARankKills, welcome.ARankKills.Concat(ARankHistory.FromMarks(welcome.Marks)), DateTime.UtcNow)) _config.Save();
@@ -513,7 +524,8 @@ public sealed partial class SyncCoordinator : IDisposable
             try
             {
                 _detector.BeginTrainReplacement();
-                foreach (var key in _detector.Marks.Keys.ToList()) _detector.Remove(key);
+                foreach (var key in _detector.Marks.Keys.ToList())
+                    _detector.Remove(key, rememberLocation: !sharedKeys.Contains(key));
             }
             finally { _applying = false; }
             ApplyMarks(welcome.Marks);
@@ -553,6 +565,7 @@ public sealed partial class SyncCoordinator : IDisposable
                         Dead = m.Dead,
                         FirstSeenUtc = m.FirstSeen,
                         LastSeenUtc = m.LastSeen,
+                        LocationSeenAtUtc = ARankLocations.LocalSeenAt(m.LastSeen, _sightingClock.ToLocal, DateTime.UtcNow),
                         DeathObservedAtUtc = m.DeathAt, SnipedAtUtc = m.SnipedAt,
                         IsCustom = m.IsCustom,
                         ZoneName = m.ZoneName,
@@ -574,6 +587,7 @@ public sealed partial class SyncCoordinator : IDisposable
                     {
                         local.LastSeenUtc = m.LastSeen;
                         local.MapPosition = new Vector2(m.X, m.Y);
+                        local.LocationSeenAtUtc = ARankLocations.LocalSeenAt(m.LastSeen, _sightingClock.ToLocal, DateTime.UtcNow);
                     }
 
                     if (m.FirstSeen != default && m.FirstSeen < local.FirstSeenUtc)
@@ -829,6 +843,7 @@ public sealed partial class SyncCoordinator : IDisposable
     {
         try
         {
+            RememberLocalARankLocations();
             RememberARankSightings(_detector.VisibleMarks.Select(s => new ARankSighting {
                 NameId = s.NameId, WorldId = s.WorldId, Instance = s.Instance,
                 At = s.LastSeenUtc, Alive = s.HealthPercent > 0 }));

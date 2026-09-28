@@ -313,6 +313,7 @@ public static class ServerMessageTypes
     public const string TrainOrder = "train.order";
     public const string Sightings = "sightings";
     public const string SightingsExpired = "sightings.expired";
+    public const string ARankLocations = "aranks.locations";
     public const string SRankUpdate = "srank.update";
     public const string SpawnUpdate = "spawn.update";
     public const string Presence = "presence";
@@ -339,6 +340,7 @@ public sealed class WelcomeMessage
     public bool SupportsScoutRemoval { get; set; }
     public List<ScoutCreditDto> ScoutCredits { get; set; } = new();
     public List<ARankKill> ARankKills { get; set; } = new();
+    public List<ARankLocation> ARankLocations { get; set; } = new();
     public bool SupportsScopedTrainWatches { get; set; }
     public bool SupportsManualMapping { get; set; }
     public bool SupportsVisibleMarks { get; set; }
@@ -361,6 +363,7 @@ public sealed class WelcomeMessage
 }
 
 public sealed class ErrorMessage { public string Code { get; set; } = string.Empty; public string Message { get; set; } = string.Empty; }
+public sealed class ARankLocationsBroadcast { public List<ARankLocation> Locations { get; set; } = new(); }
 public sealed class TrainUpsertBroadcast { public List<SyncMark> Marks { get; set; } = new(); public string By { get; set; } = string.Empty; }
 public sealed class ReportedMark
 {

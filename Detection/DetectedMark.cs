@@ -23,6 +23,8 @@ public class DetectedMark
     public bool Dead;
     public DateTime FirstSeenUtc;
     public DateTime LastSeenUtc;
+    /// <summary>Local-clock observation time for MapPosition; separate from shared train timestamps.</summary>
+    public DateTime? LocationSeenAtUtc;
     public DateTime? DeathObservedAtUtc;
 
     /// <summary>
@@ -56,6 +58,7 @@ public class DetectedMark
     {
         if (maxHp == 0) return;
         MapPosition = position;
+        LocationSeenAtUtc = seenAt;
         if (currentHp == 0) return;
         LastSeenUtc = seenAt;
 

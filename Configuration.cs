@@ -36,6 +36,7 @@ public class PersistedMark
     public bool Dead { get; set; }
     public DateTime FirstSeenUtc { get; set; }
     public DateTime LastSeenUtc { get; set; }
+    public DateTime? LocationSeenAtUtc { get; set; }
     public DateTime? DeathObservedAtUtc { get; set; }
     public int Order { get; set; }
     public bool IsCustom { get; set; }
@@ -682,6 +683,8 @@ public class Configuration : IPluginConfiguration
     public string ARankWindowSearch { get; set; } = "";
     public List<Sync.ARankKill> ARankKills { get; set; } = new();
     public List<Sync.ARankSighting> ARankSightings { get; set; } = new();
+    /// <summary>Latest local and shared positions, retained after clearing trains and independent of spawn evidence.</summary>
+    public List<Sync.ARankLocation> ARankLocations { get; set; } = new();
     public bool SRankWindowCurrentWorld { get; set; } = true;
     public List<uint> SRankWindowWorlds { get; set; } = new();
     public List<string>? SRankWindowExpansions { get; set; }
@@ -779,6 +782,9 @@ public class Configuration : IPluginConfiguration
     {
         _pluginInterface = pluginInterface;
         UseOwnTrainList = true; // Legacy preference retained only for config migration.
+        ARankLocations ??= new();
+        if (Sync.ARankLocations.Merge(ARankLocations,
+            Sync.ARankLocations.FromPersisted(ResetUndoMarks ?? new()), DateTime.UtcNow)) Save();
 
 #pragma warning disable CS0618 // reading the obsolete field deliberately, once, to migrate it
         if ((Webhooks == null || Webhooks.Count == 0) && WebhookUrls is { Count: > 0 })

@@ -401,7 +401,7 @@ public sealed partial class Plugin : IDalamudPlugin
             startup.Add(_srankTravel.Dispose);
             _activeMarksWindow = new ActiveMarksWindow(_config, _sync, _worldData, _detector, _gameGui, _srankTravel, () => { _configWindowVisible=true; _selectActiveMarksSettings=true; });
             _srankWindow = new SRankWindow(_config, _sync, _worldData, _detector, _srankTravel);
-            _arankWindow = new ARankWindow(_config, _sync, _worldData, _detector);
+            _arankWindow = new ARankWindow(_config, _sync, _worldData, _detector, _srankTravel, _gameGui);
             // Publish framework-thread snapshots after the detector exists.
             _trainIpc = new TrainIpcProvider(_pluginInterface, _framework, _detector, _log);
             startup.Add(_trainIpc.Dispose);

@@ -10,6 +10,9 @@ lifetime per-mark kill tally for every character you play.
 > button. Recalculate rally flags after manually adjusting a paused preset's route.
 > Available through the existing testing feed.
 >
+> **0.6.0.3 prepared:** Shared A-rank locations, Ctrl-click travel and compact timer
+> boards. The draft package is separate from the installer feed, which stays at 0.6.0.2.
+>
 > See [Where this came from](#where-this-came-from) if you are arriving from
 > Hunt Train Relay or Hunt Tally; your settings and your tally carry over.
 
@@ -90,14 +93,31 @@ copy registers the widget. Keep the main Hunt Helper Evolved plugin enabled.
 | `/hhna` or `/htra` | name the closest aetheryte to the next mark |
 | `/hhm` or `/htrm` | show or hide the control bar above the map |
 | `/hhs` or `/htrs` | the S-rank board: windows, kill times and spawn points, shared through sync |
+| `/hha` or `/htraw` | A-rank timers by world and instance; Ctrl-click a name to travel with Lifestream |
 | `/hhtally` or `/hunttally` | the kill tally. `/hhtally config` (or `/hunttally config`) for its settings |
 
 A shortcut already held by another plugin is left alone.
+
+In `/hha`, **Last known location** flags the latest coordinates reported by anyone
+in the sync group, including the current position when the mark is seen up.
+Locations stay separate by world and instance, survive cleared trains and reloads,
+and are greyed out when unavailable. Saved coordinates alone do not confirm a
+new spawn. Server **0.3.32 or later** also supplies saved positions to users who
+join after a train has cleared. Older servers still supply coordinates from
+shared trains and sightings received while connected.
+**Ctrl-click** a name to travel to its zone with Lifestream, using the latest known
+position or the zone centre to choose an eligible aetheryte. Travel includes the
+selected world and instance where supported.
 
 Manual S-rank mapping: **Shift-click** an S-capable map point to toggle a shared
 exclusion, or click the point count in `/hhs` to compare coordinates and select a
 source (Manual, Faloop, Bear or Other). Requires a server with manual-mapping
 support. Entries reset on the next S kill; undo leaves automatic evidence intact.
+
+In `/hhs`, hover **Conditions** for a mark's spawn requirements and **Ctrl-click**
+its name to travel. Connection status, Faloop freshness and feed coverage are in
+the **Server** menu in `/hh`. Maintenance timing is supplied by the server's
+Faloop restart feed.
 
 ## Settings and help
 
@@ -121,6 +141,14 @@ sync off while keeping connection details. Saved sync credentials and Discord
 destinations have separate clearing actions and are excluded from reset-all.
 
 ## Release notes
+
+### 0.6.0.3 — prepared release
+
+- **A-rank locations:** **Last known location** in `/hha` flags the latest coordinates reported by anyone in the sync group, including the current position when seen up. Positions survive cleared trains and reloads, remain separate by world and instance, and are greyed out when unavailable. Saved coordinates alone do not confirm a new spawn. Server **0.3.32 or later** supplies history to users joining after the train has cleared.
+- **A-rank travel:** **Ctrl-click** a name in `/hha` to travel with Lifestream to the selected world, a nearby eligible aetheryte and the reported instance where supported. The latest known position guides the destination, with the zone centre as fallback.
+- **Timer windows:** Compact A-rank and S-rank boards have fewer explanatory rows and shorter hover hints. Connection status, Faloop freshness and feed coverage are in **`/hh` > Server**. Manual maintenance controls were removed from `/hhs`; the Faloop restart feed supplies maintenance timing. Hover **Conditions** for S-rank spawn requirements.
+
+This package is prepared as a draft. The installer feed remains on **0.6.0.2**.
 
 ### 0.6.0.2 — changes since 0.6.0.1
 
@@ -443,7 +471,7 @@ show: every timed S on a world, whether it is up, in cooldown, in its window
 window opens and closes in your local time, who last saw it, and how many
 spawn points are still possible. ARR S ranks have their own timers; everything
 since Heavensward is 84 to 132 hours, or 50 to 80 after maintenance, which the
-board handles from an explicit maintenance report or Faloop restart timeline.
+board receives from the server's Faloop restart timeline.
 The percentage measures elapsed window time, not a confirmed spawn probability.
 
 Joining or reconnecting uses the server train. Local-only rows are saved in

@@ -34,6 +34,12 @@ public static class ReleaseNotes
 
     public static readonly Release[] All =
     {
+        new("0.6.0.3", "2026-09-28", "Shared A-rank locations, Ctrl-click travel and more compact timer boards.",
+        [
+            new("A-rank locations", "Last known location in /hha flags the latest coordinates reported by anyone in the sync group, including the current position when seen up. Positions survive cleared trains and reloads, stay separate by world and instance, and are greyed out when unavailable. Server 0.3.32 or later also supplies saved positions to users joining after a train has cleared.", Kihtli),
+            new("A-rank travel", "Ctrl-click a name in /hha to travel with Lifestream to the selected world, an eligible aetheryte near the latest known position and the reported instance where supported. The zone centre is used when no position is known.", Kihtli),
+            new("Timer windows", "The A-rank and S-rank boards use fewer explanatory rows and shorter hover hints. Server connection, Faloop freshness and feed coverage move to /hh > Server. Removed manual maintenance controls from /hhs; maintenance timing comes from the Faloop restart feed. Hover Conditions for S-rank spawn requirements.", Kihtli),
+        ]),
         new("0.6.0.2", "2026-09-27", "Choose when to follow a train and recalculate rallies after manual route changes.",
         [
             new("Following the train", "Use /hht on or /hht off, or the Follow train button beside the train page tabs, to control automatic next-mark flags and chat echoes. The choice is saved. Following starts on for existing users; turning it off keeps scouting and sharing available. Manual Next Mark, row flags and travel remain usable.", Kihtli),

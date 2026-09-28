@@ -30,7 +30,6 @@ public sealed class SRankWindow
     private readonly Dictionary<(uint, DateTime?), ConditionWindow?> _conditionWindows = new();
     private readonly BoardSnapshot<List<(Row Row, uint World)>> _board = new();
     private int _killedMinutesAgo;
-    private int _maintenanceMinutesAgo;
 
     public SRankWindow(Configuration config, SyncCoordinator sync, WorldData worldData, MarkDetector detector, LifestreamTravel travel)
     {
@@ -89,32 +88,20 @@ public sealed class SRankWindow
     {
         if (!_config.SyncEnabled)
         {
-            ImGui.TextWrapped("Kill times live on your group's sync server. Turn sync on in Settings > Sharing and this board fills in as the group reports kills.");
+            ImGui.TextDisabled("Enable sync in /hh > Settings > Sharing.");
             return;
-        }
-
-        if (!_sync.IsConnected)
-            ImGui.TextColored(ForcedColour, _sync.Status);
-        else
-            ImGui.TextDisabled(_sync.Status);
-
-        var faloop = _sync.Faloop;
-        if (faloop.Enabled)
-        {
-            ImGui.SameLine();
-            ImGui.TextDisabled(FaloopFreshness(faloop));
-            if (ImGui.IsItemHovered()) ImGui.SetTooltip(faloop.Status);
         }
 
         var worlds = DrawWorldPicker();
         ImGui.SameLine();
         DrawExpansionFilter();
-        if (worlds.Any(w => _sync.Faloop.IsOffline(_worldData.NameOf(w))))
-            ImGui.TextDisabled("Offline worlds are crossed out. Restart clocks continue while access is closed.");
 
         var available = _config.SRankWindowAvailableOnly;
         if (ImGui.Checkbox("Available to spawn only", ref available)) { _config.SRankWindowAvailableOnly = available; _config.Save(); }
 
+        ImGui.SameLine();
+        if (ImGui.GetContentRegionAvail().X < ImGui.CalcTextSize("Hide unmet conditions").X
+            + ImGui.GetFrameHeight() + ImGui.GetStyle().ItemInnerSpacing.X) ImGui.NewLine();
         var hideUnmet = _config.SRankWindowHideUnmetConditions;
         if (ImGui.Checkbox("Hide unmet conditions", ref hideUnmet))
         {
@@ -122,24 +109,14 @@ public sealed class SRankWindow
             _board.Invalidate();
             _config.DeferWindowStateSave();
         }
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("Hide red condition states. Keep green (open) and yellow (opening soon) states. Grey states are unaffected.");
-
         ImGui.SameLine();
+        if (ImGui.GetContentRegionAvail().X < 220) ImGui.NewLine();
         var search = _config.SRankWindowSearch;
         ImGui.SetNextItemWidth(220);
         if (ImGui.InputTextWithHint("##srankSearch", "Search mark or zone", ref search, 100)) { _config.SRankWindowSearch = search; _config.Save(); }
-        if (ImGui.CollapsingHeader("Record maintenance"))
-        {
-            if (worlds.Count == 1) { ImGui.TextDisabled(_worldData.NameOf(worlds[0])); DrawMaintenanceRow(worlds[0]); }
-            else ImGui.TextDisabled("Select exactly one world to record a maintenance reset.");
-        }
         var now = DateTime.UtcNow;
         var rows = _board.Get(worlds, _config.SRankWindowExpansions!, search, available, _sync.IsConnected,
             System.Diagnostics.Stopwatch.GetTimestamp(), () => BuildBoardRows(worlds, now));
-        ImGui.TextDisabled($"{rows.Count} marks across {worlds.Count} selected worlds. Server feed: {string.Join(", ", _sync.Faloop.DataCenters)}");
-
-        ImGui.TextDisabled("Headers: click to sort, right-click for columns. Ctrl-click a mark name to travel.");
         if (!string.IsNullOrEmpty(_travel.Status)) ImGui.TextWrapped(_travel.Status);
         if (_travel.Busy && ImGui.SmallButton("Cancel travel")) _travel.Cancel();
         if (!ImGui.BeginTable("sranksConditions", 10, TimerTableUi.Flags)) return;
@@ -228,30 +205,6 @@ public sealed class SRankWindow
             { if (selected) chosen.Add(name); else chosen.Remove(name); _config.Save(); }
         }
         ImGui.EndCombo();
-    }
-
-    private void DrawMaintenanceRow(uint worldId)
-    {
-        ImGui.TextDisabled("After maintenance, every S is on the shorter clock from when the servers came back:");
-        ImGui.SameLine();
-        ImGui.SetNextItemWidth(70);
-        ImGui.InputInt("##maintAgo", ref _maintenanceMinutesAgo, 0, 0);
-        _maintenanceMinutesAgo = Math.Clamp(_maintenanceMinutesAgo, 0, 60 * 24 * 7);
-        ImGui.SameLine();
-        ImGui.TextDisabled("min ago");
-        ImGui.SameLine();
-
-        var shift = ImGui.GetIO().KeyShift;
-        var canSend = shift && _sync.IsConnected;
-        if (!canSend) ImGui.PushStyleVar(ImGuiStyleVar.Alpha, 0.5f);
-        var pressed = ImGui.Button("Record maintenance");
-        if (!canSend) ImGui.PopStyleVar();
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip(shift
-                ? "Rewrites every S-rank clock on this world. Cannot be undone."
-                : "Hold Shift to record — this rewrites every S-rank clock on this world.");
-        if (pressed && canSend)
-            _sync.ReportMaintenance(worldId, DateTime.UtcNow.AddMinutes(-_maintenanceMinutesAgo));
     }
 
     // Rows
@@ -377,7 +330,7 @@ public sealed class SRankWindow
             SRankNameState.ConditionsUnmet => new Vector4(1f,0.3f,0.3f,1), _ => new Vector4(0.65f,0.65f,0.65f,1) };
         ImGui.TextColored(offline ? new Vector4(0.55f,0.55f,0.55f,1) : nameColour,$"{timer.Name}{ExpansionData.InstanceGlyph(row.Instance)}");
         if (offline) TimerTableUi.StrikeLastItem();
-        if (ImGui.IsItemHovered())
+        if (ImGui.IsItemHovered() && ImGui.GetIO().KeyCtrl)
         {
             var exact = TravelPosition(row, worldId);
             var position = exact ?? SpawnMapping.TravelEstimate(
@@ -385,9 +338,14 @@ public sealed class SRankWindow
                 _sync.ZoneFor(timer.TerritoryId, worldId, row.Instance),
                 SpawnMapping.ReliableCycle(_sync.ZoneFor(timer.TerritoryId, worldId, row.Instance), row.Status));
             var destination = TeleportHelper.NearestTo(timer.TerritoryId, position);
-            ImGui.SetTooltip(SpawnConditionData.Description(timer.Name));
-            if (ImGui.GetIO().KeyCtrl && ImGui.IsMouseClicked(ImGuiMouseButton.Left)
-                && destination is not null && _travel.Available && !offline)
+            ImGui.SetTooltip(offline ? "Travel unavailable while this world is offline."
+                : !_travel.Available ? "Enable Lifestream for Ctrl-click travel."
+                : _travel.Busy ? "Lifestream is already travelling."
+                : destination is null ? "No eligible aetheryte. Check Settings > Travel."
+                : $"Ctrl-click to travel to {destination.Value.Name} on {_worldData.NameOf(worldId)}"
+                    + (row.Instance == 0 ? "." : $", instance {row.Instance}."));
+            if (ImGui.IsMouseClicked(ImGuiMouseButton.Left)
+                && destination is not null && _travel.Available && !_travel.Busy && !offline)
                 _travel.Start(worldId, timer.TerritoryId, position, row.Instance);
         }
 
@@ -434,6 +392,12 @@ public sealed class SRankWindow
     }
     private void DrawConditionCell(Row row, DateTime now, uint worldId)
     {
+        DrawConditionState(row, now, worldId);
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip(SpawnConditionData.Description(row.Timer.Name));
+    }
+
+    private void DrawConditionState(Row row, DateTime now, uint worldId)
+    {
         if (_sync.Faloop.IsOffline(_worldData.NameOf(worldId))) { ImGui.TextDisabled("Offline"); return; }
         var gate=row.Window.OpensAtUtc;
         var reliable=row.Status?.KilledAt is not null && !row.Status.Uncertain;
@@ -450,10 +414,6 @@ public sealed class SRankWindow
         if(now<start) ImGui.TextColored(SRankBoardFilter.Available(row.Window.Phase) && SRankBoardFilter.OpensSoon(start,now)
             ? WindowColour : ForcedColour,"In "+Countdown(start-now));
         else ImGui.TextColored(reliable ? UpColour : WindowColour,(reliable ? "Open: " : "Condition: ")+Countdown(w.End-now));
-        if(ImGui.IsItemHovered()) ImGui.SetTooltip(SpawnConditionData.Description(row.Timer.Name)
-            + "\nCountdown uses real time; green means the respawn window and timed restrictions are open."
-            + "\nRequired kills, gathering and player actions still apply; their completion is not verified."
-            + (!reliable ? "\nKill time is unknown or uncertain, so spawn availability cannot be confirmed." : ""));
     }
     private static string Countdown(TimeSpan span) => $"{(int)Math.Max(0,span.TotalHours):00}:{Math.Max(0,span.Minutes):00}:{Math.Max(0,span.Seconds):00}";
 
@@ -589,7 +549,7 @@ public sealed class SRankWindow
                     if (automatic && ImGui.SmallButton($"Undo manual exclusion##{i}"))
                         _sync.SetManualMapping(row.Timer.TerritoryId,worldId,row.Instance,i,false);
                 }
-                if (automatic && ImGui.IsItemHovered()) ImGui.SetTooltip("Automatically ruled out; removing a manual exclusion does not remove observation evidence.");
+                if (automatic && ImGui.IsItemHovered()) ImGui.SetTooltip("Ruled out by sighting evidence.");
             }
             ImGui.EndChild();
             ImGui.EndPopup();
@@ -606,7 +566,6 @@ public sealed class SRankWindow
 
         if (ImGui.SmallButton("Now") && connected)
             _sync.ReportManualKill(row.Timer, worldId, row.Instance, DateTime.UtcNow);
-        if (ImGui.IsItemHovered()) ImGui.SetTooltip("Record it killed just now.");
 
         ImGui.SameLine();
         ImGui.SetNextItemWidth(46);
@@ -615,7 +574,6 @@ public sealed class SRankWindow
         ImGui.SameLine();
         if (ImGui.SmallButton("min ago") && connected)
             _sync.ReportManualKill(row.Timer, worldId, row.Instance, DateTime.UtcNow.AddMinutes(-_killedMinutesAgo));
-        if (ImGui.IsItemHovered()) ImGui.SetTooltip("Record it killed that many minutes ago.");
 
         if (row.Status?.KilledAt is not null)
         {
@@ -625,22 +583,13 @@ public sealed class SRankWindow
             if (ImGui.SmallButton("Clear") && canClear)
                 _sync.ClearKill(row.Timer.NameId, worldId, row.Instance);
             if (!canClear && connected) ImGui.PopStyleVar();
-            if (ImGui.IsItemHovered()) ImGui.SetTooltip("Forget this kill for everyone. Hold Shift.");
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip("Shift-click: clear this kill for everyone.");
         }
 
         if (!connected) ImGui.PopStyleVar();
     }
 
     // Formatting
-
-    private static string FaloopFreshness(SyncFaloopStatus faloop)
-    {
-        if (!faloop.Connected) return "Faloop: not reachable";
-        if (faloop.LastSyncAt is not { } at) return "Faloop: waiting for the first read";
-        var age = DateTime.UtcNow - at;
-        var dcs = faloop.DataCenters.Count > 0 ? $" ({string.Join(", ", faloop.DataCenters)})" : string.Empty;
-        return age.TotalMinutes < 1 ? $"Faloop: read just now{dcs}" : $"Faloop: read {Duration(age)} ago{dcs}";
-    }
 
     private static string Local(DateTime utc) => TimerTableUi.Local(utc);
     private static string Duration(TimeSpan span) => TimerTableUi.Duration(span);

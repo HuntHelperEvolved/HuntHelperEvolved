@@ -173,6 +173,7 @@ public sealed class MarkDetector
 
     public void Clear()
     {
+        RememberRemovedLocations(_marks.Values);
         TrainGeneration++;
         _marks.Clear();
         _deathEvidence.Clear();
@@ -205,7 +206,12 @@ public sealed class MarkDetector
         _nextOrder = ordered.Count;
     }
 
-    public void Remove((uint NameId, uint Instance, uint WorldId) key) { Removing?.Invoke(); _marks.Remove(key); }
+    public void Remove((uint NameId, uint Instance, uint WorldId) key, bool rememberLocation = true)
+    {
+        if (rememberLocation && _marks.TryGetValue(key, out var mark)) RememberRemovedLocations(new[] { mark });
+        Removing?.Invoke();
+        _marks.Remove(key);
+    }
 
     /// <summary>
     /// Removes every mark currently flagged dead — the equivalent of Hunt
@@ -213,9 +219,16 @@ public sealed class MarkDetector
     /// </summary>
     public void RemoveDead()
     {
+        RememberRemovedLocations(_marks.Values.Where(mark => mark.Dead));
         Removing?.Invoke();
         foreach (var key in _marks.Where(kv => kv.Value.Dead).Select(kv => kv.Key).ToList())
             _marks.Remove(key);
+    }
+
+    private void RememberRemovedLocations(IEnumerable<DetectedMark> marks)
+    {
+        if (Sync.ARankLocations.Merge(_config.ARankLocations, Sync.ARankLocations.FromMarks(marks), DateTime.UtcNow))
+            _config.Save();
     }
 
     /// <summary>
@@ -553,6 +566,7 @@ public sealed class MarkDetector
             Dead = m.Dead,
             FirstSeenUtc = m.FirstSeenUtc,
             LastSeenUtc = m.LastSeenUtc,
+            LocationSeenAtUtc = m.LocationSeenAtUtc,
             DeathObservedAtUtc = m.DeathObservedAtUtc,
             Order = m.Order,
             IsCustom = m.IsCustom,
@@ -568,16 +582,17 @@ public sealed class MarkDetector
     /// </summary>
     public void LoadPersisted(List<PersistedMark> saved)
     {
-        TrainGeneration++;
-        _marks.Clear();
-        _nextOrder = 0;
-
         // A train saved before marks knew about worlds has none recorded. It
         // was scouted somewhere, and the only reasonable somewhere is where you
         // are now — without this, every restored mark would sit at world 0 and
         // walking past it would create a second copy of the same mark.
         var worldId = CurrentWorldId();
         var worldName = CurrentWorldName();
+        var retained = saved.Select(mark => (mark.NameId, mark.Instance, mark.WorldId == 0 ? worldId : mark.WorldId)).ToHashSet();
+        RememberRemovedLocations(_marks.Values.Where(mark => !retained.Contains(mark.Key)));
+        TrainGeneration++;
+        _marks.Clear();
+        _nextOrder = 0;
 
         foreach (var p in saved)
         {
@@ -594,6 +609,7 @@ public sealed class MarkDetector
                 Dead = p.Dead,
                 FirstSeenUtc = p.FirstSeenUtc,
                 LastSeenUtc = p.LastSeenUtc,
+                LocationSeenAtUtc = p.LocationSeenAtUtc,
                 DeathObservedAtUtc = p.DeathObservedAtUtc,
                 Order = p.Order,
                 IsCustom = p.IsCustom,
