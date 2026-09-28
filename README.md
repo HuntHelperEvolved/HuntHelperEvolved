@@ -6,12 +6,9 @@ summaries and sniped/missing-mark details, draws spawn points, your detection ra
 event locations on the **in-game map**, counts S-rank trigger mobs, and keeps a
 lifetime per-mark kill tally for every character you play.
 
-> **0.6.0.2:** Choose when to follow a train with `/hht on/off` or the Follow train
-> button. Recalculate rally flags after manually adjusting a paused preset's route.
+> **0.6.0.3:** Shared A-rank locations, Ctrl-click travel and compact timer boards.
+> Connection status and Faloop feed details are under `/hh` > Server.
 > Available through the existing testing feed.
->
-> **0.6.0.3 prepared:** Shared A-rank locations, Ctrl-click travel and compact timer
-> boards. The draft package is separate from the installer feed, which stays at 0.6.0.2.
 >
 > See [Where this came from](#where-this-came-from) if you are arriving from
 > Hunt Train Relay or Hunt Tally; your settings and your tally carry over.
@@ -142,13 +139,11 @@ destinations have separate clearing actions and are excluded from reset-all.
 
 ## Release notes
 
-### 0.6.0.3 — prepared release
+### 0.6.0.3 — changes since 0.6.0.2
 
 - **A-rank locations:** **Last known location** in `/hha` flags the latest coordinates reported by anyone in the sync group, including the current position when seen up. Positions survive cleared trains and reloads, remain separate by world and instance, and are greyed out when unavailable. Saved coordinates alone do not confirm a new spawn. Server **0.3.32 or later** supplies history to users joining after the train has cleared.
 - **A-rank travel:** **Ctrl-click** a name in `/hha` to travel with Lifestream to the selected world, a nearby eligible aetheryte and the reported instance where supported. The latest known position guides the destination, with the zone centre as fallback.
 - **Timer windows:** Compact A-rank and S-rank boards have fewer explanatory rows and shorter hover hints. Connection status, Faloop freshness and feed coverage are in **`/hh` > Server**. Manual maintenance controls were removed from `/hhs`; the Faloop restart feed supplies maintenance timing. Hover **Conditions** for S-rank spawn requirements.
-
-This package is prepared as a draft. The installer feed remains on **0.6.0.2**.
 
 ### 0.6.0.2 — changes since 0.6.0.1
 
