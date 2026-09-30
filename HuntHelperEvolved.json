@@ -14,7 +14,7 @@
     "sync"
   ],
   "InternalName": "HuntHelperEvolved",
-  "AssemblyVersion": "0.6.0.5",
+  "AssemblyVersion": "0.6.0.6",
   "RepoUrl": "https://github.com/HuntHelperEvolved/HuntHelperEvolved",
   "ApplicableVersion": "any",
   "LoadPriority": 0,

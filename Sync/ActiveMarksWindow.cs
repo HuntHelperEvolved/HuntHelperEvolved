@@ -225,7 +225,8 @@ public sealed class ActiveMarksWindow(Configuration config, SyncCoordinator sync
                 {
                     ActiveMarkState.Community => HuntTheme.Accent,
                     ActiveMarkState.Unpulled => HuntTheme.Success,
-                    ActiveMarkState.Pulled or ActiveMarkState.StaleHealth => HuntTheme.Warning,
+                    ActiveMarkState.Pulled => HuntTheme.Warning,
+                    ActiveMarkState.StaleHealth => HuntTheme.Muted,
                     ActiveMarkState.Dead => HuntTheme.Danger,
                     _ => HuntTheme.Muted
                 };
@@ -379,7 +380,7 @@ public sealed class ActiveMarksWindow(Configuration config, SyncCoordinator sync
     }
     private static void DrawStatusLegend()
     {
-        var colours=new[] { HuntTheme.Success,HuntTheme.Warning,HuntTheme.Danger,HuntTheme.Accent,HuntTheme.Muted,HuntTheme.Warning };
+        var colours=new[] { HuntTheme.Success,HuntTheme.Warning,HuntTheme.Danger,HuntTheme.Accent,HuntTheme.Muted,HuntTheme.Muted };
         for (var i=0;i<StatusLabels.Length;i++)
         {
             if (i>0) SameLineIfFits(ImGui.CalcTextSize(StatusLabels[i]).X);

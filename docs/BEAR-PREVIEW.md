@@ -1,7 +1,7 @@
 # Local Bear Toolkit preview
 
 Branch `codex/bear-integration-ui` combines the current reimagined UI with Bear
-Toolkit S-rank integration. Plugin version `0.6.0.5` is a local preview; `repo.json`
+Toolkit S-rank integration. Plugin version `0.6.0.6` is a local preview; `repo.json`
 continues to point to the existing public build.
 
 Build with the .NET 10 SDK and Dalamud development references installed:
@@ -31,7 +31,7 @@ Bear reports are a separate read model. They do not become group scout
 observations, train edits, shared kill reports, spawn-point exclusions or tally
 credit. Live evidence uses **plugin > Bear > Faloop** priority. HP is fresh for
 15 seconds. While the Bear sighting remains active, an older positive HP report
-stays visible as `~80%` with its age in the tooltip. This is the last reported
+stays visible in grey as `~80%` with its age in the tooltip. This is the last reported
 value, not current health or combat evidence. The sighting still expires after
 five minutes without a new qualifying report. Zero HP lasts only 15 seconds
 unless a separate death report confirms the kill.

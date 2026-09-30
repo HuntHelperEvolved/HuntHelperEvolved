@@ -1,6 +1,6 @@
 # Hunt Helper Evolved
 
-> **Local preview 0.6.0.5:** This branch combines the reimagined UI with an
+> **Local preview 0.6.0.6:** This branch combines the reimagined UI with an
 > opt-in Bear Toolkit S-rank feed. See [Bear preview testing](docs/BEAR-PREVIEW.md).
 > The public installation feed still points to the existing release.
 

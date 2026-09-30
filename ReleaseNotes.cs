@@ -34,6 +34,10 @@ public static class ReleaseNotes
 
     public static readonly Release[] All =
     {
+        new("0.6.0.6", "2026-10-01", "Use grey for stale Bear HP.",
+        [
+            new("Bear health", "Stale Bear HP stays grey and keeps the ~ prefix. The status legend uses the same grey, leaving yellow for pulled marks.", Kihtli),
+        ]),
         new("0.6.0.5", "2026-10-01", "Bear S-rank preview: keep last reported HP clearly marked when stale.",
         [
             new("Bear health", "After 15 seconds without a new HP report, Active Marks keeps the Bear source and shows the last reported positive HP with ~. Hover for its age. The value is marked stale and does not imply current health or combat; it clears when the sighting expires or the feed disconnects.", Kihtli),
