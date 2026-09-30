@@ -23,15 +23,44 @@ namespace HuntHelperEvolved;
 
 public sealed partial class Plugin
 {
-    private enum SettingsPage { Train, Counters, Map, Notifications, Travel, Sharing, ActiveMarks, Discord, Tally, Reset }
+    private enum SettingsPage { Appearance, Train, Counters, Map, Notifications, Travel, Sharing, ActiveMarks, Discord, Tally, Reset }
     private SettingsPage _settingsPage;
+    private string _settingsSearch = string.Empty;
     private static string SettingsPageLabel(SettingsPage page) => page switch
     {
-        SettingsPage.Counters => "S Ranks",
+        SettingsPage.Counters => "Counters",
+        SettingsPage.Map => "Map & overlays",
+        SettingsPage.Sharing => "Sharing",
         SettingsPage.ActiveMarks => "Active Marks",
-        SettingsPage.Reset => "Reset settings",
         _ => page.ToString()
     };
+
+    private static string SettingsSearchTerms(SettingsPage page) => page switch
+    {
+        SettingsPage.Appearance => "theme graphite daylight light dark dalamud colors colour contrast release notes update ShowReleaseNotesOnUpdate",
+        SettingsPage.Train => "AutoMarkDeadEnabled Hunt Tally observed defeat EchoOnMarkClick MarkDeadOnObservedDefeat TeleportAlsoFlags ShowMarkAge HideZonesInPopout SwapMarkAndZoneInPopout ShowSpicing AutoAdvance EchoOnAdvance TrainRowHeight row height pixels PollIntervalSeconds detection interval SRankZoneReminderEnabled SRankZoneReminderSound ShowSRankWatchesInTrainList follow scouting scan zone reminder watches bongo",
+        SettingsPage.Counters => "CountOnlyMyKills personal kill credit reset spawn S rank watches",
+        SettingsPage.Map => "spawn points live marks occupied dim found ranks A B S SS minions names health label font size map control bar alt click flag dots colours colors dark outlines dot size player guides range radius scale circle heading projected path facing bearing position remote sightings S candidates outline width mapping SpawnDotColour MarkLabelFontSize HideOccupiedSpawnPoints DimFoundARankSpawnPoints",
+        SettingsPage.Notifications => "chat flytext speech spoken voice volume text to speech TTS templates message test notification rank A B S SS detection bongo sound community Faloop spawn release alerts data centre DC DetectionTtsEnabled DetectionTtsVoice DetectionTtsVolume DetectionFlyTextEnabled EchoOnDetection SyncSpawnSound SyncSpawnAlerts SyncSpawnCurrentDc SyncSpawnDataCenters",
+        SettingsPage.Travel => "aetheryte blacklist excluded teleport Lifestream expansion zone destinations",
+        SettingsPage.Sharing => "SyncEnabled server URL password alias display name encrypted development plaintext wss ws connect reconnect backup upload status presence Faloop Bear SyncReceiveBearFeed group train sightings witnessed kills SyncShareTrain SyncShareSightings SyncReportSRankKills SyncAllowPlaintext SyncServerUrl SyncPassword SyncDisplayName",
+        SettingsPage.ActiveMarks => "live rank A B S SS local own community remote server data centre DC current world combat engaged alive dead life pulled health distance age coordinates search auto open auto close inactive linger",
+        SettingsPage.Discord => "webhook URL enabled destinations labels scout report train report completion note mention ping role heading title icon footer colour color timestamp",
+        SettingsPage.Tally => "count kills rewarded credit strict combat damage targeting radius distance yalms marks expansions statistics characters account history retention detail log export CSV baseline seeded seeding starting counts achievements drift check login resolve names notifications chat IPC death reward confirmation RequireCombat StrictCredit MaxDistance RequireRewardMessage UseDamageDetection PublishAllMarkDeaths HistoryLimit AutoSeedOnLogin",
+        SettingsPage.Reset => "defaults restore reset settings categories preserve data train history credentials presets",
+        _ => string.Empty
+    };
+
+    private bool SettingsSearchMatches(SettingsPage page)
+    {
+        return SettingsSearchIndex.Matches(_settingsSearch, page.ToString(),
+            SettingsPageLabel(page) + " " + SettingsSearchTerms(page));
+    }
+
+    private void RevealPreferenceSection()
+    {
+        if (!string.IsNullOrWhiteSpace(_settingsSearch)) ImGui.SetNextItemOpen(true, ImGuiCond.Always);
+    }
 
     private static void DrawSettingsHeading(string title)
     {
@@ -43,38 +72,63 @@ public sealed partial class Plugin
 
     private void DrawSettingsTab()
     {
-        var available = ImGui.GetContentRegionAvail();
-        var scale = ImGui.GetFontSize() / 17f;
-        var sidebar = available.X >= 580 * scale;
-        if (sidebar)
+        var clearSize = ImGui.GetFrameHeight();
+        ImGui.SetNextItemWidth(Math.Max(1, ImGui.GetContentRegionAvail().X - clearSize - ImGui.GetStyle().ItemSpacing.X));
+        ImGui.InputTextWithHint("##Preference search", "Search all preferences", ref _settingsSearch, 160);
+        ImGui.SameLine();
+        ImGui.BeginDisabled(_settingsSearch.Length == 0);
+        if (HuntUi.IconButton("Clear search", FontAwesomeIcon.Times, "Clear preference search")) _settingsSearch = string.Empty;
+        ImGui.EndDisabled();
+        if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled)) ImGui.SetTooltip("Clear preference search");
+        var matches = Enum.GetValues<SettingsPage>().Where(SettingsSearchMatches).ToArray();
+        if (matches.Length == 0)
         {
-            if (ImGui.BeginChild("Settings navigation", new Vector2(130 * scale, 0), true))
-                foreach (var page in Enum.GetValues<SettingsPage>())
-                {
-                    if (page == SettingsPage.Reset) ImGui.Separator();
-                    if (ImGui.Selectable(SettingsPageLabel(page), _settingsPage == page)) _settingsPage = page;
-                }
-            ImGui.EndChild();
-            ImGui.SameLine();
+            ImGui.TextDisabled("No matching preferences.");
+            return;
         }
-        else
+        if (!matches.Contains(_settingsPage)) _settingsPage = matches[0];
+        var navigationWidth = Math.Min(ImGui.GetFontSize() * 12, ImGui.GetContentRegionAvail().X * .30f);
+        var navigationStart = ImGui.GetCursorScreenPos();
+        var navigationHeight = ImGui.GetContentRegionAvail().Y;
+        if (ImGui.BeginChild("Settings categories", new Vector2(navigationWidth, 0), false))
         {
-            ImGui.SetNextItemWidth(-1);
-            if (ImGui.BeginCombo("##Settings category", SettingsPageLabel(_settingsPage)))
+            foreach (var page in matches)
             {
-                foreach (var page in Enum.GetValues<SettingsPage>())
-                    if (ImGui.Selectable(SettingsPageLabel(page), _settingsPage == page)) _settingsPage = page;
-                ImGui.EndCombo();
+                var label = SettingsPageLabel(page);
+                var height = ImGui.CalcTextSize(label, false, ImGui.GetContentRegionAvail().X).Y
+                    + ImGui.GetStyle().FramePadding.Y * 2 + 4;
+                var start = ImGui.GetCursorPos();
+                if (ImGui.Selectable("##Settings " + page, _settingsPage == page,
+                    ImGuiSelectableFlags.None, new Vector2(0, height))) _settingsPage = page;
+                var end = ImGui.GetCursorPos();
+                ImGui.SetCursorPos(start + new Vector2(4, ImGui.GetStyle().FramePadding.Y + 2));
+                ImGui.TextWrapped(label);
+                ImGui.SetCursorPos(end);
             }
         }
+        ImGui.EndChild();
+        var dividerX = navigationStart.X + navigationWidth;
+        ImGui.GetWindowDrawList().AddLine(new Vector2(dividerX, navigationStart.Y),
+            new Vector2(dividerX, navigationStart.Y + navigationHeight), ImGui.GetColorU32(HuntTheme.Line));
+        ImGui.SameLine();
         if (ImGui.BeginChild("Settings content##" + _settingsPage, new Vector2(0, 0), false))
         {
             ImGui.PushID(_settingsPage.ToString());
+            ImGui.PushTextWrapPos(0);
             ImGui.TextUnformatted(SettingsPageLabel(_settingsPage));
             ImGui.Separator();
             ImGui.Spacing();
             switch (_settingsPage)
             {
+                case SettingsPage.Appearance:
+                    HuntTheme.DrawPreferences(_config);
+                    var releaseNotes = _config.ShowReleaseNotesOnUpdate;
+                    if (HuntUi.WrappedCheckbox("Show release notes after updates", ref releaseNotes))
+                    {
+                        _config.ShowReleaseNotesOnUpdate = releaseNotes;
+                        _config.Save();
+                    }
+                    break;
                 case SettingsPage.Train:
                     DrawTrainPreferences();
                     break;
@@ -106,6 +160,7 @@ public sealed partial class Plugin
                 case SettingsPage.Tally: DrawTallyTab(); break;
                 case SettingsPage.Reset: DrawSettingsResets(); break;
             }
+            ImGui.PopTextWrapPos();
             ImGui.PopID();
         }
         ImGui.EndChild();
@@ -114,7 +169,7 @@ public sealed partial class Plugin
     private void DrawTrainPreferences()
     {
         var autoMark = _config.AutoMarkDeadEnabled;
-        if (ImGui.Checkbox("Auto-mark dead using Hunt Tally", ref autoMark))
+        if (HuntUi.WrappedCheckbox("Auto-mark dead using Hunt Tally", ref autoMark))
         {
             _config.AutoMarkDeadEnabled = autoMark;
             _config.Save();
@@ -124,7 +179,7 @@ public sealed partial class Plugin
 
 
         var echoClick = _config.EchoOnMarkClick;
-        if (ImGui.Checkbox("Echo a mark to chat when its row is clicked", ref echoClick))
+        if (HuntUi.WrappedCheckbox("Echo a mark to chat when its row is clicked", ref echoClick))
         {
             _config.EchoOnMarkClick = echoClick;
             _config.Save();
@@ -132,21 +187,21 @@ public sealed partial class Plugin
         ImGui.TextDisabled("Off still flags the mark on your map — it just doesn't post the chat line.");
 
         var observedDeaths = _config.MarkDeadOnObservedDefeat;
-        if (ImGui.Checkbox("Tick a mark dead when the battle log says it died", ref observedDeaths))
+        if (HuntUi.WrappedCheckbox("Tick a mark dead when the battle log says it died", ref observedDeaths))
         {
             _config.MarkDeadOnObservedDefeat = observedDeaths;
             _config.Save();
         }
 
         var teleFlags = _config.TeleportAlsoFlags;
-        if (ImGui.Checkbox("Teleport also drops the map flag", ref teleFlags))
+        if (HuntUi.WrappedCheckbox("Teleport also drops the map flag", ref teleFlags))
         {
             _config.TeleportAlsoFlags = teleFlags;
             _config.Save();
         }
 
         var showAge = _config.ShowMarkAge;
-        if (ImGui.Checkbox("Show how long ago each mark was last seen", ref showAge))
+        if (HuntUi.WrappedCheckbox("Show how long ago each mark was last seen", ref showAge))
         {
             _config.ShowMarkAge = showAge;
             _config.Save();
@@ -155,7 +210,7 @@ public sealed partial class Plugin
         DrawTrainPopoutNamePreferences();
 
         var spicing = _config.ShowSpicing;
-        if (ImGui.Checkbox("Show spicing markers", ref spicing))
+        if (HuntUi.WrappedCheckbox("Show spicing markers", ref spicing))
         {
             _config.ShowSpicing = spicing;
             _config.Save();
@@ -163,7 +218,7 @@ public sealed partial class Plugin
         ImGui.TextDisabled("A scout flagging a mark they'll prep before the train arrives.");
 
         var autoAdv = _config.AutoAdvance;
-        if (ImGui.Checkbox("Auto-advance to the next mark when the current one dies", ref autoAdv))
+        if (HuntUi.WrappedCheckbox("Auto-advance to the next mark when the current one dies", ref autoAdv))
         {
             _config.AutoAdvance = autoAdv;
             _config.Save();
@@ -172,24 +227,26 @@ public sealed partial class Plugin
         if (_config.AutoAdvance)
         {
             var echoAdv = _config.EchoOnAdvance;
-            if (ImGui.Checkbox("Echo and flag the mark it advances to", ref echoAdv))
+            if (HuntUi.WrappedCheckbox("Echo and flag the mark it advances to", ref echoAdv))
             {
                 _config.EchoOnAdvance = echoAdv;
                 _config.Save();
             }
         }
 
-        var rowH = _config.TrainRowHeight;
-        ImGui.SetNextItemWidth(120);
-        if (ImGui.InputInt("Row height (pixels)", ref rowH))
+        var rowH = Math.Clamp(_config.TrainRowHeight, 14, 48) - 14;
+        ImGui.TextUnformatted("Row padding (logical pixels)");
+        ImGui.SetNextItemWidth(Math.Min(120, ImGui.GetContentRegionAvail().X));
+        if (ImGui.InputInt("##Row padding", ref rowH))
         {
-            _config.TrainRowHeight = Math.Clamp(rowH, 14, 48);
+            _config.TrainRowHeight = Math.Clamp(rowH, 0, 34) + 14;
             _config.Save();
         }
 
         var pollInterval = _config.PollIntervalSeconds;
-        ImGui.SetNextItemWidth(120);
-        if (ImGui.InputInt("Detection interval (seconds)", ref pollInterval))
+        ImGui.TextUnformatted("Detection interval (seconds)");
+        ImGui.SetNextItemWidth(Math.Min(120, ImGui.GetContentRegionAvail().X));
+        if (ImGui.InputInt("##Detection interval", ref pollInterval))
         {
             _config.PollIntervalSeconds = Math.Clamp(pollInterval, 1, 30);
             _config.Save();
@@ -198,7 +255,7 @@ public sealed partial class Plugin
         ImGui.Spacing();
         DrawSettingsHeading("S-rank train watches");
         var reminderOn = _config.SRankZoneReminderEnabled;
-        if (ImGui.Checkbox("Remind me on entering an S-rank zone", ref reminderOn))
+        if (HuntUi.WrappedCheckbox("Remind me on entering an S-rank zone", ref reminderOn))
         {
             _config.SRankZoneReminderEnabled = reminderOn;
             _config.Save();
@@ -206,9 +263,9 @@ public sealed partial class Plugin
 
         if (_config.SRankZoneReminderEnabled)
         {
-            ImGui.SameLine();
+            HuntUi.SameLineIfFits(ImGui.GetFrameHeight() + ImGui.GetStyle().ItemInnerSpacing.X + ImGui.CalcTextSize("with bongo sound").X);
             var reminderSound = _config.SRankZoneReminderSound;
-            if (ImGui.Checkbox("with bongo sound", ref reminderSound))
+            if (HuntUi.WrappedCheckbox("with bongo sound", ref reminderSound))
             {
                 _config.SRankZoneReminderSound = reminderSound;
                 _config.Save();
@@ -218,7 +275,7 @@ public sealed partial class Plugin
 
         ImGui.Spacing();
         var watchesInList = _config.ShowSRankWatchesInTrainList;
-        if (ImGui.Checkbox("Show these watches on the train list", ref watchesInList))
+        if (HuntUi.WrappedCheckbox("Show these watches on the train list", ref watchesInList))
         {
             _config.ShowSRankWatchesInTrainList = watchesInList;
             _config.Save();
@@ -232,7 +289,7 @@ public sealed partial class Plugin
     private void DrawTrainPopoutNamePreferences()
     {
         var hideZones = _config.HideZonesInPopout;
-        if (ImGui.Checkbox("Hide zone names in the train popout", ref hideZones))
+        if (HuntUi.WrappedCheckbox("Hide zone names in the train popout", ref hideZones))
         {
             _config.HideZonesInPopout = hideZones;
             _config.Save();
@@ -240,7 +297,7 @@ public sealed partial class Plugin
 
         ImGui.BeginDisabled(hideZones);
         var swapNames = _config.SwapMarkAndZoneInPopout;
-        if (ImGui.Checkbox("Swap mark and zone names in the train popout", ref swapNames))
+        if (HuntUi.WrappedCheckbox("Swap mark and zone names in the train popout", ref swapNames))
         {
             _config.SwapMarkAndZoneInPopout = swapNames;
             _config.Save();
@@ -254,7 +311,7 @@ public sealed partial class Plugin
     private void DrawCounterPreferences()
     {
         var myKills = _config.CountOnlyMyKills;
-        if (ImGui.Checkbox("Count only kills I land", ref myKills))
+        if (HuntUi.WrappedCheckbox("Count only kills I land", ref myKills))
         {
             _config.CountOnlyMyKills = myKills;
             _config.Save();
@@ -266,7 +323,7 @@ public sealed partial class Plugin
     private void DrawOccupiedSpawnPointSetting()
     {
         var hideOccupied = _config.HideOccupiedSpawnPoints;
-        if (ImGui.Checkbox("Hide occupied spawn points", ref hideOccupied))
+        if (HuntUi.WrappedCheckbox("Hide occupied spawn points", ref hideOccupied))
         {
             _config.HideOccupiedSpawnPoints = hideOccupied;
             _config.DeferWindowStateSave();
@@ -278,7 +335,7 @@ public sealed partial class Plugin
     private void DrawMissingMarkSpawnPointSetting()
     {
         var dim = _config.DimFoundARankSpawnPoints;
-        if (ImGui.Checkbox("Dim points for found A-ranks", ref dim))
+        if (HuntUi.WrappedCheckbox("Dim points for found A-ranks", ref dim))
         {
             _config.DimFoundARankSpawnPoints = dim;
             _config.DeferWindowStateSave();
@@ -290,7 +347,7 @@ public sealed partial class Plugin
     private void DrawMapPreferences()
     {
         var mapPoints = _config.ShowSpawnPointsOnMap;
-        if (ImGui.Checkbox("Show spawn points on the in-game map", ref mapPoints))
+        if (HuntUi.WrappedCheckbox("Show spawn points on the in-game map", ref mapPoints))
         {
             _config.ShowSpawnPointsOnMap = mapPoints;
             _config.Save();
@@ -300,7 +357,7 @@ public sealed partial class Plugin
         DrawMissingMarkSpawnPointSetting();
 
         var mapMarks = _config.ShowMarksOnMap;
-        if (ImGui.Checkbox("Show live marks on the in-game map", ref mapMarks))
+        if (HuntUi.WrappedCheckbox("Show live marks on the in-game map", ref mapMarks))
         {
             _config.ShowMarksOnMap = mapMarks;
             _config.Save();
@@ -309,7 +366,7 @@ public sealed partial class Plugin
         ImGui.TextDisabled(_mapOverlay.Status);
 
         var bar = _config.ShowMapControlBar;
-        if (ImGui.Checkbox("Show a control bar above the map", ref bar))
+        if (HuntUi.WrappedCheckbox("Show a control bar above the map", ref bar))
         {
             _config.ShowMapControlBar = bar;
             _config.Save();
@@ -321,21 +378,21 @@ public sealed partial class Plugin
             if (_config.ShowSpawnPointsOnMap)
             {
                 var showA = _config.ShowARankPoints;
-                if (ImGui.Checkbox("A-rank points", ref showA))
+                if (HuntUi.WrappedCheckbox("A-rank points", ref showA))
                 {
                     _config.ShowARankPoints = showA;
                     _config.Save();
                 }
-                ImGui.SameLine();
+                HuntUi.SameLineIfFits(ImGui.GetFrameHeight() + ImGui.GetStyle().ItemInnerSpacing.X + ImGui.CalcTextSize("B-rank").X);
                 var showB = _config.ShowBRankPoints;
-                if (ImGui.Checkbox("B-rank##points", ref showB))
+                if (HuntUi.WrappedCheckbox("B-rank##points", ref showB))
                 {
                     _config.ShowBRankPoints = showB;
                     _config.Save();
                 }
-                ImGui.SameLine();
+                HuntUi.SameLineIfFits(ImGui.GetFrameHeight() + ImGui.GetStyle().ItemInnerSpacing.X + ImGui.CalcTextSize("B-rank").X);
                 var showS = _config.ShowSRankPoints;
-                if (ImGui.Checkbox("S-rank##points", ref showS))
+                if (HuntUi.WrappedCheckbox("S-rank##points", ref showS))
                 {
                     _config.ShowSRankPoints = showS;
                     _config.Save();
@@ -345,21 +402,21 @@ public sealed partial class Plugin
             if (_config.ShowMarksOnMap)
             {
                 var markA = _config.ShowARankMarks;
-                if (ImGui.Checkbox("A-rank marks", ref markA))
+                if (HuntUi.WrappedCheckbox("A-rank marks", ref markA))
                 {
                     _config.ShowARankMarks = markA;
                     _config.Save();
                 }
-                ImGui.SameLine();
+                HuntUi.SameLineIfFits(ImGui.GetFrameHeight() + ImGui.GetStyle().ItemInnerSpacing.X + ImGui.CalcTextSize("B-rank").X);
                 var markB = _config.ShowBRankMarks;
-                if (ImGui.Checkbox("B-rank##marks", ref markB))
+                if (HuntUi.WrappedCheckbox("B-rank##marks", ref markB))
                 {
                     _config.ShowBRankMarks = markB;
                     _config.Save();
                 }
-                ImGui.SameLine();
+                HuntUi.SameLineIfFits(ImGui.GetFrameHeight() + ImGui.GetStyle().ItemInnerSpacing.X + ImGui.CalcTextSize("B-rank").X);
                 var markS = _config.ShowSRankMarks;
-                if (ImGui.Checkbox("S-rank##marks", ref markS))
+                if (HuntUi.WrappedCheckbox("S-rank##marks", ref markS))
                 {
                     _config.ShowSRankMarks = markS;
                     _config.Save();
@@ -367,14 +424,14 @@ public sealed partial class Plugin
             }
 
             var clickFlag = _config.ClickSpawnPointToFlag;
-            if (ImGui.Checkbox("Alt-click a spawn point on the map to flag it", ref clickFlag))
+            if (HuntUi.WrappedCheckbox("Alt-click a spawn point on the map to flag it", ref clickFlag))
             {
                 _config.ClickSpawnPointToFlag = clickFlag;
                 _config.Save();
             }
 
             var ssEvent = _config.ShowSsEventOnMap;
-            if (ImGui.Checkbox("Mark SS event minion locations", ref ssEvent))
+            if (HuntUi.WrappedCheckbox("Mark SS event minion locations", ref ssEvent))
             {
                 _config.ShowSsEventOnMap = ssEvent;
                 _config.Save();
@@ -383,7 +440,7 @@ public sealed partial class Plugin
             ImGui.TextDisabled(_ssEvent.Status);
 
             var labels = _config.ShowMarkLabelsOnMap;
-            if (ImGui.Checkbox("Write mark names and health on the map", ref labels))
+            if (HuntUi.WrappedCheckbox("Write mark names and health on the map", ref labels))
             {
                 _config.ShowMarkLabelsOnMap = labels;
                 _config.Save();
@@ -393,7 +450,7 @@ public sealed partial class Plugin
             {
                 var fontSize = _config.MarkLabelFontSize;
                 ImGui.SetNextItemWidth(90);
-                if (ImGui.InputFloat("Name text size", ref fontSize, 1f))
+                if (ImGui.InputFloat(HuntUi.FieldLabel("Name text size", 120), ref fontSize, 1f))
                 {
                     _config.MarkLabelFontSize = Math.Clamp(fontSize, 6f, 48f);
                     _config.Save();
@@ -401,11 +458,12 @@ public sealed partial class Plugin
             }
 
             ImGui.Spacing();
+            RevealPreferenceSection();
             if (ImGui.CollapsingHeader("Dot colours")) DrawDotColours();
             ImGui.Spacing();
 
             var darkOutlines = _config.OutlineMapDots;
-            if (ImGui.Checkbox("Dark outlines around map dots", ref darkOutlines))
+            if (HuntUi.WrappedCheckbox("Dark outlines around map dots", ref darkOutlines))
             {
                 _config.OutlineMapDots = darkOutlines;
                 _config.Save();
@@ -414,7 +472,7 @@ public sealed partial class Plugin
 
             var dotSize = _config.SpawnDotSize;
             ImGui.SetNextItemWidth(90);
-            if (ImGui.InputFloat("Dot size", ref dotSize, 2f))
+            if (ImGui.InputFloat(HuntUi.FieldLabel("Dot size", 120), ref dotSize, 2f))
             {
                 _config.SpawnDotSize = Math.Clamp(dotSize, 6f, 48f);
                 _config.Save();
@@ -425,6 +483,7 @@ public sealed partial class Plugin
         ImGui.Spacing();
         ImGui.Separator();
         ImGui.Spacing();
+        RevealPreferenceSection();
         if (ImGui.CollapsingHeader("Player guides")) DrawPlayerGuideSettings();
         ImGui.Spacing();
     }
@@ -450,7 +509,7 @@ public sealed partial class Plugin
     {
         ImGui.Spacing();
         var enabled = _config.SyncEnabled;
-        if (ImGui.Checkbox("Enabled", ref enabled))
+        if (HuntUi.WrappedCheckbox("Enabled", ref enabled))
         {
             _config.SyncEnabled = enabled;
             _config.Save();
@@ -458,12 +517,13 @@ public sealed partial class Plugin
         }
 
         var plaintext = _config.SyncAllowPlaintext;
-        if (ImGui.Checkbox("Allow unencrypted development connections",ref plaintext))
+        if (HuntUi.WrappedCheckbox("Allow unencrypted development connections",ref plaintext))
         { _config.SyncAllowPlaintext=plaintext;_config.Save();_sync.ApplySettings(); }
         if (plaintext) ImGui.TextWrapped("ws:// exposes the group password and shared data. Use only on a trusted development network.");
-        ImGui.SetNextItemWidth(Math.Min(360, Math.Max(100, ImGui.GetContentRegionAvail().X - 110)));
+        ImGui.TextUnformatted("Server URL");
+        ImGui.SetNextItemWidth(Math.Min(360, ImGui.GetContentRegionAvail().X));
         var url = _config.SyncServerUrl;
-        if (ImGui.InputTextWithHint("Server URL", "wss://hunts.example.com/ws", ref url, 512))
+        if (ImGui.InputTextWithHint("##Server URL", "wss://hunts.example.com/ws", ref url, 512))
             _config.SyncServerUrl = url;
         if (ImGui.IsItemDeactivatedAfterEdit())
         {
@@ -471,22 +531,24 @@ public sealed partial class Plugin
             _sync.ApplySettings();
         }
 
-        ImGui.SetNextItemWidth(Math.Min(360, Math.Max(100, ImGui.GetContentRegionAvail().X - 110)));
+        ImGui.TextUnformatted("Password");
+        ImGui.SetNextItemWidth(Math.Min(360, ImGui.GetContentRegionAvail().X));
         var password = _config.SyncPassword;
         var passwordFlags = _showSyncPassword ? ImGuiInputTextFlags.None : ImGuiInputTextFlags.Password;
-        if (ImGui.InputText("Password", ref password, 256, passwordFlags))
+        if (ImGui.InputText("##Password", ref password, 256, passwordFlags))
             _config.SyncPassword = password;
         if (ImGui.IsItemDeactivatedAfterEdit())
         {
             _config.Save();
             _sync.ApplySettings();
         }
-        ImGui.SameLine();
-        ImGui.Checkbox("show", ref _showSyncPassword);
+        WorkspaceSameLine("show", true);
+        HuntUi.WrappedCheckbox("show", ref _showSyncPassword);
 
-        ImGui.SetNextItemWidth(Math.Min(360, Math.Max(100, ImGui.GetContentRegionAvail().X - 110)));
+        ImGui.TextUnformatted("Display name");
+        ImGui.SetNextItemWidth(Math.Min(360, ImGui.GetContentRegionAvail().X));
         var name = _config.SyncDisplayName;
-        if (ImGui.InputTextWithHint("Display name", "Anonymous", ref name, 40))
+        if (ImGui.InputTextWithHint("##Display name", "Anonymous", ref name, 40))
             _config.SyncDisplayName = name;
         if (ImGui.IsItemDeactivatedAfterEdit())
             _config.Save();
@@ -494,13 +556,7 @@ public sealed partial class Plugin
         ImGui.TextDisabled("Your chosen alias is shared. Blank uses Anonymous.");
 
         ImGui.Spacing();
-        if (_config.SyncEnabled && !_sync.IsConnected && !string.IsNullOrEmpty(_sync.LastError))
-            ImGui.TextColored(new Vector4(1f, 0.4f, 0.4f, 1f), _sync.Status);
-        else
-            ImGui.TextWrapped($"Status: {_sync.Status}");
-
-        if (_sync.IsConnected && !string.IsNullOrEmpty(_sync.LastError))
-            ImGui.TextColored(new Vector4(1f, 0.6f, 0.3f, 1f), $"Server said: {_sync.LastError}");
+        ConnectionUi.DrawDetails(_config, _sync);
 
         if (_sync.IsConnected)
         {
@@ -511,12 +567,6 @@ public sealed partial class Plugin
                 && ImGui.Button($"Upload saved local watches ({_sync.LocalWatchBackupCount})"))
                 _sync.UploadWatchBackup();
             ImGui.TextDisabled("Joining uses the server train. Upload saved local marks explicitly if needed.");
-            ImGui.SameLine();
-            if (ImGui.SmallButton("Reconnect"))
-            {
-                _sync.ApplySettings(force: true);
-            }
-
             ImGui.Spacing();
             ImGui.TextWrapped("Online now:");
             foreach (var client in _sync.Clients)
@@ -528,9 +578,6 @@ public sealed partial class Plugin
                 ImGui.BulletText($"{client.Name}{world}{where}");
             }
 
-            var faloop = _sync.Faloop;
-            if (faloop.Enabled)
-                ImGui.TextDisabled($"Faloop on the server: {faloop.Status} Live feed: {(faloop.LiveConnected ? "connected" : "disconnected")}");
         }
 
         ImGui.Spacing();
@@ -539,22 +586,32 @@ public sealed partial class Plugin
     private void DrawSharingPreferences()
     {
         var train = _config.SyncShareTrain;
-        if (ImGui.Checkbox("The train", ref train))
+        if (HuntUi.WrappedCheckbox("The train", ref train))
         {
             _config.SyncShareTrain = train;
             _config.Save();
             _sync.ApplySettings();
         }
 
+        var bear = _config.SyncReceiveBearFeed;
+        if (HuntUi.WrappedCheckbox("Receive Bear Toolkit reports (preview)", ref bear))
+        {
+            _config.SyncReceiveBearFeed = bear;
+            _config.Save();
+            _sync.ApplySettings();
+        }
+        ImGui.TextDisabled("Show Bear spawns, recent deaths and fresh HP in Active Marks.");
+        ImGui.TextDisabled("Requires Bear enabled on the server. Reports stay separate from your train.");
+
         var sightings = _config.SyncShareSightings;
-        if (ImGui.Checkbox("What I can see", ref sightings))
+        if (HuntUi.WrappedCheckbox("What I can see", ref sightings))
         {
             _config.SyncShareSightings = sightings;
             _config.Save();
         }
 
         var kills = _config.SyncReportSRankKills;
-        if (ImGui.Checkbox("S-rank kills I witness", ref kills))
+        if (HuntUi.WrappedCheckbox("S-rank kills I witness", ref kills))
         {
             _config.SyncReportSRankKills = kills;
             _config.Save();
@@ -567,14 +624,14 @@ public sealed partial class Plugin
     private void DrawRemoteMapPreferences()
     {
         var remote = _config.SyncShowRemoteMarksOnMap;
-        if (ImGui.Checkbox("Marks other members can see, on my map", ref remote))
+        if (HuntUi.WrappedCheckbox("Marks other members can see, on my map", ref remote))
         {
             _config.SyncShowRemoteMarksOnMap = remote;
             _config.Save();
         }
 
         var candidates = _config.ShowSRankCandidatesOnMap;
-        if (ImGui.Checkbox("Which spawn points the S can still use", ref candidates))
+        if (HuntUi.WrappedCheckbox("Which spawn points the S can still use", ref candidates))
         {
             _config.ShowSRankCandidatesOnMap = candidates;
             _config.Save();
@@ -582,14 +639,14 @@ public sealed partial class Plugin
 
         const ImGuiColorEditFlags flags = ImGuiColorEditFlags.AlphaBar | ImGuiColorEditFlags.AlphaPreviewHalf;
         var outlineWidth = _config.SpawnCandidateOutlineWidth;
-        if (ImGui.SliderInt("S candidate outline width", ref outlineWidth, 1, 12, "%d"))
+        if (ImGui.SliderInt(HuntUi.FieldLabel("S candidate outline width"), ref outlineWidth, 1, 12, "%d"))
         {
             _config.SpawnCandidateOutlineWidth = outlineWidth;
             _config.Save();
         }
 
         var candidate = _config.SpawnDotColourSCandidate;
-        if (ImGui.ColorEdit4("S candidate outline / confirmed fill", ref candidate, flags))
+        if (ImGui.ColorEdit4(HuntUi.FieldLabel("S candidate outline / confirmed fill"), ref candidate, flags))
         {
             _config.SpawnDotColourSCandidate = candidate;
             _config.Save();
@@ -600,14 +657,14 @@ public sealed partial class Plugin
     private void DrawBongoSoundPreferences()
     {
         var reminderSound = _config.SRankZoneReminderSound;
-        if (ImGui.Checkbox("S-rank zone-entry reminders", ref reminderSound))
+        if (HuntUi.WrappedCheckbox("S-rank zone-entry reminders", ref reminderSound))
         {
             _config.SRankZoneReminderSound = reminderSound;
             _config.Save();
         }
 
         var spawnSound = _config.SyncSpawnSound;
-        if (ImGui.Checkbox("Community S-rank spawn/release alerts", ref spawnSound))
+        if (HuntUi.WrappedCheckbox("Community S-rank spawn/release alerts", ref spawnSound))
         {
             _config.SyncSpawnSound = spawnSound;
             _config.Save();
@@ -618,14 +675,14 @@ public sealed partial class Plugin
     private void DrawCommunityAlertPreferences()
     {
         var alerts = _config.SyncSpawnAlerts;
-        if (ImGui.Checkbox("Chat alerts for group S sightings and Faloop spawns/releases", ref alerts)) { _config.SyncSpawnAlerts = alerts; _config.Save(); }
+        if (HuntUi.WrappedCheckbox("Chat alerts for group S sightings and Faloop spawns/releases", ref alerts)) { _config.SyncSpawnAlerts = alerts; _config.Save(); }
         var currentDc = _config.SyncSpawnCurrentDc;
-        if (ImGui.Checkbox("Only my current data centre", ref currentDc)) { _config.SyncSpawnCurrentDc = currentDc; _config.Save(); }
+        if (HuntUi.WrappedCheckbox("Only my current data centre", ref currentDc)) { _config.SyncSpawnCurrentDc = currentDc; _config.Save(); }
         if (!currentDc)
             foreach (var dc in _worldData.DataCenters)
             {
                 var selected = _config.SyncSpawnDataCenters.Contains(dc.Id);
-                if (ImGui.Checkbox(dc.Name + "##spawnDc", ref selected))
+                if (HuntUi.WrappedCheckbox(dc.Name + "##spawnDc", ref selected))
                 {
                     if (selected) _config.SyncSpawnDataCenters.Add(dc.Id); else _config.SyncSpawnDataCenters.Remove(dc.Id);
                     _config.Save();

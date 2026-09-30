@@ -39,13 +39,21 @@ public static class VisibleMarkFilter
         : mark.InCombat switch { true => "Pulled", false => "Not pulled", null => "Unknown" };
 }
 
-public sealed record ActiveMarkRow(SyncSighting Mark, VisibleMark? Visible, SyncSRankStatus? Status)
+public sealed record ActiveMarkRow(SyncSighting Mark, VisibleMark? Visible, SyncSRankStatus? Status, BearMark? Bear = null, bool BearHealthKnown = false)
 {
-    public bool HealthKnown => Visible is not null;
+    public bool HealthKnown => Visible is not null || BearHealthKnown;
     public bool HasPosition => float.IsFinite(Mark.X) && float.IsFinite(Mark.Y) && Mark.X >= 1 && Mark.X <= 100 && Mark.Y >= 1 && Mark.Y <= 100;
 }
 public static class ActiveMarkRows
 {
+    public static string FaloopAge(SyncSRankStatus? status, DateTime serverNow)
+    {
+        if (status?.FaloopActiveAt is not { } released || status.FaloopActiveUntil is not { } until
+            || until <= serverNow) return string.Empty;
+        var age = serverNow > released ? serverNow - released : TimeSpan.Zero;
+        return $"{(int)age.TotalHours:00}:{age.Minutes:00}:{age.Seconds:00}";
+    }
+
     // Observers overlap: use the broadest fresh count, never add their totals.
     public static SyncSighting MergeObservation(SyncSighting local, SyncSighting remote)
     {
@@ -76,12 +84,41 @@ public static class ActiveMarkRows
         }
         return rows.Values.ToList();
     }
+    public static List<ActiveMarkRow> MergeBear(List<ActiveMarkRow> rows, IEnumerable<BearMark> reports,
+        DateTime serverNow, IReadOnlyDictionary<(uint NameId, uint Instance, uint WorldId), SyncSRankStatus>? states = null,
+        IReadOnlyDictionary<(uint NameId, uint Instance, uint WorldId), DateTime>? pluginDeaths = null)
+    {
+        var byKey = rows.GroupBy(r => r.Mark.Key).ToDictionary(g => g.Key, g => g.ToList());
+        foreach (var bear in reports)
+        {
+            byKey.TryGetValue(bear.Key, out var existing);
+            // Any fresh scout observation wins, including a freshly observed corpse.
+            if (existing?.Any(r => r.Visible is not null) == true) continue;
+            var status = existing?.FirstOrDefault()?.Status ?? states?.GetValueOrDefault(bear.Key);
+            // Faloop is lower priority than a fresh Bear report. Only plugin/group evidence can veto it.
+            var death = string.Equals(status?.KillSource, "Faloop", StringComparison.OrdinalIgnoreCase) ? null : status?.KilledAt;
+            if (pluginDeaths?.TryGetValue(bear.Key, out var recorded) == true && (death is null || recorded > death)) death = recorded;
+            if (!bear.Report.Maintenance && !bear.Report.Uncertain && bear.HasDeath(serverNow) && status?.SpawnedAt is { } spawn && spawn <= bear.Report.KilledAt)
+                byKey.Remove(bear.Key);
+            var active = bear.IsActive(serverNow) && (death is null || bear.Report.SeenAt > death);
+            var dead = !active && bear.RecentDeath(serverNow) && (death is null || bear.Report.KilledAt >= death);
+            if (!active && !dead) continue;
+            byKey[bear.Key] = new() { new(bear.Sighting(serverNow, dead), null, status, bear,
+                dead || bear.HealthFresh(serverNow)) };
+        }
+        return byKey.Values.SelectMany(group => group).ToList();
+    }
+
+    // A current direct report proves the world/instance exists even if Faloop metadata lags behind.
+    public static bool SuppressedByFaloop(ActiveMarkRow row, bool offline, bool currentInstance) =>
+        row.Visible is null && row.Bear is null && (offline || !currentInstance);
+
     public static bool MatchesTab(string rank,string tab) => tab=="All" || rank==tab || (tab=="S" && rank=="SS");
     public static bool Matches(ActiveMarkRow row,VisibleMarkOptions options,string self,DateTime now,uint dc,string expansion)
     {
         if(row.Visible is { } visible) return VisibleMarkFilter.Matches(visible,options,self,now,dc,expansion);
         var m=row.Mark;
-        return options.IncludeCommunity && options.Alive && options.UnknownCombat && options.Ranks.Contains(m.Rank)
+        return options.IncludeCommunity && (row.HealthKnown && m.HpPercent == 0 ? options.Dead : options.Alive && options.UnknownCombat) && options.Ranks.Contains(m.Rank)
             && (options.Worlds.Count==0 || options.Worlds.Contains(m.WorldId))
             && (options.DataCenters.Count==0 || options.DataCenters.Contains(dc))
             && (options.Expansions.Count==0 || options.Expansions.Contains(expansion));

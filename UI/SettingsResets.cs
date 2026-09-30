@@ -71,7 +71,7 @@ public sealed partial class Plugin
         ImGui.Spacing();
         if (!string.IsNullOrEmpty(_settingsResetStatus))
         {
-            ImGui.PushStyleColor(ImGuiCol.Text, new Vector4(0.4f, 0.9f, 0.55f, 1f));
+            ImGui.PushStyleColor(ImGuiCol.Text, HuntTheme.Success);
             ImGui.TextWrapped(_settingsResetStatus);
             ImGui.PopStyleColor();
             ImGui.Spacing();

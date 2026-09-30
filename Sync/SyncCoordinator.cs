@@ -232,7 +232,7 @@ public sealed partial class SyncCoordinator : IDisposable
     public void ApplySettings(bool force = false)
     {
         var wanted = new SyncConnectionPolicy.Settings(_config.SyncEnabled, _config.SyncServerUrl,
-            _config.SyncPassword, _config.SyncDisplayName, _config.SyncShareTrain, _config.SyncAllowPlaintext);
+            _config.SyncPassword, _config.SyncDisplayName, _config.SyncShareTrain, _config.SyncAllowPlaintext, _config.SyncReceiveBearFeed);
         _connectionPolicy.Apply(wanted, force,
             () => { _client.Stop(); ForgetRemoteState(); },
             error => LastError = error,
@@ -275,6 +275,7 @@ public sealed partial class SyncCoordinator : IDisposable
             SaveARankSightings();
             if (!_config.SyncEnabled) return;
             DrainInbox();
+            CaptureBearPluginDeaths();
             CheckPresetRequest();
             ExpireRemote();
             var dt = framework.UpdateDelta.TotalSeconds;
@@ -286,7 +287,7 @@ public sealed partial class SyncCoordinator : IDisposable
                 RefreshHello();
             }
 
-            if (!_client.IsConnected) { _counterReady = false; return; }
+            if (!_client.IsConnected) { _counterReady = false; ClearBearFeed(); return; }
 
             _sinceDiff += dt;
             if (_sinceDiff >= DiffInterval.TotalSeconds)
@@ -340,6 +341,9 @@ public sealed partial class SyncCoordinator : IDisposable
     {
         switch (type)
         {
+            case "bear.snapshot":
+                ApplyBearSnapshot(SyncProtocol.Deserialize<BearSnapshot>(payload)!);
+                break;
             case "train.presets":
                 ApplyPresets(SyncProtocol.Deserialize<TrainPresetsBroadcast>(payload)!);
                 break;
@@ -347,8 +351,8 @@ public sealed partial class SyncCoordinator : IDisposable
                 var visible = SyncProtocol.Deserialize<VisibleMarksBroadcast>(payload)!;
                 RememberSharedARankLocations(ARankLocations.FromSightings(visible.Marks.Select(m => m.Mark)));
                 RememberARankSightings(ARankSightings.FromSightings(visible.Marks.Select(m => m.Mark)));
-                foreach (var mark in visible.Marks) { _visibleMarks[mark.Mark.LiveKey] = mark; _activeMarkGrace.Update(mark, DateTime.UtcNow); }
-                foreach (var key in visible.Removed) _visibleMarks.Remove(key.ToLiveKey());
+                VisibleObservationBatch.Apply(visible.Marks,visible.Removed,_visibleMarks,_activeMarkGrace,DateTime.UtcNow,
+                    _config.SyncReceiveBearFeed ? RememberBearPluginDeath : null);
                 break;
             case "counter.state":
                 ApplyCounters(SyncProtocol.Deserialize<CounterBroadcast>(payload)!.Counters);
@@ -381,6 +385,10 @@ public sealed partial class SyncCoordinator : IDisposable
             case ServerMessageTypes.TrainUpsert:
             {
                 var marks = SyncProtocol.Deserialize<TrainUpsertBroadcast>(payload)!.Marks;
+                if (_config.SyncReceiveBearFeed)
+                    foreach (var mark in marks)
+                        if (mark.Dead && mark.SnipedAt is null && mark.DeathAt is { } death)
+                            RememberBearPluginDeath((mark.NameId,mark.Instance,mark.WorldId),death);
                 RememberSharedARankLocations(ARankLocations.FromMarks(marks));
                 RememberARankSightings(ARankSightings.FromMarks(marks));
                 if (ARankHistory.Merge(_config.ARankKills, ARankHistory.FromMarks(marks), DateTime.UtcNow)) _config.Save();
@@ -462,6 +470,16 @@ public sealed partial class SyncCoordinator : IDisposable
     {
         _sightingClock.Reset();
         _sightingClock.Update(welcome.ServerTime, DateTime.UtcNow);
+        ClearBearFeed();
+        SupportsBearFeed = welcome.SupportsBearFeed;
+        if (_config.SyncReceiveBearFeed)
+        {
+            foreach (var kill in welcome.ARankKills)
+                if (!kill.Uncertain) RememberBearPluginDeath((kill.NameId,kill.Instance,kill.WorldId),kill.At);
+            foreach (var mark in welcome.Marks)
+                if (mark.Dead && mark.SnipedAt is null && mark.DeathAt is { } death)
+                    RememberBearPluginDeath((mark.NameId,mark.Instance,mark.WorldId),death);
+        }
         SupportsTrainPresets = welcome.SupportsTrainPresets;
         SupportsRallyRecalculation = welcome.SupportsRallyRecalculation;
         TrainPresets = welcome.TrainPresets;
@@ -485,7 +503,8 @@ public sealed partial class SyncCoordinator : IDisposable
         SupportsManualMapping = welcome.SupportsManualMapping;
         SupportsScopedTrainWatches = welcome.SupportsScopedTrainWatches;
         _visibleMarks.Clear(); _activeMarkGrace.Clear();
-        foreach (var mark in welcome.VisibleMarks) { _visibleMarks[mark.Mark.LiveKey] = mark; _activeMarkGrace.Update(mark, DateTime.UtcNow); }
+        VisibleObservationBatch.Apply(welcome.VisibleMarks,Array.Empty<SyncKey>(),_visibleMarks,_activeMarkGrace,DateTime.UtcNow,
+            _config.SyncReceiveBearFeed ? RememberBearPluginDeath : null);
         WelcomeCounters(welcome);
         ApplyWatches(welcome.WatchState, joining: true);
         ServerVersion = welcome.ServerVersion;
@@ -754,6 +773,8 @@ public sealed partial class SyncCoordinator : IDisposable
 
     private void ForgetRemoteState()
     {
+        ClearBearFeed();
+        SupportsBearFeed = false;
         _sightingClock.Reset();
         _trainSnapshotConnectionAt = null;
         SupportsTrainPresets = false;
@@ -897,10 +918,10 @@ public sealed partial class SyncCoordinator : IDisposable
     public void ReportMarkDeath(uint nameId, uint instance, uint territoryId, DateTime killedAtUtc, bool isSRank)
     {
         if (SsEventMobs.Contains(nameId)) return; // Corpse snapshots identify the individual minion.
-        if (!IsConnected || (!_config.SyncShareSightings && !_config.SyncReportSRankKills)) return;
-
         var world = _detector.CurrentWorldId();
         var key = (nameId, instance, world);
+        if (_config.SyncReceiveBearFeed) RememberBearPluginDeath(key,ServerTimeFor(killedAtUtc));
+        if (!IsConnected || (!_config.SyncShareSightings && !_config.SyncReportSRankKills)) return;
 
         _client.Send(new SightingsRemoveMessage { Keys = new() { SyncKey.From(key) } });
         foreach (var live in _sentSightings.Keys.Where(k => (k.NameId,k.Instance,k.WorldId) == key).ToList()) _sentSightings.Remove(live);
@@ -1019,6 +1040,7 @@ public sealed partial class SyncCoordinator : IDisposable
 
         _hello = new HelloMessage
         {
+            ReceiveBearFeed = _config.SyncReceiveBearFeed,
             Password = _config.SyncPassword,
             ClientName = DisplayName(),
             ClientVersion = _pluginVersion,

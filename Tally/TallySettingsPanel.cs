@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Numerics;
 using Dalamud.Interface.Utility.Raii;
 using Dalamud.Bindings.ImGui;
+using HuntTheme = HuntHelperEvolved.HuntTheme;
+using HuntUi = HuntHelperEvolved.HuntUi;
 
 namespace HuntTally.Windows;
 
@@ -39,6 +41,7 @@ public sealed class TallySettingsPanel
 
     public void Draw()
     {
+        ImGui.PushTextWrapPos(0);
         DrawDetectionSection();
 
         ImGui.Separator();
@@ -49,7 +52,9 @@ public sealed class TallySettingsPanel
 
         ImGui.Separator();
         var limit = config.HistoryLimit;
-        if (ImGui.InputInt("Detail log entries kept", ref limit, 500))
+        ImGui.TextUnformatted("Detail log entries kept");
+        ImGui.SetNextItemWidth(-1);
+        if (ImGui.InputInt("##Detail log entries kept", ref limit, 500))
         {
             config.HistoryLimit = Math.Clamp(limit, 100, 100000);
             config.MarkChanged();
@@ -57,6 +62,7 @@ public sealed class TallySettingsPanel
 
         ImGui.Separator();
         DrawResetSection();
+        ImGui.PopTextWrapPos();
     }
 
     private void DrawDetectionSection()
@@ -68,7 +74,7 @@ public sealed class TallySettingsPanel
             ? "Only count marks I hit"
             : "Only count marks I was in combat for";
 
-        if (ImGui.Checkbox(label, ref requireCombat))
+        if (HuntUi.WrappedCheckbox(label, ref requireCombat))
         {
             config.RequireCombat = requireCombat;
             config.MarkChanged();
@@ -80,31 +86,35 @@ public sealed class TallySettingsPanel
         using (ImRaii.Disabled(damageInUse))
         {
             var strict = config.StrictCredit;
-            if (ImGui.Checkbox("Strict credit", ref strict))
+            if (HuntUi.WrappedCheckbox("Strict credit", ref strict))
             {
                 config.StrictCredit = strict;
                 config.MarkChanged();
             }
         }
+        if (damageInUse && ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+            ImGui.SetTooltip("Damage detection already uses your own actions. Strict credit only applies to the combat fallback.");
 
         DrawRewardConfirmation();
 
         var distance = config.MaxDistance;
-        if (ImGui.SliderFloat("Detection radius (yalms)", ref distance, 20f, 200f, "%.0f"))
+        ImGui.TextUnformatted("Detection radius (yalms)");
+        ImGui.SetNextItemWidth(-1);
+        if (ImGui.SliderFloat("##Detection radius (yalms)", ref distance, 20f, 200f, "%.0f"))
         {
             config.MaxDistance = distance;
             config.MarkChanged();
         }
 
         var chat = config.ChatOnKill;
-        if (ImGui.Checkbox("Print a chat message on each kill", ref chat))
+        if (HuntUi.WrappedCheckbox("Print a chat message on each kill", ref chat))
         {
             config.ChatOnKill = chat;
             config.MarkChanged();
         }
 
         var allDeaths = config.PublishAllMarkDeaths;
-        if (ImGui.Checkbox("Send every mark death over IPC", ref allDeaths))
+        if (HuntUi.WrappedCheckbox("Send every mark death over IPC", ref allDeaths))
         {
             config.PublishAllMarkDeaths = allDeaths;
             config.MarkChanged();
@@ -125,32 +135,33 @@ public sealed class TallySettingsPanel
     private void DrawRewardConfirmation()
     {
         var require = config.RequireRewardMessage;
-        if (ImGui.Checkbox("Only count A and S ranks the game says it rewarded", ref require))
+        if (HuntUi.WrappedCheckbox("Only count A and S ranks the game says it rewarded", ref require))
         {
             config.RequireRewardMessage = require;
             config.MarkChanged();
         }
 
-        ImGui.SameLine();
         if (!config.RequireRewardMessage)
         {
+            HuntUi.SameLineIfFits(ImGui.CalcTextSize("(off)").X);
             ImGui.TextDisabled("(off)");
             return;
         }
 
         var dropped = tracker.DroppedUnconfirmed;
+        var status = dropped == 0 ? $"({reward.Seen} confirmed)" : $"({reward.Seen} confirmed, {dropped} dropped)";
+        HuntUi.SameLineIfFits(ImGui.CalcTextSize(status).X);
         if (dropped == 0)
-            ImGui.TextDisabled($"({reward.Seen} confirmed)");
+            ImGui.TextDisabled(status);
         else
-            ImGui.TextColored(new Vector4(1f, 0.8f, 0.35f, 1f),
-                $"({reward.Seen} confirmed, {dropped} dropped)");
+            ImGui.TextColored(HuntTheme.Warning, status);
     }
 
     private bool DrawCreditStatus()
     {
         if (!damage.IsActive)
         {
-            ImGui.TextColored(new Vector4(1f, 0.8f, 0.35f, 1f), "Damage detection: unavailable");
+            ImGui.TextColored(HuntTheme.Warning, "Damage detection: unavailable");
             ImGui.TextDisabled(damage.Status);
 
             ImGui.Spacing();
@@ -158,17 +169,18 @@ public sealed class TallySettingsPanel
         }
 
         var use = config.UseDamageDetection;
-        if (ImGui.Checkbox("Use damage detection", ref use))
+        if (HuntUi.WrappedCheckbox("Use damage detection", ref use))
         {
             config.UseDamageDetection = use;
             config.MarkChanged();
         }
 
-        ImGui.SameLine();
+        var status = config.UseDamageDetection ? $"({damage.EventsSeen} of your actions seen)" : "(off - using combat fallback)";
+        HuntUi.SameLineIfFits(ImGui.CalcTextSize(status).X);
         if (config.UseDamageDetection)
-            ImGui.TextDisabled($"({damage.EventsSeen} of your actions seen)");
+            ImGui.TextDisabled(status);
         else
-            ImGui.TextColored(new Vector4(1f, 0.8f, 0.35f, 1f), "(off - using combat fallback)");
+            ImGui.TextColored(HuntTheme.Warning, status);
 
         ImGui.Spacing();
         return config.UseDamageDetection;
@@ -179,11 +191,11 @@ public sealed class TallySettingsPanel
         ImGui.Text("Ranks to track");
 
         var b = config.TrackB;
-        if (ImGui.Checkbox("B ranks", ref b)) { config.TrackB = b; config.MarkChanged(); }
+        if (HuntUi.WrappedCheckbox("B ranks", ref b)) { config.TrackB = b; config.MarkChanged(); }
         var a = config.TrackA;
-        if (ImGui.Checkbox("A ranks", ref a)) { config.TrackA = a; config.MarkChanged(); }
+        if (HuntUi.WrappedCheckbox("A ranks", ref a)) { config.TrackA = a; config.MarkChanged(); }
         var s = config.TrackS;
-        if (ImGui.Checkbox("S and SS ranks", ref s)) { config.TrackS = s; config.MarkChanged(); }
+        if (HuntUi.WrappedCheckbox("S and SS ranks", ref s)) { config.TrackS = s; config.MarkChanged(); }
 
     }
 
@@ -191,7 +203,7 @@ public sealed class TallySettingsPanel
     {
         ImGui.Text("Seed from achievements");
         var auto = config.AutoSeedOnLogin;
-        if (ImGui.Checkbox("Check on login", ref auto))
+        if (HuntUi.WrappedCheckbox("Check on login", ref auto))
         {
             config.AutoSeedOnLogin = auto;
             config.MarkChanged();
@@ -200,7 +212,7 @@ public sealed class TallySettingsPanel
         ImGui.BeginDisabled(seeder.IsRunning);
         if (ImGui.Button("Seed now"))
             seeder.Start();
-        ImGui.SameLine();
+        HuntUi.SameLineIfFits(ImGui.CalcTextSize("Re-resolve names").X + ImGui.GetStyle().FramePadding.X * 2);
         if (ImGui.Button("Re-resolve names"))
             seeder.ResolveAll();
         ImGui.EndDisabled();
@@ -228,13 +240,13 @@ public sealed class TallySettingsPanel
     private void DrawSeedTable(CharacterProfile profile)
     {
         if (!ImGui.BeginTable("##seeds", 4,
-                ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg | ImGuiTableFlags.SizingStretchProp))
+                ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg | ImGuiTableFlags.SizingStretchProp | ImGuiTableFlags.Resizable))
             return;
 
-        ImGui.TableSetupColumn("Counter", ImGuiTableColumnFlags.WidthFixed, 55);
-        ImGui.TableSetupColumn("Achievement");
-        ImGui.TableSetupColumn("Seeded", ImGuiTableColumnFlags.WidthFixed, 110);
-        ImGui.TableSetupColumn("Total", ImGuiTableColumnFlags.WidthFixed, 45);
+        ImGui.TableSetupColumn("Counter", ImGuiTableColumnFlags.WidthStretch, 1);
+        ImGui.TableSetupColumn("Achievement", ImGuiTableColumnFlags.WidthStretch, 3);
+        ImGui.TableSetupColumn("Seeded", ImGuiTableColumnFlags.WidthStretch, 2);
+        ImGui.TableSetupColumn("Total", ImGuiTableColumnFlags.WidthStretch, 1);
         ImGui.TableHeadersRow();
 
         foreach (var def in SeedDefinitions.All)
@@ -255,6 +267,7 @@ public sealed class TallySettingsPanel
                 ImGui.TextDisabled($"{def.NamePrefix} (unresolved)");
             else
                 ImGui.TextUnformatted(seeder.NameOf(key));
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip(resolved == 0 ? $"{def.NamePrefix} (unresolved)" : seeder.NameOf(key));
 
             // Baseline stays editable: it is the only way to correct a bad read
             // or to fill in a counter whose achievement is already complete.
@@ -303,12 +316,12 @@ public sealed class TallySettingsPanel
 
         if (drifted.Count == 0)
         {
-            ImGui.TextColored(new Vector4(0.55f, 0.85f, 0.55f, 1f),
+            ImGui.TextColored(HuntTheme.Success,
                 "In step with your achievements.");
         }
         else
         {
-            ImGui.TextColored(new Vector4(1f, 0.8f, 0.35f, 1f),
+            ImGui.TextColored(HuntTheme.Warning,
                 $"Ahead of your achievements in {drifted.Count} "
                 + (drifted.Count == 1 ? "counter:" : "counters:"));
 
@@ -344,7 +357,7 @@ public sealed class TallySettingsPanel
             // Anything the user has to act on is worth more than grey text.
             var needsAction = outcome.StartsWith("Complete", StringComparison.Ordinal);
             if (needsAction)
-                ImGui.TextColored(new Vector4(1f, 0.8f, 0.35f, 1f), $"{def.CategoryKey}: {outcome}");
+                ImGui.TextColored(HuntTheme.Warning, $"{def.CategoryKey}: {outcome}");
             else
                 ImGui.TextDisabled($"{def.CategoryKey}: {outcome}");
         }
@@ -359,7 +372,7 @@ public sealed class TallySettingsPanel
             return;
         }
 
-        ImGui.TextColored(new Vector4(1f, 0.4f, 0.4f, 1f),
+        ImGui.TextColored(HuntTheme.Danger,
             "Deletes every character's tally. This cannot be undone.");
         if (ImGui.Button("Confirm reset"))
         {
@@ -375,7 +388,7 @@ public sealed class TallySettingsPanel
             config.Flush(force: true);
             confirmReset = false;
         }
-        ImGui.SameLine();
+        HuntUi.SameLineIfFits(ImGui.CalcTextSize("Cancel").X + ImGui.GetStyle().FramePadding.X * 2);
         if (ImGui.Button("Cancel"))
             confirmReset = false;
     }

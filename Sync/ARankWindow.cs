@@ -3,12 +3,14 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
+using Dalamud.Interface;
 using Dalamud.Plugin.Services;
 
 namespace HuntHelperEvolved.Sync;
 
 public sealed class ARankWindow
 {
+    public Action? OpenConnectionSettings { get; set; }
     private readonly Configuration _config;
     private readonly SyncCoordinator _sync;
     private readonly WorldData _worldData;
@@ -16,7 +18,18 @@ public sealed class ARankWindow
     private readonly LifestreamTravel _travel;
     private readonly IGameGui _gameGui;
     private DateTime _nextCapture;
+    private bool _focusWindow;
     private readonly BoardSnapshot<List<Row>> _board = new();
+    private readonly BoardSnapshot<List<Row>> _workspaceBoard = new();
+    private ViewState? _workspaceView;
+    private sealed class ViewState
+    {
+        public bool CurrentWorld;
+        public List<uint> Worlds = new();
+        public List<string> Expansions = new();
+        public bool AvailableOnly;
+        public string Search = string.Empty;
+    }
     private sealed record Row(uint NameId, uint World, uint Instance, MarkInfo Info, ARankKill? Kill,
         DateTime? Opens, DateTime? Ends, bool Up, DateTime? SeenAliveAt, bool AfterMaintenance, int State, double Percent,
         uint TerritoryId, ARankLocation? Location);
@@ -26,7 +39,12 @@ public sealed class ARankWindow
         LifestreamTravel travel, IGameGui gameGui)
     { _config = config; _sync = sync; _worldData = worlds; _detector = detector; _travel = travel; _gameGui = gameGui; }
     public void Toggle() { _board.Invalidate(); _config.ARankWindowOpen = !_config.ARankWindowOpen; _config.DeferWindowStateSave(); }
-    public void OnSettingsReset() => _board.Invalidate();
+    public void OnSettingsReset()
+    {
+        _board.Invalidate();
+        _workspaceBoard.Invalidate();
+        _workspaceView = null;
+    }
 
     public void Draw()
     {
@@ -54,58 +72,109 @@ public sealed class ARankWindow
             _sync.RememberARankSightings(sightings);
             if (ARankHistory.Merge(_config.ARankKills, captured, now)) _config.Save();
         }
-        if (!_config.ARankWindowOpen) { _board.Invalidate(); return; }
+        if (!_config.ARankWindowOpen) return;
         var open = true;
         ImGui.SetNextWindowSize(new Vector2(1040,520), ImGuiCond.FirstUseEver);
         ImGui.SetNextWindowSizeConstraints(new Vector2(520,240),new Vector2(float.MaxValue,float.MaxValue));
+        if (_focusWindow) { ImGui.SetNextWindowFocus(); _focusWindow=false; }
         if (ImGui.Begin("A Ranks", ref open)) DrawContents(now);
         ImGui.End();
         if (!open) { _config.ARankWindowOpen = false; _config.DeferWindowStateSave(); }
     }
-    private void DrawContents(DateTime now)
+    public void DrawContents() => DrawContents(DateTime.UtcNow,
+        _workspaceView ??= ReadView(), _workspaceBoard, persist: false);
+
+    private ViewState ReadView() => new()
     {
-        var worlds = DrawWorldPicker();
-        ImGui.SameLine(); DrawExpansionFilter();
-        var available = _config.ARankWindowAvailableOnly;
-        if (ImGui.Checkbox("Available to spawn only", ref available)) { _config.ARankWindowAvailableOnly = available; _config.Save(); }
-        ImGui.SameLine(); var search = _config.ARankWindowSearch; ImGui.SetNextItemWidth(220);
-        if (ImGui.InputTextWithHint("##asearch", "Search mark or zone", ref search,100)) { _config.ARankWindowSearch = search; _config.Save(); }
-        var rows = _board.Get(worlds, _config.ARankWindowExpansions, search, available, _sync.IsConnected,
-            System.Diagnostics.Stopwatch.GetTimestamp(), () => BuildRows(worlds, search, available, now));
+        CurrentWorld = _config.ARankWindowCurrentWorld,
+        Worlds = _config.ARankWindowWorlds.ToList(),
+        Expansions = _config.ARankWindowExpansions.ToList(),
+        AvailableOnly = _config.ARankWindowAvailableOnly,
+        Search = _config.ARankWindowSearch
+    };
+
+    private void SaveView(ViewState view, bool persist)
+    {
+        if (!persist) return;
+        _config.ARankWindowCurrentWorld = view.CurrentWorld;
+        _config.ARankWindowWorlds = view.Worlds.ToList();
+        _config.ARankWindowExpansions = view.Expansions.ToList();
+        _config.ARankWindowAvailableOnly = view.AvailableOnly;
+        _config.ARankWindowSearch = view.Search;
+        _config.DeferWindowStateSave();
+    }
+
+    private void DrawContents(DateTime now) => DrawContents(now, ReadView(), _board, persist: true);
+
+    private void DrawContents(DateTime now, ViewState view, BoardSnapshot<List<Row>> board, bool persist)
+    {
+        using var compact=HuntTheme.PushCompact();
+        var worlds = DrawWorldPicker(view, persist);
+        SameLineIfFits(150);
+        DrawExpansionFilter(view, persist);
+        SameLineIfFits(ImGui.CalcTextSize("Available only").X+ImGui.GetFrameHeight()+ImGui.GetStyle().ItemInnerSpacing.X);
+        if (ImGui.Checkbox("Available only", ref view.AvailableOnly)) SaveView(view, persist);
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip("Open respawn windows only. Marks already observed up are excluded.");
+        var trailingWidth=persist ? 0 : ImGui.GetFrameHeight()+ImGui.GetStyle().ItemSpacing.X;
+        SameLineIfFits(120+trailingWidth);
+        ImGui.SetNextItemWidth(Math.Min(220, Math.Max(1,ImGui.GetContentRegionAvail().X-trailingWidth)));
+        if (ImGui.InputTextWithHint("##asearch", "Search mark or zone", ref view.Search, 100)) SaveView(view, persist);
+        if (!persist)
+        {
+            ImGui.SameLine();
+            ImGui.SetCursorPosX(Math.Max(ImGui.GetCursorPosX(),ImGui.GetWindowContentRegionMax().X-ImGui.GetFrameHeight()));
+            if (HuntUi.IconButton("popout",FontAwesomeIcon.ExternalLinkAlt,"Open A-rank timers (/hha)"))
+            {
+                if (!_config.ARankWindowOpen) Toggle();
+                _focusWindow=true;
+            }
+        }
+        var rows = board.Get(worlds, view.Expansions, view.Search, view.AvailableOnly, _sync.IsConnected,
+            System.Diagnostics.Stopwatch.GetTimestamp(), () => BuildRows(worlds, view.Search, view.AvailableOnly, now, view.Expansions));
         if (!string.IsNullOrEmpty(_travel.Status)) ImGui.TextWrapped(_travel.Status);
-        var showInstances = rows.Any(row => row.Instance > 0);
-        if (!ImGui.BeginTable("aranksUnified",10,TimerTableUi.Flags)) return;
-        ImGui.TableSetupScrollFreeze(0,1);
-        ImGui.TableSetupColumn("Mark",ImGuiTableColumnFlags.WidthStretch,1.6f);
-        ImGui.TableSetupColumn("World",ImGuiTableColumnFlags.WidthStretch,1.1f);
-        ImGui.TableSetupColumn("Instance",ImGuiTableColumnFlags.WidthStretch | (showInstances ? ImGuiTableColumnFlags.None : ImGuiTableColumnFlags.Disabled),0.5f);
-        ImGui.TableSetupColumn("Zone",ImGuiTableColumnFlags.WidthStretch,1.6f);
+        if (_travel.Busy && ImGui.SmallButton("Cancel travel")) _travel.Cancel();
+        var multipleWorlds=worlds.Count>1;
+        if (rows.Count == 0) ImGui.TextDisabled(worlds.Count == 0 ? "No worlds selected." : "No marks match these filters.");
+        var footerHeight=TimerTableUi.FooterHeight;
+        var tableHeight=Math.Max(ImGui.GetFrameHeight()*2,ImGui.GetContentRegionAvail().Y-footerHeight);
+        if (!ImGui.BeginTable("aranksFocused", 11, TimerTableUi.Flags, new Vector2(0,tableHeight))) return;
+        ImGui.TableSetupScrollFreeze(1,1);
+        ImGui.TableSetupColumn("Mark / zone",ImGuiTableColumnFlags.WidthStretch,2.6f);
+        ImGui.TableSetupColumn("World",ImGuiTableColumnFlags.WidthStretch | (multipleWorlds ? ImGuiTableColumnFlags.None : ImGuiTableColumnFlags.Disabled),1f);
+        ImGui.TableSetupColumn("Status",ImGuiTableColumnFlags.WidthStretch,1.6f);
+        ImGui.TableSetupColumn("Last kill",ImGuiTableColumnFlags.WidthStretch,1f);
+        ImGui.TableSetupColumn("Actions",ImGuiTableColumnFlags.WidthStretch | ImGuiTableColumnFlags.NoSort,0.8f);
         ImGui.TableSetupColumn("Expansion",ImGuiTableColumnFlags.WidthStretch | ImGuiTableColumnFlags.DefaultHide,1f);
-        ImGui.TableSetupColumn("Status",ImGuiTableColumnFlags.WidthStretch,1.4f);
-        ImGui.TableSetupColumn("Opens",ImGuiTableColumnFlags.WidthStretch,0.9f);
-        ImGui.TableSetupColumn("Ready by",ImGuiTableColumnFlags.WidthStretch,0.9f);
-        ImGui.TableSetupColumn("Killed",ImGuiTableColumnFlags.WidthStretch,1.5f);
-        ImGui.TableSetupColumn("Last known location",ImGuiTableColumnFlags.WidthFixed | ImGuiTableColumnFlags.NoSort,
-            ImGui.CalcTextSize("Last known location").X);
+        ImGui.TableSetupColumn("Opens",ImGuiTableColumnFlags.WidthStretch | ImGuiTableColumnFlags.DefaultHide,0.9f);
+        ImGui.TableSetupColumn("Ready by",ImGuiTableColumnFlags.WidthStretch | ImGuiTableColumnFlags.DefaultHide,0.9f);
+        ImGui.TableSetupColumn("Last known location",ImGuiTableColumnFlags.WidthStretch | ImGuiTableColumnFlags.NoSort | ImGuiTableColumnFlags.DefaultHide,1.6f);
+        ImGui.TableSetupColumn("Zone",ImGuiTableColumnFlags.WidthStretch | ImGuiTableColumnFlags.DefaultHide,1.6f);
+        ImGui.TableSetupColumn("Instance",ImGuiTableColumnFlags.WidthStretch | ImGuiTableColumnFlags.DefaultHide,0.5f);
         ImGui.TableHeadersRow();
         rows=TimerTableUi.Sort(rows,(row,column)=>column switch
         {
-            0=>row.Info.Name, 1=>_worldData.NameOf(row.World), 2=>row.Instance,
-            3=>row.Info.Location, 4=>row.Info.Order, 5=>(row.State,-row.Percent),
-            6=>row.Opens, 7=>row.Ends, 8=>row.Kill?.At, _=>null
+            0=>row.Info.Name, 1=>(_worldData.NameOf(row.World),row.Instance), 2=>(row.State,-row.Percent),
+            3=>row.Kill?.At, 5=>row.Info.Order, 6=>row.Opens, 7=>row.Ends, 9=>row.Info.Location, 10=>row.Instance, _=>null
         });
-        var clipper = ImGui.ImGuiListClipper();
-        try
+        if (ImGui.IsPopupOpen("", ImGuiPopupFlags.AnyPopupId | ImGuiPopupFlags.AnyPopupLevel))
+            foreach (var row in rows) DrawRow(row,now);
+        else
         {
-            clipper.Begin(rows.Count);
-            while (clipper.Step())
-                for (var i = clipper.DisplayStart; i < clipper.DisplayEnd; i++)
-                    DrawRow(rows[i], now);
+            var clipper = ImGui.ImGuiListClipper();
+            try
+            {
+                clipper.Begin(rows.Count);
+                while (clipper.Step())
+                    for (var i = clipper.DisplayStart; i < clipper.DisplayEnd; i++)
+                        DrawRow(rows[i], now);
+            }
+            finally { clipper.Destroy(); }
         }
-        finally { clipper.Destroy(); }
         ImGui.EndTable();
+        var scope=worlds.Count==1 ? _worldData.NameOf(worlds[0]) : $"{worlds.Count} worlds";
+        TimerTableUi.Footer("aConnection",$"{rows.Count} marks / {scope}",_config,_sync,()=>OpenConnectionSettings?.Invoke());
     }
-    private List<Row> BuildRows(List<uint> worlds, string search, bool available, DateTime now)
+    private List<Row> BuildRows(List<uint> worlds, string search, bool available, DateTime now, IReadOnlyCollection<string> expansions)
     {
         var selectedWorlds = worlds.ToHashSet();
         var killsByMark = _config.ARankKills.Where(k => selectedWorlds.Contains(k.WorldId)).ToLookup(k => (k.WorldId, k.NameId));
@@ -138,7 +207,7 @@ public sealed class ARankWindow
         foreach (var entry in OrderedMarks)
         {
             var info = entry.Value;
-            if (!_config.ARankWindowExpansions.Contains(info.Expansion) || (!string.IsNullOrWhiteSpace(search) && !(info.Name+" "+info.Location).Contains(search,StringComparison.OrdinalIgnoreCase))) continue;
+            if (!expansions.Contains(info.Expansion) || (!string.IsNullOrWhiteSpace(search) && !(info.Name+" "+info.Location).Contains(search,StringComparison.OrdinalIgnoreCase))) continue;
             var kills = killsByMark[(world, entry.Key)];
             // A sighting of either mark supplies instances for both marks in its zone.
             // Keep an uninstanced archived location separate when numbered instances are later discovered.
@@ -172,54 +241,125 @@ public sealed class ARankWindow
     private void DrawRow(Row row,DateTime now)
     {
         ImGui.PushID($"{row.World}_{row.NameId}_{row.Instance}");
-        ImGui.TableNextRow(ImGuiTableRowFlags.None, ImGui.GetTextLineHeight() + 2 * ImGui.GetStyle().CellPadding.Y);
-        ImGui.TableNextColumn();
+        ImGui.TableNextRow(ImGuiTableRowFlags.None, ImGui.GetFrameHeight()+2*ImGui.GetStyle().CellPadding.Y);
         var offline = _sync.Faloop.IsOffline(_worldData.NameOf(row.World));
-        ImGui.TextColored(!offline && (row.Up || row.Opens <= now) ? TimerTableUi.Up : TimerTableUi.Cooldown,
-            row.Info.Name+ExpansionData.InstanceGlyph(row.Instance));
-        if (offline) TimerTableUi.StrikeLastItem();
-        if (ImGui.IsItemHovered() && ImGui.GetIO().KeyCtrl)
+        if (NextTextColumn())
         {
-            var position = TravelPosition(row);
-            var destination = TeleportHelper.NearestTo(row.TerritoryId, position);
-            var travelHint = offline ? "Travel unavailable while this world is offline."
-                : !_travel.Available ? "Enable Lifestream for Ctrl-click travel."
-                : _travel.Busy ? "Lifestream is already travelling."
-                : destination is null ? "No eligible aetheryte. Check Settings > Travel."
-                : $"Ctrl-click to travel to {destination.Value.Name} on {_worldData.NameOf(row.World)}"
-                    + (row.Instance == 0 ? "." : $", instance {row.Instance}.");
-            ImGui.SetTooltip(travelHint);
-            if (ImGui.IsMouseClicked(ImGuiMouseButton.Left)
-                && destination is not null && _travel.Available && !_travel.Busy && !offline)
-                _travel.Start(row.World, row.TerritoryId, position, row.Instance);
+            var width=ImGui.GetContentRegionAvail().X;
+            var name=TrainRowPresentation.FitText(row.Info.Name,width,static text=>ImGui.CalcTextSize(text).X,
+                ExpansionData.InstanceGlyph(row.Instance));
+            ImGui.TextColored(!offline && (row.Up || row.Opens <= now) ? TimerTableUi.Up : TimerTableUi.Cooldown,name);
+            if (offline) TimerTableUi.StrikeLastItem();
+            var hovered=ImGui.IsItemHovered();
+            var zone=TrainRowPresentation.FitText(row.Info.Location,
+                width-ImGui.CalcTextSize(name).X-ImGui.GetStyle().ItemSpacing.X,static text=>ImGui.CalcTextSize(text).X);
+            if (zone.Length>0)
+            {
+                ImGui.SameLine();
+                ImGui.TextDisabled(zone);
+                hovered |= ImGui.IsItemHovered();
+            }
+            if (hovered)
+            {
+                var position = TravelPosition(row);
+                var travelState=TravelState(row,offline);
+                ImGui.SetTooltip($"{row.Info.Name} / {_worldData.NameOf(row.World)} / {row.Info.Location}\n{travelState.Tooltip}"
+                    +(travelState.Enabled ? " Ctrl-click to travel." : string.Empty));
+                if (travelState.Enabled && ImGui.GetIO().KeyCtrl && ImGui.IsMouseClicked(ImGuiMouseButton.Left))
+                    _travel.Start(row.World, row.TerritoryId, position, row.Instance);
+            }
         }
-        ImGui.TableNextColumn();ImGui.TextDisabled(_worldData.NameOf(row.World));
-        ImGui.TableNextColumn();ImGui.TextDisabled(row.Instance==0 ? "" : $"I{row.Instance}");
-        ImGui.TableNextColumn();ImGui.TextDisabled(row.Info.Location);
-        ImGui.TableNextColumn();ImGui.TextDisabled(row.Info.Expansion);
-        ImGui.TableNextColumn();
-        if(offline) ImGui.TextDisabled("OFFLINE / MAINTENANCE");
-        else if(row.Up) ImGui.TextColored(TimerTableUi.Up, "100% spawned");
-        else if(row.Opens is null) ImGui.TextColored(TimerTableUi.Unknown,
-            row.AfterMaintenance ? "after maintenance / unknown" : row.Kill?.Uncertain==true ? "sniped / unknown" : "no kill recorded");
-        else if(now < row.Opens) ImGui.TextColored(TimerTableUi.Cooldown,"opens in "+TimerTableUi.Duration(row.Opens.Value-now));
-        else if(now >= row.Ends) ImGui.TextColored(TimerTableUi.Up,"READY");
-        else TimerTableUi.Progress(row.Percent);
-        if (row.Up && ImGui.IsItemHovered()) ImGui.SetTooltip($"Seen alive {Time(row.SeenAliveAt)}.");
-        ImGui.TableNextColumn();ImGui.TextUnformatted(Time(row.Opens));
-        ImGui.TableNextColumn();ImGui.TextUnformatted(Time(row.Ends));
-        ImGui.TableNextColumn();
-        if(row.Kill is { } kill)
+        if (NextTextColumn())
+            ImGui.TextDisabled(_worldData.NameOf(row.World)+(row.Instance==0 ? string.Empty : $" I{row.Instance}"));
+        if (ImGui.TableNextColumn())
         {
-            ImGui.TextUnformatted(TimerTableUi.Duration(now-kill.At)+" ago"+(kill.Uncertain ? " ~" : ""));
-            if(ImGui.IsItemHovered()) ImGui.SetTooltip(kill.Uncertain
-                ? $"Sniped: last seen alive {Time(kill.LastAliveAt)}; found missing {Time(kill.At)}."
-                : "Killed "+Time(kill.At));
+            var phase=row.Up ? SRankPhase.Up : row.Opens is null
+                ? !row.AfterMaintenance && row.Kill?.Uncertain==true ? SRankPhase.Uncertain : SRankPhase.Unknown
+                : now<row.Opens ? SRankPhase.Cooldown : now>=row.Ends ? SRankPhase.Forced : SRankPhase.Window;
+            var evidence=row.Up || row.Opens is null ? WindowEvidence(row,now)
+                : row.Kill?.Uncertain==true ? $"Sniped: exact kill time unknown. Last seen alive {Time(row.Kill.LastAliveAt)}; found missing {Time(row.Kill.At)}." : null;
+            TimerTableUi.Status(phase,row.Percent,row.Opens,row.Ends,now,offline,
+                unknownLabel:row.AfterMaintenance ? "maintenance / unknown" : null,evidence:evidence);
         }
-        else ImGui.TextDisabled("—");
-        ImGui.TableNextColumn();
-        DrawLastLocation(row);
+        if (NextTextColumn())
+        {
+            if(row.Kill is { } kill)
+            {
+                ImGui.TextUnformatted(kill.Uncertain ? "Sniped" : Time(kill.At));
+                if(ImGui.IsItemHovered()) ImGui.SetTooltip(kill.Uncertain
+                    ? $"Sniped: last seen alive {Time(kill.LastAliveAt)}; found missing {Time(kill.At)}."
+                    : $"Killed {Time(kill.At)} / {TimerTableUi.Duration(now-kill.At)} ago.");
+            }
+            else ImGui.TextDisabled("—");
+        }
+        if (ImGui.TableNextColumn()) DrawRowActions(row,now,offline);
+        if (NextTextColumn()) ImGui.TextDisabled(row.Info.Expansion);
+        if (NextTextColumn()) ImGui.TextUnformatted(Time(row.Opens));
+        if (NextTextColumn()) ImGui.TextUnformatted(Time(row.Ends));
+        if (NextTextColumn()) DrawLastLocation(row);
+        if (NextTextColumn()) ImGui.TextDisabled(row.Info.Location);
+        if (NextTextColumn()) ImGui.TextDisabled(row.Instance==0 ? string.Empty : $"I{row.Instance}");
         ImGui.PopID();
+    }
+
+    private static bool NextTextColumn()
+    {
+        if (!ImGui.TableNextColumn()) return false;
+        ImGui.AlignTextToFramePadding();
+        return true;
+    }
+
+    private static string WindowEvidence(Row row,DateTime now)
+    {
+        if (row.Up) return $"Seen alive {Time(row.SeenAliveAt)}. Previous kill timing no longer describes this spawn.";
+        if (row.Opens is null) return row.AfterMaintenance ? "Timing is unknown after maintenance."
+            : row.Kill?.Uncertain==true ? $"Kill time is unknown. Last seen alive {Time(row.Kill.LastAliveAt)}; found missing {Time(row.Kill.At)}."
+            : "No kill has been recorded for this world and instance.";
+        return $"Opens: {Time(row.Opens)}\nReady by: {Time(row.Ends)}"
+            +(row.Kill?.Uncertain==true ? $"\nSniped: exact kill time unknown. Last seen alive {Time(row.Kill.LastAliveAt)}; found missing {Time(row.Kill.At)}." : string.Empty)
+            +(row.Opens<=now && now<row.Ends ? $"\n{row.Percent:F0}% of the respawn window elapsed; not spawn probability." : string.Empty);
+    }
+
+    private void DrawRowActions(Row row,DateTime now,bool offline)
+    {
+        var height=ImGui.GetFrameHeight();
+        var gap=ImGui.GetStyle().ItemSpacing.X;
+        var naturalWidth=height*3+gap*2;
+        var scale=Math.Min(1,Math.Max(1,ImGui.GetContentRegionAvail().X)/naturalWidth);
+        var buttonSize=new Vector2(height*scale,height);
+        gap*=scale;
+        var location=row.Location;
+        ImGui.BeginDisabled(location is null);
+        if (HuntUi.Button("flag",string.Empty,FontAwesomeIcon.MapMarkerAlt,quiet:true,size:buttonSize,
+                tooltip:location is null ? "Last location unavailable"
+                : $"Flag last location ({location.X:F1}, {location.Y:F1})\nSeen {Time(location.SeenAt)}") && location is not null)
+            MapFlagHelper.FlagPosition(_gameGui,location.TerritoryId,location.MapId,location.Instance,location.X,location.Y);
+        ImGui.EndDisabled();
+        ImGui.SameLine(0,gap);
+        var position=TravelPosition(row);
+        var travelState=TravelState(row,offline);
+        ImGui.BeginDisabled(!travelState.Enabled);
+        if (HuntUi.Button("travel",string.Empty,FontAwesomeIcon.LocationArrow,quiet:true,size:buttonSize,tooltip:travelState.Tooltip))
+            _travel.Start(row.World,row.TerritoryId,position,row.Instance);
+        ImGui.EndDisabled();
+        ImGui.SameLine(0,gap);
+        if (HuntUi.Button("details",string.Empty,FontAwesomeIcon.InfoCircle,quiet:true,size:buttonSize,
+                tooltip:"Timer evidence for "+row.Info.Name)) ImGui.OpenPopup("Timer evidence");
+        if (ImGui.BeginPopup("Timer evidence"))
+        {
+            ImGui.TextUnformatted(row.Info.Name);
+            ImGui.TextDisabled($"{_worldData.NameOf(row.World)} / {row.Info.Location}"
+                +(row.Instance==0 ? " / uninstanced" : $" / instance {row.Instance}"));
+            ImGui.Separator();
+            ImGui.TextWrapped(WindowEvidence(row,now));
+            if (row.Kill is { } kill)
+                ImGui.TextWrapped(kill.Uncertain ? $"Found missing: {Time(kill.At)}. Exact kill time unknown."
+                    : $"Last kill: {Time(kill.At)} / {TimerTableUi.Duration(now-kill.At)} ago.");
+            if (location is not null)
+                ImGui.TextUnformatted($"Last location: ({location.X:F1}, {location.Y:F1}) / seen {Time(location.SeenAt)}");
+            else ImGui.TextDisabled("Last location unavailable");
+            ImGui.EndPopup();
+        }
     }
 
     private Vector2 TravelPosition(Row row)
@@ -228,6 +368,10 @@ public sealed class ARankWindow
         // A zone destination is still available before any train has recorded this mark.
         return new(21.5f, 21.5f);
     }
+
+    private TravelActionState TravelState(Row row,bool offline) => TravelActionPresentation.Evaluate(
+        _travel.Available,_travel.Busy,offline,false,true,
+        TeleportHelper.NearestTo(row.TerritoryId,TravelPosition(row))?.Name,_worldData.NameOf(row.World),row.Instance);
 
     private void DrawLastLocation(Row row)
     {
@@ -241,51 +385,61 @@ public sealed class ARankWindow
             ImGui.SetTooltip($"Last seen: {location.SeenAt.ToLocalTime():yyyy-MM-dd HH:mm}.");
     }
     private static string Time(DateTime? at) => at is { } time ? TimerTableUi.Local(time) : "—";
-    private List<uint> DrawWorldPicker()
+    private static void SameLineIfFits(float width)
     {
-        var current = _config.ARankWindowCurrentWorld;
-        if (ImGui.Checkbox("Current world", ref current)) { _config.ARankWindowCurrentWorld = current; _config.Save(); }
-        if (current) { ImGui.SameLine(); ImGui.TextDisabled(_detector.CurrentWorldName()); return _detector.CurrentWorldId() == 0 ? new() : new() { _detector.CurrentWorldId() }; }
-        ImGui.SameLine(); ImGui.SetNextItemWidth(190);
-        if (ImGui.BeginCombo("##arankWorlds", $"Worlds ({_config.ARankWindowWorlds.Count})"))
+        ImGui.SameLine();
+        if (ImGui.GetContentRegionAvail().X < width) ImGui.NewLine();
+    }
+    private List<uint> DrawWorldPicker(ViewState view, bool persist)
+    {
+        var preview=view.CurrentWorld ? _detector.CurrentWorldName()
+            : view.Worlds.Count==1 ? _worldData.NameOf(view.Worlds[0]) : $"Worlds ({view.Worlds.Count})";
+        ImGui.SetNextItemWidth(Math.Min(160,ImGui.GetContentRegionAvail().X));
+        if (ImGui.BeginCombo("##arankWorlds",preview))
         {
+            var current=view.CurrentWorld;
+            if (ImGui.Checkbox("Current world",ref current)) { view.CurrentWorld=current; SaveView(view,persist); }
+            ImGui.Separator();
             foreach (var dc in _worldData.DataCenters)
             {
                 if (!ImGui.TreeNode(dc.Name)) continue;
                 var worlds = _worldData.WorldsIn(dc.Id);
-                var all = worlds.All(w => _config.ARankWindowWorlds.Contains(w.RowId));
+                var all = !view.CurrentWorld && worlds.All(w => view.Worlds.Contains(w.RowId));
                 if (ImGui.Checkbox("All##" + dc.Id, ref all))
                 {
                     foreach (var world in worlds)
-                    { _config.ARankWindowWorlds.Remove(world.RowId); if (all) _config.ARankWindowWorlds.Add(world.RowId); }
-                    _config.Save();
+                    { view.Worlds.Remove(world.RowId); if (all) view.Worlds.Add(world.RowId); }
+                    view.CurrentWorld=false;
+                    SaveView(view, persist);
                 }
                 foreach (var world in worlds)
                 {
-                    var selected = _config.ARankWindowWorlds.Contains(world.RowId);
+                    var selected = !view.CurrentWorld && view.Worlds.Contains(world.RowId);
                     if (ImGui.Checkbox(world.Name, ref selected))
-                    { if (selected) _config.ARankWindowWorlds.Add(world.RowId); else _config.ARankWindowWorlds.Remove(world.RowId); _config.Save(); }
+                    { view.Worlds.Remove(world.RowId); if (selected) view.Worlds.Add(world.RowId); view.CurrentWorld=false; SaveView(view, persist); }
                 }
                 ImGui.TreePop();
             }
             ImGui.EndCombo();
         }
-        return _config.ARankWindowWorlds.Distinct().Where(w => _worldData.LocateWorld(w) is not null).ToList();
+        if (view.CurrentWorld) return _detector.CurrentWorldId()==0 ? new() : new() { _detector.CurrentWorldId() };
+        return view.Worlds.Distinct().Where(w => _worldData.LocateWorld(w) is not null).ToList();
     }
 
-    private void DrawExpansionFilter()
+    private void DrawExpansionFilter(ViewState view, bool persist)
     {
-        var chosen = _config.ARankWindowExpansions!;
-        ImGui.SetNextItemWidth(180);
-        if (!ImGui.BeginCombo("##arankExpansions", $"Expansions ({chosen.Count})")) return;
+        var chosen = view.Expansions!;
+        ImGui.SetNextItemWidth(Math.Min(150, ImGui.GetContentRegionAvail().X));
+        var preview=chosen.Count==1 ? chosen[0] : chosen.Count==Expansions.Length ? "All expansions" : $"Expansions ({chosen.Count})";
+        if (!ImGui.BeginCombo("##arankExpansions", preview)) return;
         var all = Expansions.All(chosen.Contains);
         if (ImGui.Checkbox("All expansions", ref all))
-        { chosen.Clear(); if (all) chosen.AddRange(Expansions); _config.Save(); }
+        { chosen.Clear(); if (all) chosen.AddRange(Expansions); SaveView(view, persist); }
         foreach (var name in Expansions)
         {
             var selected = chosen.Contains(name);
             if (ImGui.Checkbox(name, ref selected))
-            { if (selected) chosen.Add(name); else chosen.Remove(name); _config.Save(); }
+            { if (selected) chosen.Add(name); else chosen.Remove(name); SaveView(view, persist); }
         }
         ImGui.EndCombo();
     }

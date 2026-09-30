@@ -4,9 +4,12 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Numerics;
-using System.Text;
+using Dalamud.Interface;
+using Dalamud.Interface.Utility;
 using Dalamud.Interface.Windowing;
 using Dalamud.Bindings.ImGui;
+using HuntTheme = HuntHelperEvolved.HuntTheme;
+using HuntUi = HuntHelperEvolved.HuntUi;
 
 namespace HuntTally.Windows;
 
@@ -23,14 +26,18 @@ public sealed class MainWindow : Window, IDisposable
         public DateTime Oldest;
     }
 
-    private static readonly char[] CsvSpecials = { ',', '"', '\n', '\r' };
-
     private readonly Configuration config;
     private readonly CharacterContext characters;
 
     private bool accountScope;
     private string filter = string.Empty;
     private string statusMessage = string.Empty;
+    private bool exportFailed;
+    private MainWindow? embeddedView;
+    private int selectedTab;
+
+    private const ImGuiTableFlags SummaryTableFlags = ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg
+        | ImGuiTableFlags.SizingStretchProp | ImGuiTableFlags.Resizable | ImGuiTableFlags.Hideable;
 
     /// <summary>
     /// Which rank the marks list is narrowed to, as an index into
@@ -82,7 +89,7 @@ public sealed class MainWindow : Window, IDisposable
         };
     }
 
-    public void Dispose() { }
+    public void Dispose() => embeddedView?.Dispose();
 
     /// <summary>Null means account-wide aggregation.</summary>
     private CharacterProfile? Scope => accountScope ? null : characters.Current;
@@ -93,39 +100,30 @@ public sealed class MainWindow : Window, IDisposable
     private ulong ScopeKey(CharacterProfile? scope) =>
         accountScope ? 0UL : scope?.ContentId ?? ulong.MaxValue;
 
-    public override void Draw()
+    public override void Draw() => DrawCore();
+
+    // A second renderer shares records, not transient filters or cached views.
+    public void DrawContents() => (embeddedView ??= new MainWindow(config, characters)).DrawCore();
+
+    private void DrawCore()
     {
         DrawScopeSelector();
         DrawSummary();
         ImGui.Separator();
 
-        if (ImGui.BeginTabBar("##tabs"))
+        var tabs = new[] { "Marks", "By expansion", "Statistics", "Characters" };
+        for (var index = 0; index < tabs.Length; index++)
         {
-            if (ImGui.BeginTabItem("Marks"))
-            {
-                DrawMarksTab();
-                ImGui.EndTabItem();
-            }
-
-            if (ImGui.BeginTabItem("By expansion"))
-            {
-                DrawExpansionTab();
-                ImGui.EndTabItem();
-            }
-
-            if (ImGui.BeginTabItem("Statistics"))
-            {
-                DrawStatisticsTab();
-                ImGui.EndTabItem();
-            }
-
-            if (ImGui.BeginTabItem("Characters"))
-            {
-                DrawCharactersTab();
-                ImGui.EndTabItem();
-            }
-
-            ImGui.EndTabBar();
+            if (index > 0) HuntUi.SameLineIfFits(HuntUi.ButtonWidth(tabs[index]) + 8 * ImGuiHelpers.GlobalScale);
+            if (HuntUi.UnderlineTab(tabs[index], selectedTab == index)) selectedTab = index;
+        }
+        ImGui.Separator();
+        switch (selectedTab)
+        {
+            case 0: DrawMarksTab(); break;
+            case 1: DrawExpansionTab(); break;
+            case 2: DrawStatisticsTab(); break;
+            case 3: DrawCharactersTab(); break;
         }
     }
 
@@ -137,6 +135,8 @@ public sealed class MainWindow : Window, IDisposable
         if (ImGui.RadioButton(characterLabel, !accountScope))
             accountScope = false;
         ImGui.SameLine();
+        if (ImGui.GetContentRegionAvail().X < ImGui.CalcTextSize($"All characters ({config.Characters.Count})").X
+            + ImGui.GetFrameHeight() + ImGui.GetStyle().ItemInnerSpacing.X) ImGui.NewLine();
         if (ImGui.RadioButton($"All characters ({config.Characters.Count})", accountScope))
             accountScope = true;
 
@@ -180,27 +180,23 @@ public sealed class MainWindow : Window, IDisposable
 
         var currentId = characters.Current?.ContentId ?? 0;
 
-        if (!ImGui.BeginTable("##chars", 6,
-                ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg | ImGuiTableFlags.SizingStretchProp))
+        if (!ImGui.BeginTable("##chars", 6, SummaryTableFlags))
             return;
 
-        ImGui.TableSetupColumn("Character", ImGuiTableColumnFlags.WidthStretch);
-        ImGui.TableSetupColumn("S", ImGuiTableColumnFlags.WidthFixed, 50);
-        ImGui.TableSetupColumn("A", ImGuiTableColumnFlags.WidthFixed, 50);
-        ImGui.TableSetupColumn("B", ImGuiTableColumnFlags.WidthFixed, 50);
-        ImGui.TableSetupColumn("Total", ImGuiTableColumnFlags.WidthFixed, 60);
-        ImGui.TableSetupColumn("Last played", ImGuiTableColumnFlags.WidthFixed, 100);
+        ImGui.TableSetupColumn("Character", ImGuiTableColumnFlags.WidthStretch, 4);
+        ImGui.TableSetupColumn("S", ImGuiTableColumnFlags.WidthStretch, 1);
+        ImGui.TableSetupColumn("A", ImGuiTableColumnFlags.WidthStretch, 1);
+        ImGui.TableSetupColumn("B", ImGuiTableColumnFlags.WidthStretch, 1);
+        ImGui.TableSetupColumn("Total", ImGuiTableColumnFlags.WidthStretch, 1);
+        ImGui.TableSetupColumn("Last played", ImGuiTableColumnFlags.WidthStretch, 2);
         ImGui.TableHeadersRow();
 
         foreach (var profile in config.Characters.Values.OrderByDescending(p => p.GrandTotal()))
         {
             ImGui.TableNextRow();
 
-            ImGui.TableNextColumn();
-            if (profile.ContentId == currentId)
-                ImGui.TextUnformatted($"{profile.Display} *");
-            else
-                ImGui.TextUnformatted(profile.Display);
+            if (ImGui.TableNextColumn())
+                TextWithFullTooltip(profile.Display + (profile.ContentId == currentId ? " *" : ""));
 
             ImGui.TableNextColumn();
             ImGui.TextUnformatted(Num(profile.TotalFor(Categories.S)));
@@ -235,8 +231,7 @@ public sealed class MainWindow : Window, IDisposable
         ImGui.TextDisabled("Subsets of the totals above, not extra kills.");
         ImGui.Spacing();
 
-        if (!ImGui.BeginTable("##byexp", 4,
-                ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg | ImGuiTableFlags.SizingStretchProp))
+        if (!ImGui.BeginTable("##byexp", 4, SummaryTableFlags))
             return;
 
         ImGui.TableSetupColumn("Expansion");
@@ -251,8 +246,7 @@ public sealed class MainWindow : Window, IDisposable
             var s = config.TotalFor($"{expansion}.S", scope);
 
             ImGui.TableNextRow();
-            ImGui.TableNextColumn();
-            ImGui.TextUnformatted(expansion);
+            if (ImGui.TableNextColumn()) TextWithFullTooltip(expansion);
             ImGui.TableNextColumn();
             ImGui.TextUnformatted(Num(a));
             ImGui.TableNextColumn();
@@ -266,22 +260,31 @@ public sealed class MainWindow : Window, IDisposable
 
     private void DrawMarksTab()
     {
-        ImGui.SetNextItemWidth(200);
+        ImGui.SetNextItemWidth(Math.Min(200, ImGui.GetContentRegionAvail().X));
         ImGui.InputTextWithHint("##filter", "Filter by name...", ref filter, 64);
 
         // The list is already ordered by kills, so picking a rank here puts
         // the most-killed mark of that rank at the top — which is the whole
         // point of having it.
         ImGui.SameLine();
+        if (ImGui.GetContentRegionAvail().X < 110) ImGui.NewLine();
         ImGui.SetNextItemWidth(110);
         ImGui.Combo("##rankfilter", ref rankFilter, RankFilterLabels, RankFilterLabels.Length);
 
-        ImGui.SameLine();
-        if (ImGui.Button("Export CSV"))
+        HuntUi.SameLineIfFits(HuntUi.ButtonWidth("Export filtered CSV", FontAwesomeIcon.Download));
+        ImGui.BeginDisabled(ScopeUnavailable);
+        if (HuntUi.Button("exportTally", "Export filtered CSV", FontAwesomeIcon.Download,
+            tooltip: ScopeUnavailable ? "Log in, or switch to all characters."
+                : "Export the current character scope, rank and name filter. Achievement baselines have no per-mark detail and are excluded."))
             ExportCsv();
+        ImGui.EndDisabled();
 
         if (!string.IsNullOrEmpty(statusMessage))
-            ImGui.TextDisabled(statusMessage);
+        {
+            ImGui.PushTextWrapPos(0);
+            ImGui.TextColored(exportFailed ? HuntTheme.Danger : HuntTheme.Success, statusMessage);
+            ImGui.PopTextWrapPos();
+        }
 
         if (ScopeUnavailable)
         {
@@ -295,19 +298,16 @@ public sealed class MainWindow : Window, IDisposable
 
         EnsureMarksRows();
 
-        const ImGuiTableFlags flags = ImGuiTableFlags.Borders
-                                      | ImGuiTableFlags.RowBg
-                                      | ImGuiTableFlags.ScrollY
-                                      | ImGuiTableFlags.SizingStretchProp;
+        const ImGuiTableFlags flags = SummaryTableFlags | ImGuiTableFlags.ScrollY;
 
         if (!ImGui.BeginTable("##tally", 4, flags))
             return;
 
         ImGui.TableSetupScrollFreeze(0, 1);
-        ImGui.TableSetupColumn("Mark", ImGuiTableColumnFlags.WidthStretch);
-        ImGui.TableSetupColumn("Rank", ImGuiTableColumnFlags.WidthFixed, 40);
-        ImGui.TableSetupColumn("Kills", ImGuiTableColumnFlags.WidthFixed, 55);
-        ImGui.TableSetupColumn("Last killed", ImGuiTableColumnFlags.WidthFixed, 130);
+        ImGui.TableSetupColumn("Mark", ImGuiTableColumnFlags.WidthStretch, 4);
+        ImGui.TableSetupColumn("Rank", ImGuiTableColumnFlags.WidthStretch, 1);
+        ImGui.TableSetupColumn("Kills", ImGuiTableColumnFlags.WidthStretch, 1);
+        ImGui.TableSetupColumn("Last killed", ImGuiTableColumnFlags.WidthStretch, 3);
         ImGui.TableHeadersRow();
 
         var clipper = ImGui.ImGuiListClipper();
@@ -320,8 +320,7 @@ public sealed class MainWindow : Window, IDisposable
                     var record = marksRows[i];
                     ImGui.TableNextRow();
 
-                    ImGui.TableNextColumn();
-                    ImGui.TextUnformatted(record.Name);
+                    if (ImGui.TableNextColumn()) TextWithFullTooltip(record.Name);
 
                     ImGui.TableNextColumn();
                     ImGui.TextUnformatted(MarkData.RankLabel(record.Rank));
@@ -354,18 +353,8 @@ public sealed class MainWindow : Window, IDisposable
         marksFilter = filter;
         marksRankFilter = rankFilter;
 
-        var source = scope is null ? config.AggregateRecords() : scope.Records.Values;
-
         var rank = RankFilterValues[Math.Clamp(rankFilter, 0, RankFilterValues.Length - 1)];
-
-        marksRows = source
-            .Where(r => r.Count > 0)
-            .Where(r => rank is null || r.Rank == rank)
-            .Where(r => filter.Length == 0 ||
-                        r.Name.Contains(filter, StringComparison.OrdinalIgnoreCase))
-            .OrderByDescending(r => r.Count)
-            .ThenBy(r => r.Name)
-            .ToList();
+        marksRows = TallyMarkExport.SelectRows(config, scope, accountScope, rank, filter);
     }
 
     /// <summary>
@@ -396,15 +385,14 @@ public sealed class MainWindow : Window, IDisposable
             + $"capped at {config.HistoryLimit} per character).");
         ImGui.Spacing();
 
-        if (!ImGui.BeginTable("##stats", 5,
-                ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg | ImGuiTableFlags.SizingStretchProp))
+        if (!ImGui.BeginTable("##stats", 5, SummaryTableFlags))
             return;
 
-        ImGui.TableSetupColumn("Category", ImGuiTableColumnFlags.WidthStretch);
-        ImGui.TableSetupColumn("Today", ImGuiTableColumnFlags.WidthFixed, 60);
-        ImGui.TableSetupColumn("This week", ImGuiTableColumnFlags.WidthFixed, 70);
-        ImGui.TableSetupColumn("This month", ImGuiTableColumnFlags.WidthFixed, 75);
-        ImGui.TableSetupColumn("This year", ImGuiTableColumnFlags.WidthFixed, 65);
+        ImGui.TableSetupColumn("Category", ImGuiTableColumnFlags.WidthStretch, 3);
+        ImGui.TableSetupColumn("Today", ImGuiTableColumnFlags.WidthStretch, 1);
+        ImGui.TableSetupColumn("This week", ImGuiTableColumnFlags.WidthStretch, 1);
+        ImGui.TableSetupColumn("This month", ImGuiTableColumnFlags.WidthStretch, 1);
+        ImGui.TableSetupColumn("This year", ImGuiTableColumnFlags.WidthStretch, 1);
         ImGui.TableHeadersRow();
 
         var periods = new[] { snapshot.Today, snapshot.Week, snapshot.Month, snapshot.Year };
@@ -413,8 +401,7 @@ public sealed class MainWindow : Window, IDisposable
         {
             ImGui.TableNextRow();
 
-            ImGui.TableNextColumn();
-            ImGui.TextUnformatted(Categories.Label(key));
+            if (ImGui.TableNextColumn()) TextWithFullTooltip(Categories.Label(key));
 
             foreach (var period in periods)
             {
@@ -515,50 +502,23 @@ public sealed class MainWindow : Window, IDisposable
 
     private void ExportCsv()
     {
+        if (ScopeUnavailable) return;
         try
         {
             var dir = Service.Interface.GetPluginConfigDirectory();
             Directory.CreateDirectory(dir);
             var path = Path.Combine(dir, $"hunttally-{DateTime.Now:yyyyMMdd-HHmmss}.csv");
 
-            var sb = new StringBuilder();
-
-            sb.AppendLine("Character,Category,Counted,Seeded,Total");
-            foreach (var profile in config.Characters.Values.OrderBy(p => p.Name))
-            {
-                foreach (var key in AllKeys())
-                {
-                    sb.AppendLine(string.Join(',',
-                        Escape(profile.Display),
-                        Escape(key),
-                        Num(profile.CountedFor(key)),
-                        Num(profile.BaselineFor(key)),
-                        Num(profile.TotalFor(key))));
-                }
-            }
-
-            sb.AppendLine();
-            sb.AppendLine("Character,Name,Rank,Kills,FirstKill,LastKill");
-            foreach (var profile in config.Characters.Values.OrderBy(p => p.Name))
-            {
-                foreach (var r in profile.Records.Values.Where(r => r.Count > 0).OrderBy(r => r.Name))
-                {
-                    sb.AppendLine(string.Join(',',
-                        Escape(profile.Display),
-                        Escape(r.Name),
-                        MarkData.RankLabel(r.Rank),
-                        Num(r.Count),
-                        r.FirstKill == default ? "" : r.FirstKill.ToString("s", CultureInfo.InvariantCulture),
-                        r.LastKill == default ? "" : r.LastKill.ToString("s", CultureInfo.InvariantCulture)));
-                }
-            }
-
-            File.WriteAllText(path, sb.ToString());
-            statusMessage = $"Saved to {path}";
+            EnsureMarksRows();
+            var csv = TallyMarkExport.BuildCsv(accountScope ? "All characters" : characters.Current!.Display, marksRows);
+            File.WriteAllText(path, csv);
+            exportFailed = false;
+            statusMessage = $"Exported {marksRows.Count} filtered marks to {path}";
         }
         catch (Exception ex)
         {
             Service.Log.Error(ex, "CSV export failed.");
+            exportFailed = true;
             statusMessage = "Export failed, see the Dalamud log.";
         }
     }
@@ -585,25 +545,11 @@ public sealed class MainWindow : Window, IDisposable
         return date.AddDays(-offset);
     }
 
-    private static IEnumerable<string> AllKeys()
-    {
-        foreach (var key in Categories.Overall)
-            yield return key;
-        foreach (var expansion in Categories.Expansions)
-        {
-            yield return $"{expansion}.A";
-            yield return $"{expansion}.S";
-        }
-    }
-
     private static string Num(int value) => value.ToString(CultureInfo.InvariantCulture);
 
-    /// <summary>
-    /// RFC 4180 quoting. The previous version only quoted on a comma, so a
-    /// value containing a quote or a newline produced a broken file.
-    /// </summary>
-    private static string Escape(string value) =>
-        value.IndexOfAny(CsvSpecials) < 0
-            ? value
-            : $"\"{value.Replace("\"", "\"\"")}\"";
+    private static void TextWithFullTooltip(string text)
+    {
+        ImGui.TextUnformatted(text);
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip(text);
+    }
 }

@@ -1,6 +1,6 @@
 {
   "Author": "MusicManBowls, kihtli",
-  "Name": "Hunt Helper Evolved",
+  "Name": "Hunt Helper Evolved (Bear preview)",
   "Punchline": "Standalone hunt scouting, private-group sync, spawn windows and live mark tracking.",
   "Description": "Standalone hunt tracking for FFXIV: scout and share trains, track S/A-rank windows, map possible S-rank spawn points, view live marks and pool trigger-mob kills with a private group. Includes native train reports, lifetime hunt tallies and optional Lifestream travel.",
   "Tags": [
@@ -14,7 +14,7 @@
     "sync"
   ],
   "InternalName": "HuntHelperEvolved",
-  "AssemblyVersion": "0.6.0.3",
+  "AssemblyVersion": "0.6.0.4",
   "RepoUrl": "https://github.com/HuntHelperEvolved/HuntHelperEvolved",
   "ApplicableVersion": "any",
   "LoadPriority": 0,

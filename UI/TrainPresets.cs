@@ -1,4 +1,5 @@
 using Dalamud.Bindings.ImGui;
+using Dalamud.Interface.Utility;
 using HuntHelperEvolved.TrainPresets;
 using System;
 using System.Collections.Generic;
@@ -10,11 +11,15 @@ namespace HuntHelperEvolved;
 public sealed partial class Plugin
 {
     private bool _presetEditorOpen;
-    private TrainPreset? _presetDraft;
+    private bool _presetEditorFocusRequested;
+    private readonly PresetDraftSession _presetDrafts = new();
     private string _presetEditorStatus = "";
     private uint _presetZone;
-    private long _presetDraftRevision;
+    private uint? _presetReplacementZone;
     private string? _presetDraftRequest;
+    private TrainPreset? _presetSubmittedDraft;
+    private string? _presetDeletingId;
+    private (string Id, string Name, bool Server, long Revision)? _presetDeletion;
     private DateTime _lastPresetApply;
     private bool SharingPresetTrain => _config.SyncEnabled && _config.SyncShareTrain;
     private string? ActivePresetId => SharingPresetTrain ? _sync.TrainPresets.ActivePresetId : _config.ActiveTrainPresetId;
@@ -48,7 +53,7 @@ public sealed partial class Plugin
     {
         DrawPresetSelector("Route preset", Math.Min(280, Math.Max(120, ImGui.GetContentRegionAvail().X - 100)));
         TrainControlSameLine("Manage presets");
-        if (ImGui.Button("Manage presets")) _presetEditorOpen = true;
+        if (ImGui.Button("Manage presets")) OpenPresetEditor();
         DrawCalculateRallyFlags();
         if (!showStatus) return;
         if (ActivePresetId is not null && PresetOrderingPaused)
@@ -175,38 +180,155 @@ public sealed partial class Plugin
         }
     }
 
-    private void EditPreset(TrainPreset preset)
+    private string? PresetServerMutationUnavailable => PresetEditorPolicy.ServerMutationUnavailable(
+        _config.SyncEnabled, _sync.IsConnected, _sync.SupportsTrainPresets,
+        _sync.PendingPresetRequest is not null || _presetDraftRequest is not null, TrainMutationBusy);
+
+    private void OpenPresetEditor()
     {
-        _presetDraftRevision = _sync.TrainPresets.Revision;
-        _presetDraftRequest = null;
-        _presetDraft = preset.Copy();
-        _presetZone = preset.Zones.FirstOrDefault()?.TerritoryId ?? 0;
+        _presetEditorOpen = true;
+        _presetEditorFocusRequested = true;
+    }
+
+    private void EditPreset(TrainPreset preset, PresetDraftSource source, bool unsaved = false, uint? earlierZone = null,
+        bool replaceCurrent = false)
+    {
+        OpenPresetEditor();
+        if (_presetDraftRequest is not null)
+        {
+            _presetEditorStatus = "Wait for the server to confirm this draft before switching presets.";
+            return;
+        }
+        if (_presetDrafts.Open(preset, source, _sync.TrainPresets.Revision, unsaved, earlierZone, replaceCurrent))
+            SelectPresetDraftZone(earlierZone);
+        else _presetReplacementZone = earlierZone;
+    }
+
+    private void SelectPresetDraftZone(uint? preferred = null)
+    {
+        var draft = _presetDrafts.Draft;
+        _presetZone = preferred ?? (draft?.Zones.Any(zone => zone.TerritoryId == _presetZone) == true
+            ? _presetZone : draft?.Zones.FirstOrDefault()?.TerritoryId ?? 0);
         _presetEditorStatus = "";
+    }
+
+    private void DrawPresetReplacementConfirmation()
+    {
+        const string popup = "Discard unsaved preset changes?";
+        if (!_presetDrafts.HasPendingReplacement) return;
+        if (!ImGui.IsPopupOpen(popup)) ImGui.OpenPopup(popup);
+        ImGui.SetNextWindowSize(new Vector2(Math.Min(430 * ImGuiHelpers.GlobalScale, ImGui.GetIO().DisplaySize.X - 40), 0));
+        var open = true;
+        if (ImGui.BeginPopupModal(popup, ref open, ImGuiWindowFlags.AlwaysAutoResize | ImGuiWindowFlags.NoSavedSettings))
+        {
+            ImGui.TextWrapped($"'{_presetDrafts.Draft?.Name}' has unsaved changes. Discard them and open the requested preset?");
+            if (ImGui.Button("Discard changes"))
+            {
+                _presetDrafts.ConfirmReplacement();
+                SelectPresetDraftZone(_presetReplacementZone);
+                _presetReplacementZone = null;
+                ImGui.CloseCurrentPopup();
+            }
+            ImGui.SameLine();
+            if (ImGui.Button("Keep editing"))
+            {
+                _presetDrafts.CancelReplacement();
+                ImGui.CloseCurrentPopup();
+            }
+            ImGui.EndPopup();
+        }
+        if (!open) _presetDrafts.CancelReplacement();
+    }
+
+    private void DrawPresetDeletionConfirmation()
+    {
+        const string popup = "Delete saved preset?";
+        if (_presetDeletion is not { } deletion) return;
+        if (!ImGui.IsPopupOpen(popup)) ImGui.OpenPopup(popup);
+        ImGui.SetNextWindowSize(new Vector2(Math.Min(430 * ImGuiHelpers.GlobalScale, ImGui.GetIO().DisplaySize.X - 40), 0));
+        var open = true;
+        if (ImGui.BeginPopupModal(popup, ref open, ImGuiWindowFlags.AlwaysAutoResize | ImGuiWindowFlags.NoSavedSettings))
+        {
+            ImGui.TextWrapped(deletion.Server
+                ? $"Delete '{deletion.Name}' from the shared library for everyone?"
+                : $"Delete '{deletion.Name}' from your local library?");
+            if (deletion.Server ? _sync.TrainPresets.ActivePresetId == deletion.Id : _config.ActiveTrainPresetId == deletion.Id)
+                ImGui.TextWrapped("This active preset will return to Manual order. Existing train marks remain.");
+            ImGui.TextWrapped("Your open draft will be kept.");
+            var unavailable = deletion.Server ? PresetServerMutationUnavailable
+                : TrainMutationBusy ? "Wait for the current train operation to finish."
+                : _presetDraftRequest is not null ? "Wait for the server to confirm this draft." : null;
+            ImGui.BeginDisabled(unavailable is not null);
+            if (ImGui.Button(deletion.Server ? "Delete from server" : "Delete locally"))
+            {
+                if (deletion.Server)
+                {
+                    if (_sync.SendPreset("delete", presetId: deletion.Id, baseRevision: deletion.Revision))
+                    {
+                        _presetDraftRequest = _sync.PendingPresetRequest;
+                        _presetDeletingId = deletion.Id;
+                        _presetSubmittedDraft = null;
+                    }
+                }
+                else
+                {
+                    _config.TrainPresets.RemoveAll(preset => preset.Id == deletion.Id);
+                    if (_config.ActiveTrainPresetId == deletion.Id)
+                    {
+                        _config.ActiveTrainPresetId = null;
+                        _config.TrainPresetOrderingPaused = false;
+                    }
+                    _config.Save();
+                    if (_presetDrafts.Draft?.Id == deletion.Id) _presetDrafts.MarkUnsaved();
+                    _presetEditorStatus = "Deleted locally. The draft is still open.";
+                }
+                _presetDeletion = null;
+                ImGui.CloseCurrentPopup();
+            }
+            ImGui.EndDisabled();
+            if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled) && unavailable is not null) ImGui.SetTooltip(unavailable);
+            ImGui.SameLine();
+            if (ImGui.Button("Cancel"))
+            {
+                _presetDeletion = null;
+                ImGui.CloseCurrentPopup();
+            }
+            ImGui.EndPopup();
+        }
+        if (!open) _presetDeletion = null;
     }
 
     private void DrawPresetEditor()
     {
-        if (!_presetEditorOpen) return;
         if (_presetDraftRequest is not null && _sync.PendingPresetRequest is null)
         {
             if (_presetDraftRequest == _sync.CompletedPresetRequest && _sync.AcceptedPresetRevision is { } revision)
-                _presetDraftRevision = revision;
+            {
+                if (_presetSubmittedDraft is { } saved) _presetDrafts.MarkSaved(saved, revision, PresetDraftSource.Server);
+                else if (_presetDrafts.Draft?.Id == _presetDeletingId) _presetDrafts.MarkUnsaved(revision);
+            }
             _presetDraftRequest = null;
+            _presetSubmittedDraft = null;
+            _presetDeletingId = null;
         }
+        if (!_presetEditorOpen) return;
         ImGui.SetNextWindowSize(new Vector2(640, 700), ImGuiCond.FirstUseEver);
+        if (_presetEditorFocusRequested) ImGui.SetNextWindowFocus();
+        _presetEditorFocusRequested = false;
         if (!ImGui.Begin("Train presets", ref _presetEditorOpen))
         {
             ImGui.End();
             return;
         }
         ImGui.TextWrapped("Save a conductor's preferences for future trains, then select the preset before scouting. Strict zones use your mark order; other zones use estimated travel distance from an aetheryte.");
+        ImGui.BeginDisabled(_presetDraftRequest is not null);
         ImGui.SetNextItemWidth(Math.Max(120, ImGui.GetContentRegionAvail().X - 120));
-        if (ImGui.BeginCombo("Edit preset", _presetDraft?.Name is { Length: > 0 } name ? name : "Choose a saved preset"))
+        if (ImGui.BeginCombo("Edit preset", _presetDrafts.Draft?.Name is { Length: > 0 } name ? name : "Choose a saved preset"))
         {
             foreach (var preset in _config.TrainPresets)
-                if (ImGui.Selectable("Local: " + preset.Name + "##local" + preset.Id)) EditPreset(preset);
+                if (ImGui.Selectable("Local: " + preset.Name + "##local" + preset.Id)) EditPreset(preset, PresetDraftSource.Local);
             foreach (var preset in _sync.TrainPresets.Presets)
-                if (ImGui.Selectable("Server: " + preset.Name + "##server" + preset.Id)) EditPreset(preset);
+                if (ImGui.Selectable("Server: " + preset.Name + "##server" + preset.Id)) EditPreset(preset, PresetDraftSource.Server);
             ImGui.EndCombo();
         }
         if (ImGui.Button("New preset"))
@@ -214,22 +336,44 @@ public sealed partial class Plugin
             var preset = new TrainPreset { ExcludedAetheryteIds = TeleportHelper.Blacklist.ToList() };
             foreach (var expansion in new[] { "Dawntrail", "Shadowbringers", "Endwalker" })
                 foreach (var zone in RouteCatalog.Zones.Where(z => z.Expansion == expansion)) PresetEditing.AddZone(preset, zone.TerritoryId);
-            EditPreset(preset);
+            EditPreset(preset, PresetDraftSource.New, unsaved: true);
         }
-        if (_presetDraft is not { } draft)
+        ImGui.EndDisabled();
+        if (_presetDrafts.Draft is not { } draft)
         {
             ImGui.TextWrapped("Create a preset or choose one from your local or server library.");
             ImGui.End();
             return;
         }
         TrainControlSameLine("Duplicate");
+        ImGui.BeginDisabled(_presetDraftRequest is not null);
         if (ImGui.Button("Duplicate"))
         {
-            draft = draft.Copy();
-            draft.Id = Guid.NewGuid().ToString("N");
-            draft.Name = draft.Name.Length <= 73 ? draft.Name + " (copy)" : draft.Name[..73] + " (copy)";
-            EditPreset(draft);
+            var duplicate = draft.Copy();
+            duplicate.Id = Guid.NewGuid().ToString("N");
+            duplicate.Name = duplicate.Name.Length <= 73 ? duplicate.Name + " (copy)" : duplicate.Name[..73] + " (copy)";
+            EditPreset(duplicate, PresetDraftSource.New, unsaved: true);
+            draft = _presetDrafts.Draft!;
         }
+        ImGui.EndDisabled();
+        var reloadPreset = _presetDrafts.Source switch
+        {
+            PresetDraftSource.Local => _config.TrainPresets.FirstOrDefault(preset => preset.Id == draft.Id),
+            PresetDraftSource.Server => _sync.TrainPresets.Presets.FirstOrDefault(preset => preset.Id == draft.Id),
+            _ => null,
+        };
+        if (reloadPreset is not null)
+        {
+            TrainControlSameLine("Reload saved...");
+            ImGui.BeginDisabled(_presetDraftRequest is not null);
+            if (ImGui.Button("Reload saved..."))
+            {
+                EditPreset(reloadPreset, _presetDrafts.Source, replaceCurrent: true);
+                draft = _presetDrafts.Draft!;
+            }
+            ImGui.EndDisabled();
+        }
+        if (_presetDrafts.IsDirty) ImGui.TextColored(HuntTheme.Warning, "Unsaved changes");
         var draftName = draft.Name;
         ImGui.SetNextItemWidth(Math.Max(120, ImGui.GetContentRegionAvail().X - 65));
         if (ImGui.InputText("Name", ref draftName, 81)) draft.Name = draftName;
@@ -331,42 +475,55 @@ public sealed partial class Plugin
             ImGui.TextWrapped(_sync.TrainPresets.OrderingPaused
                 ? "Ordering is paused. Saving this preset keeps the current route until you reselect a preset."
                 : "Updating this active server preset also changes everyone's current route.");
+        var localUnavailable = TrainMutationBusy ? "Wait for the current train operation to finish."
+            : _presetDraftRequest is not null ? "Wait for the server to confirm this draft." : problem;
+        ImGui.BeginDisabled(localUnavailable is not null);
         if (ImGui.Button("Save locally"))
         {
-            if (problem is not null) _presetEditorStatus = problem;
-            else
-            {
-                draft.Name = draft.Name.Trim();
-                var index = _config.TrainPresets.FindIndex(p => p.Id == draft.Id);
-                if (index < 0) _config.TrainPresets.Add(draft.Copy()); else _config.TrainPresets[index] = draft.Copy();
-                _config.Save();
-                ApplyLocalTrainPreset(force: true);
-                _presetEditorStatus = "Saved locally.";
-            }
+            draft.Name = draft.Name.Trim();
+            var index = _config.TrainPresets.FindIndex(p => p.Id == draft.Id);
+            if (index < 0) _config.TrainPresets.Add(draft.Copy()); else _config.TrainPresets[index] = draft.Copy();
+            _config.Save();
+            ApplyLocalTrainPreset(force: true);
+            _presetDrafts.MarkSaved(draft, source: PresetDraftSource.Local);
+            _presetEditorStatus = "Saved locally.";
         }
+        ImGui.EndDisabled();
+        if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled) && localUnavailable is not null) ImGui.SetTooltip(localUnavailable);
         TrainControlSameLine("Share / update server");
+        var serverUnavailable = PresetServerMutationUnavailable ?? problem;
+        ImGui.BeginDisabled(serverUnavailable is not null);
         if (ImGui.Button("Share / update server"))
         {
-            if (problem is not null) _presetEditorStatus = problem;
-            else if (_sync.SendPreset("save", draft, baseRevision: _presetDraftRevision))
+            draft.Name = draft.Name.Trim();
+            if (_sync.SendPreset("save", draft, baseRevision: _presetDrafts.ServerRevision))
             {
                 _presetDraftRequest = _sync.PendingPresetRequest;
+                _presetSubmittedDraft = draft.Copy();
+                _presetDeletingId = null;
                 _presetEditorStatus = "Select the shared preset in Route preset after it has been saved.";
             }
         }
-        if (_config.TrainPresets.Any(p => p.Id == draft.Id) && ImGui.Button("Remove local preset"))
+        ImGui.EndDisabled();
+        if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled) && serverUnavailable is not null) ImGui.SetTooltip(serverUnavailable);
+        if (_config.TrainPresets.FirstOrDefault(preset => preset.Id == draft.Id) is { } localPreset)
         {
-            _config.TrainPresets.RemoveAll(p => p.Id == draft.Id);
-            if (_config.ActiveTrainPresetId == draft.Id)
-            {
-                _config.ActiveTrainPresetId = null;
-                _config.TrainPresetOrderingPaused = false;
-            }
-            _config.Save();
-            _presetEditorStatus = "Removed locally. The draft is still open.";
+            ImGui.BeginDisabled(TrainMutationBusy || _presetDraftRequest is not null);
+            if (ImGui.Button("Delete local preset..."))
+                _presetDeletion = (localPreset.Id, localPreset.Name, false, 0);
+            ImGui.EndDisabled();
+            if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled) && (TrainMutationBusy || _presetDraftRequest is not null))
+                ImGui.SetTooltip(TrainMutationBusy ? "Wait for the current train operation to finish." : "Wait for the server to confirm this draft.");
         }
-        if (_sync.TrainPresets.Presets.Any(p => p.Id == draft.Id) && ImGui.Button("Remove server preset"))
-            _sync.SendPreset("delete", presetId: draft.Id);
+        if (_sync.TrainPresets.Presets.FirstOrDefault(preset => preset.Id == draft.Id) is { } serverPreset)
+        {
+            var deleteUnavailable = PresetServerMutationUnavailable;
+            ImGui.BeginDisabled(deleteUnavailable is not null);
+            if (ImGui.Button("Delete server preset..."))
+                _presetDeletion = (serverPreset.Id, serverPreset.Name, true, _sync.TrainPresets.Revision);
+            ImGui.EndDisabled();
+            if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled) && deleteUnavailable is not null) ImGui.SetTooltip(deleteUnavailable);
+        }
         if (ImGui.Button("Use current aetheryte exclusions"))
         {
             draft.ExcludedAetheryteIds = TeleportHelper.Blacklist.ToList();
@@ -375,6 +532,8 @@ public sealed partial class Plugin
         ImGui.TextWrapped("Rallies use custom flags and their usual teleport behaviour. Leave rally options off for no rally stops. Travel estimates use map distance and Tertium's northern exit; other terrain and teleport loading times are not modelled.");
         if (!string.IsNullOrEmpty(_presetEditorStatus)) ImGui.TextWrapped(_presetEditorStatus);
         if (!string.IsNullOrEmpty(_sync.PresetStatus)) ImGui.TextWrapped(_sync.PresetStatus);
+        DrawPresetReplacementConfirmation();
+        DrawPresetDeletionConfirmation();
         ImGui.End();
     }
 }

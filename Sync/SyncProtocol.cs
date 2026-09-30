@@ -263,6 +263,7 @@ public sealed class SyncFaloopStatus
 
 public sealed class HelloMessage
 {
+    public bool ReceiveBearFeed { get; set; }
     public string Type => "hello";
     public int Protocol => SyncProtocol.Version;
     public string Password { get; set; } = string.Empty;
@@ -322,6 +323,7 @@ public static class ServerMessageTypes
 
 public sealed class WelcomeMessage
 {
+    public bool SupportsBearFeed { get; set; }
     public bool SupportsTrainPresets { get; set; }
     public bool SupportsRallyRecalculation { get; set; }
     public TrainPresets.PresetState TrainPresets { get; set; } = new();

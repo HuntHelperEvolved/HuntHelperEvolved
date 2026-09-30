@@ -21,4 +21,13 @@ internal readonly record struct TrainRowLayout(float ButtonWidth, float ButtonHe
     }
 
     internal float X(int action) => action == 0 ? 0 : ActionLeft + (action - 1) * (ButtonWidth + Gap);
+
+    internal static float SecondaryTextWidth(float width, float primaryWidth, float secondaryWidth, float gap)
+    {
+        var available = Math.Max(0, width - Math.Max(0, gap));
+        // Share tight rows, but let a short primary label give its unused space
+        // to the secondary label before optional age/status detail is added.
+        return Math.Min(Math.Max(0, secondaryWidth),
+            Math.Max(available * .45f, available - Math.Max(0, primaryWidth)));
+    }
 }

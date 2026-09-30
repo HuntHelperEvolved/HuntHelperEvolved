@@ -1,5 +1,9 @@
 # Hunt Helper Evolved
 
+> **Local preview 0.6.0.4:** This branch combines the reimagined UI with an
+> opt-in Bear Toolkit feed. See [Bear preview testing](docs/BEAR-PREVIEW.md).
+> The public installation feed still points to the existing release.
+
 A hunting plugin for FFXIV, built from two that came before it. It scouts and
 records a train with exact kill times, posts a Discord report with respawn
 summaries and sniped/missing-mark details, draws spawn points, your detection range and SS

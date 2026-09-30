@@ -61,9 +61,12 @@ public class CounterSettings
     public int AutoResetHours { get; set; } = 1;
 }
 
+public enum InterfaceTheme { Graphite, Daylight, Dalamud }
+
 [Serializable]
 public class Configuration : IPluginConfiguration
 {
+    public InterfaceTheme Theme { get; set; } = InterfaceTheme.Graphite;
     public List<TrainPresets.TrainPreset> TrainPresets { get; set; } = new();
     public string? ActiveTrainPresetId { get; set; }
     public bool TrainPresetOrderingPaused { get; set; }
@@ -648,6 +651,9 @@ public class Configuration : IPluginConfiguration
 
     /// <summary>Share what you can see: each mark's position and health while it is in range.</summary>
     public bool SyncShareSightings { get; set; } = true;
+
+    /// <summary>Opt in to the server's read-only Bear preview feed. Older servers safely ignore it.</summary>
+    public bool SyncReceiveBearFeed { get; set; } = false;
 
     /// <summary>Tell the server when an S rank dies in front of you.</summary>
     public bool SyncReportSRankKills { get; set; } = true;

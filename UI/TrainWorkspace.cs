@@ -1,10 +1,12 @@
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface;
+using Dalamud.Interface.Textures;
+using Dalamud.Interface.Utility;
+using HuntHelperEvolved.TrainPresets;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
-using System.Text;
 using System.Text.RegularExpressions;
 
 namespace HuntHelperEvolved;
@@ -13,6 +15,7 @@ public sealed partial class Plugin
 {
     private enum TrainWorkspacePage { Route, Reports, Setup }
     private TrainWorkspacePage _trainWorkspacePage;
+    private TrainWorkspacePage _compactTrainPanel;
     private bool _trainCompletionReport;
     private readonly ScoutNoteDraft _scoutNote = new();
     private ScoutNoteDraft.UndoCapture? _scoutNoteUndo;
@@ -23,7 +26,7 @@ public sealed partial class Plugin
     private string _trainPreviewError = string.Empty;
     private int? _trainPreviewFingerprint;
     private DateTime _nextTrainPreviewUpdate;
-    private DateTime _trainWorkspaceDrawnAt;
+    private DateTime _trainReportsDrawnAt;
     private DateTime _trainPreviewAt;
     private int _trainReportDestinationCount;
     private bool TrainMutationBusy => _reportPostBusy || _completion.IsBusy;
@@ -34,104 +37,333 @@ public sealed partial class Plugin
         _nextTrainPreviewUpdate = DateTime.MinValue;
     }
 
+    private void SelectTrainPanel(TrainWorkspacePage page, bool compact)
+    {
+        if (compact) _compactTrainPanel = page;
+        else SelectTrainPage(page);
+        _nextTrainPreviewUpdate = DateTime.MinValue;
+    }
+
     private void DrawTrainWorkspace(bool popout)
     {
-        _trainWorkspaceDrawnAt = DateTime.UtcNow;
-        var operatingStart = ImGui.GetCursorPos();
-        var operatingWidth = ImGui.GetContentRegionAvail().X;
-        var scanButtonSize = ImGui.GetFrameHeight();
-        var firstTabWidth = ImGui.CalcTextSize(nameof(TrainWorkspacePage.Route)).X + ImGui.GetStyle().FramePadding.X * 2;
-        var reservedRight = scanButtonSize + ImGui.GetStyle().ItemSpacing.X;
-        if (firstTabWidth + reservedRight > operatingWidth)
-            ImGui.SetCursorPosY(operatingStart.Y + scanButtonSize + ImGui.GetStyle().ItemSpacing.Y);
-        foreach (var page in Enum.GetValues<TrainWorkspacePage>())
+        DrawTrainToolbar();
+        DrawTrainContext();
+        DrawTrainWorkspaceBody(popout);
+    }
+
+    private float TrainSecondaryWidth(bool compact)
+    {
+        var gap = ImGui.GetStyle().ItemSpacing.X;
+        return HuntUi.ButtonWidth("Plan", compact ? null : FontAwesomeIcon.Route)
+            + HuntUi.ButtonWidth("Reports", compact ? null : FontAwesomeIcon.PaperPlane)
+            + (compact ? HuntUi.ButtonWidth("Import", FontAwesomeIcon.Clipboard) : ImGui.GetFrameHeight())
+            + ImGui.GetFrameHeight() + gap * 3;
+    }
+
+    private static void TrainControlSameLine(float width)
+    {
+        if (ImGui.GetItemRectMax().X - ImGui.GetWindowPos().X + ImGui.GetStyle().ItemSpacing.X + width
+            <= ImGui.GetWindowContentRegionMax().X) ImGui.SameLine();
+    }
+
+    private static float TrainModeControlsWidth(bool compact) =>
+        (compact ? ImGui.GetFrameHeight() : HuntUi.ButtonWidth("Scouting", FontAwesomeIcon.Pause))
+        + ImGui.GetStyle().ItemSpacing.X + ImGui.GetFrameHeight() + ImGui.GetStyle().ItemInnerSpacing.X
+        + ImGui.CalcTextSize("Follow").X;
+
+    private static float TrainNavigationControlsWidth(bool compact) =>
+        HuntUi.ButtonWidth("Next mark", compact ? FontAwesomeIcon.ChevronRight : FontAwesomeIcon.StepForward)
+        + ImGui.GetStyle().ItemSpacing.X + (compact ? HuntUi.ButtonWidth("Next Aetheryte") : ImGui.GetFrameHeight());
+
+    private static float TrainOperatingControlsWidth(bool compact) => TrainNavigationControlsWidth(compact)
+        + (compact ? 16 : 24) * ImGuiHelpers.GlobalScale + TrainModeControlsWidth(compact);
+
+    private void DrawTrainToolbar()
+    {
+        var start = ImGui.GetCursorPos();
+        var width = ImGui.GetContentRegionAvail().X;
+        var padding = 6 * ImGuiHelpers.GlobalScale;
+        var primaryWidth = TrainOperatingControlsWidth(compact: false);
+        var secondaryWidth = TrainSecondaryWidth(compact: false);
+        var inline = primaryWidth + secondaryWidth + padding * 3 <= width;
+        var rows = inline ? 1 : primaryWidth + padding * 2 > width ? 3 : 2;
+        var height = ImGui.GetFrameHeight() * rows + padding * 2
+            + ImGui.GetStyle().ItemSpacing.Y * (rows - 1);
+        HuntUi.FillBand(height, HuntTheme.Surface);
+        ImGui.SetCursorPos(start + new Vector2(padding));
+        DrawTrainOperatingControls(compact: false, width - padding * 2 - (inline ? secondaryWidth + padding : 0));
+        if (inline)
         {
-            if (page != TrainWorkspacePage.Route) TrainControlSameLine(page.ToString(), reservedRight);
-            var selected = page == _trainWorkspacePage;
-            if (selected) ImGui.PushStyleColor(ImGuiCol.Button, ImGui.GetStyle().Colors[(int)ImGuiCol.ButtonActive]);
-            if (ImGui.Button(page.ToString())) SelectTrainPage(page);
-            if (selected) ImGui.PopStyleColor();
+            ImGui.SameLine();
+            ImGui.SetCursorPosX(start.X + width - padding - secondaryWidth);
         }
-        TrainControlSameLine("Follow train: Off", reservedRight);
-        DrawTrainFollowButton();
-        var tabsEnd = ImGui.GetCursorPos();
-        ImGui.SetCursorPos(new Vector2(operatingStart.X + Math.Max(0, operatingWidth - scanButtonSize), operatingStart.Y));
+        else ImGui.SetCursorPosX(start.X + padding);
+        DrawTrainSecondaryControls(compact: false);
+        ImGui.SetCursorPos(new Vector2(start.X, Math.Max(start.Y + height, ImGui.GetCursorPosY())));
+    }
+
+    private void DrawTrainOperatingControls(bool compact, float width)
+    {
+        var start = ImGui.GetCursorPos();
+        var inline = TrainOperatingControlsWidth(compact) <= width;
+        if (HuntUi.Button("next-mark", "Next mark", compact ? FontAwesomeIcon.ChevronRight : FontAwesomeIcon.StepForward,
+            primary: true, tooltip: "Move to the next live mark and flag it")) SetCurrentMark(NextLiveMark(), announce: true);
+        TrainControlSameLine(compact ? HuntUi.ButtonWidth("Next Aetheryte") : ImGui.GetFrameHeight());
+        const string aetheryteTip = "Announce the next aetheryte without teleporting or changing the current map flag";
+        var nextAetheryte = compact
+            ? HuntUi.Button("next-aetheryte", "Next Aetheryte", tooltip: aetheryteTip)
+            : DrawAetheryteButton("next-aetheryte", aetheryteTip);
+        if (nextAetheryte)
+            OnNextAetheryteCommand(NextAetheryteCommand, string.Empty);
+        if (inline)
+        {
+            ImGui.SameLine();
+            ImGui.SetCursorPosX(start.X + width - TrainModeControlsWidth(compact));
+            var divider = ImGui.GetCursorScreenPos() - new Vector2((compact ? 8 : 12) * ImGuiHelpers.GlobalScale, 0);
+            ImGui.GetWindowDrawList().AddLine(divider, divider + new Vector2(0, ImGui.GetFrameHeight()),
+                ImGui.GetColorU32(HuntTheme.Line));
+        }
+        else ImGui.SetCursorPosX(start.X + Math.Max(0, width - TrainModeControlsWidth(compact)));
+        DrawTrainModeControls(compact);
+    }
+
+    private void DrawTrainModeControls(bool compact)
+    {
+        if (compact)
+        {
+            DrawTrainFollowControl();
+            ImGui.SameLine();
+        }
         ImGui.BeginDisabled(TrainMutationBusy);
-        if (TrainIconButton(_config.ScanningPaused ? FontAwesomeIcon.Play : FontAwesomeIcon.Pause, new Vector2(scanButtonSize)))
+        var scoutIcon = _config.ScanningPaused ? FontAwesomeIcon.Play : FontAwesomeIcon.Pause;
+        var scoutTip = (_config.ScanningPaused ? "Scouting paused - resume" : "Scouting - pause")
+            + "\nControls new scouting records and automatic scout credit. Existing deaths still update while paused.";
+        var scoutPressed = compact ? HuntUi.IconButton("scouting", scoutIcon, scoutTip, !_config.ScanningPaused)
+            : HuntUi.Button("scouting", _config.ScanningPaused ? "Paused" : "Scouting", scoutIcon,
+                selected: !_config.ScanningPaused, size: new Vector2(HuntUi.ButtonWidth("Scouting", FontAwesomeIcon.Pause), 0), tooltip: scoutTip);
+        if (scoutPressed)
         {
             _config.ScanningPaused = !_config.ScanningPaused;
             _config.Save();
         }
         ImGui.EndDisabled();
-        if (ImGui.IsItemHovered()) ImGui.SetTooltip((_config.ScanningPaused ? "Scanning paused — resume" : "Scanning — pause")
-            + "\nControls new scouting records and automatic scout credit. Existing deaths still update while paused.");
-        ImGui.SetCursorPos(new Vector2(operatingStart.X, Math.Max(tabsEnd.Y, ImGui.GetCursorPosY())));
-        ImGui.Separator();
-        if (_trainWorkspacePage == TrainWorkspacePage.Route)
+        if (!compact)
         {
-            DrawTrainNavigation();
-            DrawTrainContext();
+            ImGui.SameLine();
+            DrawTrainFollowControl();
         }
+    }
 
-        var footerHeight = TrainWorkspaceFooterHeight();
-        // All setup/report details scroll. Only operating controls and the relevant
-        // action/result stay fixed, including when UI scaling makes the window small.
-        var available = ImGui.GetContentRegionAvail().Y;
-        var scrollFooter = available < footerHeight + ImGui.GetTextLineHeightWithSpacing() * 2;
-        var bodyHeight = Math.Max(1, scrollFooter ? available : available - footerHeight);
-        if (ImGui.BeginChild("Train workspace content", new Vector2(0, bodyHeight), false))
+    private void DrawTrainFollowControl()
+    {
+        var follow = _config.FollowTrain;
+        if (ImGui.Checkbox("Follow", ref follow)) SetFollowTrain(follow);
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Automatic train flags and announcements on this client. Scouting and sharing are separate.");
+    }
+
+    private bool DrawAetheryteButton(string id, string tooltip, Vector2? size = null)
+    {
+        var dimensions = size ?? new Vector2(ImGui.GetFrameHeight());
+        bool clicked;
+        if (_textureProvider.TryGetFromGameIcon(new GameIconLookup(AetheryteIconId), out var texture)
+            && texture.TryGetWrap(out var icon, out _))
         {
-            if (_showTrainUndoNotice && _config.ResetUndoAt is not null)
+            clicked = HuntUi.Button(id, string.Empty, quiet: true, size: dimensions);
+            if (ImGui.IsItemVisible())
             {
-                ImGui.PushID("Recovery notice");
-                ImGui.BeginDisabled(TrainMutationBusy);
-                DrawTrainUndo();
-                ImGui.EndDisabled();
-                if (ImGui.SmallButton("Dismiss recovery notice")) _showTrainUndoNotice = false;
-                ImGui.Separator();
-                ImGui.PopID();
+                var min = ImGui.GetItemRectMin();
+                var max = ImGui.GetItemRectMax();
+                var edge = Math.Max(1, Math.Min(max.X - min.X, max.Y - min.Y) - 2 * ImGuiHelpers.GlobalScale);
+                var imageMin = (min + max - new Vector2(edge)) / 2;
+                var draw = ImGui.GetWindowDrawList();
+                draw.PushClipRect(min, max, true);
+                draw.AddImage(icon.Handle, imageMin, imageMin + new Vector2(edge), Vector2.Zero, Vector2.One,
+                    ImGui.GetColorU32(Vector4.One));
+                draw.PopClipRect();
             }
-            switch (_trainWorkspacePage)
-            {
-                case TrainWorkspacePage.Route:
-                    DrawTrainList(showZones: !popout || !_config.HideZonesInPopout,
-                        swapMarkAndZone: popout && _config.SwapMarkAndZoneInPopout);
-                    break;
-                case TrainWorkspacePage.Reports:
-                    DrawTrainReports();
-                    break;
-                case TrainWorkspacePage.Setup:
-                    DrawTrainSetup();
-                    break;
-            }
-            // At short heights or large font scales, keep the action reachable
-            // in the same vertical scroll region instead of drawing it below the window.
+        }
+        else clicked = HuntUi.Button(id, "AE", quiet: true, size: dimensions);
+        if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled)) ImGui.SetTooltip(tooltip);
+        return clicked;
+    }
+
+    private void DrawTrainSecondaryControls(bool compact)
+    {
+        if (compact)
+        {
+            ImGui.BeginDisabled(TrainMutationBusy);
+            if (HuntUi.Button("import", "Import", FontAwesomeIcon.Clipboard, quiet: true,
+                tooltip: "Import train from clipboard")) ImportFromClipboard();
+            ImGui.EndDisabled();
+            TrainControlSameLine(HuntUi.ButtonWidth("Plan"));
+        }
+        DrawTrainPanelChoice("Plan", TrainWorkspacePage.Setup, compact);
+        TrainControlSameLine(HuntUi.ButtonWidth("Reports", compact ? null : FontAwesomeIcon.PaperPlane));
+        DrawTrainPanelChoice("Reports", TrainWorkspacePage.Reports, compact);
+        if (!compact)
+        {
+            CompactTrainControlSameLine();
+            ImGui.BeginDisabled(TrainMutationBusy);
+            if (HuntUi.IconButton("import", FontAwesomeIcon.Clipboard, "Import train from clipboard")) ImportFromClipboard();
+            ImGui.EndDisabled();
+        }
+        CompactTrainControlSameLine();
+        if (compact) ImGui.SetCursorPosX(Math.Max(ImGui.GetCursorPosX(), ImGui.GetWindowContentRegionMax().X - ImGui.GetFrameHeight()));
+        if (HuntUi.IconButton("train-view", FontAwesomeIcon.SlidersH, "Train view and export")) ImGui.OpenPopup("TrainViewOptions");
+        DrawCompactTrainOptions(compact);
+    }
+
+    private void DrawTrainPanelChoice(string label, TrainWorkspacePage panel, bool compact)
+    {
+        var selected = (compact ? _compactTrainPanel : _trainWorkspacePage) == panel;
+        if (HuntUi.Button("panel-" + panel, label, compact ? null
+            : panel == TrainWorkspacePage.Setup ? FontAwesomeIcon.Route : FontAwesomeIcon.PaperPlane,
+            selected: selected, quiet: true)) SelectTrainPanel(selected ? TrainWorkspacePage.Route : panel, compact);
+    }
+
+    private void DrawTrainWorkspaceBody(bool popout)
+    {
+        var available = ImGui.GetContentRegionAvail();
+        var spacing = ImGui.GetStyle().ItemSpacing;
+        var hasPanel = _trainWorkspacePage != TrainWorkspacePage.Route;
+        var besideRoute = hasPanel && available.X >= 700 * ImGuiHelpers.GlobalScale;
+        if (besideRoute)
+        {
+            var panelWidth = Math.Min(available.X * .42f, 306 * ImGuiHelpers.GlobalScale);
+            if (ImGui.BeginChild("Train route", new Vector2(available.X - panelWidth - spacing.X, 0), false))
+                DrawTrainRouteRegion(popout);
+            ImGui.EndChild();
+            ImGui.SameLine();
+            ImGui.PushStyleColor(ImGuiCol.ChildBg, HuntTheme.Panel);
+            ImGui.PushStyleVar(ImGuiStyleVar.ChildRounding, 0);
+            if (ImGui.BeginChild("Train panel", new Vector2(0, 0), true)) DrawTrainContextPanel(compact: false);
+            ImGui.EndChild();
+            ImGui.PopStyleVar();
+            ImGui.PopStyleColor();
+            return;
+        }
+        if (hasPanel) DrawInlineTrainPanel(compact: false);
+        if (ImGui.BeginChild("Train route", Vector2.Zero, false)) DrawTrainRouteRegion(popout);
+        ImGui.EndChild();
+    }
+
+    private void DrawInlineTrainPanel(bool compact)
+    {
+        var available = ImGui.GetContentRegionAvail().Y;
+        var minimumRoute = TrainRouteFooterHeight(compact) + ImGui.GetFrameHeightWithSpacing() * 2;
+        var panelHeight = Math.Min(ImGui.GetFontSize() * 21, Math.Max(ImGui.GetFrameHeight() * 3,
+            Math.Min(available * .5f, available - minimumRoute)));
+        ImGui.PushStyleColor(ImGuiCol.ChildBg, HuntTheme.Panel);
+        ImGui.PushStyleVar(ImGuiStyleVar.ChildRounding, 0);
+        if (ImGui.BeginChild("Inline train panel", new Vector2(0, panelHeight), true)) DrawTrainContextPanel(compact);
+        ImGui.EndChild();
+        ImGui.PopStyleVar();
+        ImGui.PopStyleColor();
+    }
+
+    private void DrawTrainContextPanel(bool compact)
+    {
+        var panel = compact ? _compactTrainPanel : _trainWorkspacePage;
+        var title = panel == TrainWorkspacePage.Setup ? "Train plan" : "Train reports";
+        ImGui.AlignTextToFramePadding();
+        ImGui.TextUnformatted(title);
+        ImGui.SameLine();
+        ImGui.SetCursorPosX(ImGui.GetWindowContentRegionMax().X - ImGui.GetFrameHeight());
+        if (HuntUi.IconButton("close-panel", FontAwesomeIcon.Times, "Close " + title.ToLowerInvariant()))
+            SelectTrainPanel(TrainWorkspacePage.Route, compact);
+        ImGui.Separator();
+        if (panel == TrainWorkspacePage.Setup)
+        {
+            DrawTrainSetup(compact);
+            return;
+        }
+        var available = ImGui.GetContentRegionAvail().Y;
+        var footerHeight = TrainReportFooterHeight();
+        var scrollFooter = available < footerHeight + ImGui.GetTextLineHeightWithSpacing() * 2;
+        if (ImGui.BeginChild("Train report preview", new Vector2(0, Math.Max(1, scrollFooter ? available : available - footerHeight)), false))
+        {
+            DrawTrainReports(compact);
+            if (scrollFooter) DrawTrainReportFooter();
+        }
+        ImGui.EndChild();
+        if (!scrollFooter) DrawTrainReportFooter();
+    }
+
+    private void DrawTrainRouteRegion(bool popout)
+    {
+        var footerHeight = TrainRouteFooterHeight(compact: false);
+        var available = ImGui.GetContentRegionAvail().Y;
+        if (available < ImGui.GetTextLineHeightWithSpacing() * 2)
+        {
+            DrawTrainUndoNotice();
+            DrawTrainList(showZones: !popout || !_config.HideZonesInPopout,
+                swapMarkAndZone: popout && _config.SwapMarkAndZoneInPopout, compact: true);
+            DrawTrainWorkspaceFooter();
+            return;
+        }
+        var scrollFooter = available < footerHeight + ImGui.GetTextLineHeightWithSpacing() * 2;
+        if (ImGui.BeginChild("Train route rows", new Vector2(0, Math.Max(1, scrollFooter ? available : available - footerHeight)), false))
+        {
+            DrawTrainUndoNotice();
+            DrawTrainList(showZones: !popout || !_config.HideZonesInPopout,
+                swapMarkAndZone: popout && _config.SwapMarkAndZoneInPopout, compact: true);
             if (scrollFooter) DrawTrainWorkspaceFooter();
         }
         ImGui.EndChild();
         if (!scrollFooter) DrawTrainWorkspaceFooter();
     }
 
-    private void DrawTrainContext()
+    private void DrawTrainContext(bool compact = false)
     {
         var sharing = _config.SyncEnabled && _config.SyncShareTrain;
-        var context = sharing ? (_sync.IsConnected ? "Shared train" : "Shared train · disconnected") : "Local train";
+        var context = Sync.ConnectionPresentation.TrainScope(_config.SyncEnabled, _sync.IsConnected, _config.SyncShareTrain);
+        var start = ImGui.GetCursorPos();
+        var scale = ImGuiHelpers.GlobalScale;
+        var padding = compact ? 3 * scale : 6 * scale;
+        var width = Math.Max(1, ImGui.GetContentRegionAvail().X - padding * 2);
+        var gap = ImGui.GetStyle().ItemSpacing.X;
+        var flagWidth = HuntUi.ButtonWidth("Add flag", FontAwesomeIcon.MapMarkerAlt);
+        var sharingWidth = ImGui.CalcTextSize(context).X + ImGui.GetFrameHeight() + gap;
+        var compactLayout = TrainContextLayout.Compact(width, scale, gap, flagWidth);
+        var presetWidth = compact ? compactLayout.PresetWidth : 184 * scale;
+        var nameWidth = compact ? compactLayout.NameWidth : 146 * scale;
+        var orderWidth = compact ? 0 : ImGui.CalcTextSize("Order").X + gap;
+        var inlineSharing = compact || width >= orderWidth + presetWidth + flagWidth + nameWidth + sharingWidth + gap * 4;
+        var rows = compact && !_config.ScanningPaused ? compactLayout.Rows : inlineSharing ? 1 : 2;
+        var height = ImGui.GetFrameHeight() * rows + padding * 2 + (rows - 1) * ImGui.GetStyle().ItemSpacing.Y;
+        HuntUi.FillBand(height, HuntTheme.Surface);
+        ImGui.SetCursorPos(start + new Vector2(padding));
         if (!_config.ScanningPaused)
         {
-            var width = Math.Max(1, ImGui.GetContentRegionAvail().X);
-            var spacing = ImGui.GetStyle().ItemSpacing.X;
-            var contextWidth = ImGui.CalcTextSize(context).X;
-            var minimumPresetWidth = ImGui.CalcTextSize("Manual order").X + ImGui.GetFrameHeight()
-                + ImGui.GetStyle().FramePadding.X * 2;
-            var inline = contextWidth + spacing + minimumPresetWidth <= width;
-            ImGui.AlignTextToFramePadding();
-            ImGui.TextWrapped(context);
-            if (inline) ImGui.SameLine();
-            var controlsWidth = inline ? width - contextWidth - spacing : width;
-            var presetX = ImGui.GetCursorPosX();
-            var presetWidth = Math.Min(280, Math.Max(1, controlsWidth));
+            if (!compact)
+            {
+                ImGui.AlignTextToFramePadding();
+                ImGui.TextDisabled("Order");
+                ImGui.SameLine();
+                presetWidth = Math.Min(presetWidth, Math.Max(80 * scale, width - orderWidth - flagWidth - 90 * scale - gap * 2));
+                nameWidth = Math.Min(nameWidth, Math.Max(1, width - orderWidth - presetWidth - flagWidth - gap * 2));
+            }
             DrawPresetSelector("##Route preset", presetWidth);
-            DrawAddTrainFlagControls(presetX, presetWidth);
+            if (!compact || !compactLayout.WrapFlagControls) ImGui.SameLine();
+            else ImGui.SetCursorPosX(start.X + padding);
+            ImGui.BeginDisabled(TrainMutationBusy);
+            if (compact)
+            {
+                ImGui.SetNextItemWidth(nameWidth);
+                ImGui.InputTextWithHint("##customFlagLabel", "Flag name", ref _customFlagLabel, 64);
+                if (!compactLayout.StackFlagButton) ImGui.SameLine();
+                else ImGui.SetCursorPosX(start.X + padding);
+                DrawTrainContextFlagButton();
+            }
+            else
+            {
+                DrawTrainContextFlagButton();
+                ImGui.SameLine();
+                ImGui.SetNextItemWidth(nameWidth);
+                ImGui.InputTextWithHint("##customFlagLabel", "Optional stop name", ref _customFlagLabel, 64);
+            }
+            ImGui.EndDisabled();
         }
         else
         {
@@ -139,10 +371,25 @@ public sealed partial class Plugin
             var active = presets.FirstOrDefault(p => p.Id == ActivePresetId);
             var order = active?.Name ?? "Manual order";
             if (active is not null && PresetOrderingPaused) order += " · ordering paused";
-            ImGui.TextWrapped(context + " · " + order);
-            TrainControlSameLine("Change");
-            if (ImGui.SmallButton("Change")) SelectTrainPage(TrainWorkspacePage.Setup);
+            var changeWidth = HuntUi.ButtonWidth("Change");
+            var orderAvailable = Math.Max(1, width - changeWidth - gap - (!compact && inlineSharing ? sharingWidth + gap : 0));
+            ImGui.AlignTextToFramePadding();
+            ImGui.TextColored(HuntTheme.Muted, TrainRowPresentation.FitText(order, orderAvailable, static text => ImGui.CalcTextSize(text).X));
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip(order);
+            ImGui.SameLine();
+            if (HuntUi.Button("change-order", "Change", quiet: true)) SelectTrainPanel(TrainWorkspacePage.Setup, compact);
         }
+        if (!compact)
+        {
+            if (inlineSharing) ImGui.SameLine();
+            ImGui.SetCursorPosX(Math.Max(start.X + padding, start.X + padding + width - sharingWidth));
+            ImGui.AlignTextToFramePadding();
+            ImGui.TextDisabled(context);
+            ImGui.SameLine();
+            if (HuntUi.IconButton("train-popout", FontAwesomeIcon.ExternalLinkAlt, "Hunt Train popout /hht"))
+                _trainPopoutVisible = true;
+        }
+        ImGui.SetCursorPos(new Vector2(start.X, Math.Max(start.Y + height, ImGui.GetCursorPosY())));
         if (sharing && !_sync.HasCurrentTrainSnapshot)
             ImGui.TextWrapped("Waiting for the server's train. Shared updates resume after reconnecting.");
         else if (sharing && !_sync.SupportsTrainPresets)
@@ -150,35 +397,184 @@ public sealed partial class Plugin
         if (!string.IsNullOrWhiteSpace(_sync.PresetStatus)) ImGui.TextWrapped(_sync.PresetStatus);
     }
 
-    private void DrawTrainSetup()
+    private void DrawTrainContextFlagButton()
+    {
+        if (!HuntUi.Button("add-flag", "Add flag", FontAwesomeIcon.MapMarkerAlt,
+            tooltip: "Add your current map flag to the train as a custom stop") || TrainMutationBusy) return;
+        if (_detector.AddCustomFlag(_customFlagLabel) is null)
+            ReportProblem("No map flag set - place one with Ctrl+Right-Click first.");
+        else _customFlagLabel = string.Empty;
+    }
+
+    private void DrawTrainSetup(bool compact)
     {
         ImGui.BeginDisabled(TrainMutationBusy);
-        DrawSettingsHeading("Route preset");
-        DrawPresetControls();
-        ImGui.Spacing();
-        DrawSettingsHeading("Route tools and view");
-        DrawTrainControls();
-        DrawTrainPopoutNamePreferences();
-        var spicing = _config.ShowSpicing;
-        if (ImGui.Checkbox("Show spicing markers", ref spicing))
+        ImGui.TextUnformatted("Route preset");
+        var presets = SharingPresetTrain ? _sync.TrainPresets.Presets : _config.TrainPresets;
+        var active = presets.FirstOrDefault(preset => preset.Id == ActivePresetId);
+        DrawPresetSelector("##Plan preset", Math.Max(1, ImGui.GetContentRegionAvail().X - ImGui.GetFrameHeight() - ImGui.GetStyle().ItemSpacing.X));
+        ImGui.SameLine();
+        ImGui.BeginDisabled(active is null);
+        if (HuntUi.IconButton("duplicate-preset", FontAwesomeIcon.Copy, "Duplicate this preset" ) && active is not null)
         {
-            _config.ShowSpicing = spicing;
+            var duplicate = active.Copy();
+            duplicate.Id = Guid.NewGuid().ToString("N");
+            duplicate.Name = duplicate.Name.Length <= 73 ? duplicate.Name + " (copy)" : duplicate.Name[..73] + " (copy)";
+            EditPreset(duplicate, PresetDraftSource.New, unsaved: true);
+        }
+        ImGui.EndDisabled();
+        if (!compact)
+        {
+            if (active is not null) DrawTrainPlanZones(active);
+            else ImGui.TextDisabled("Manual route order");
+        }
+        if (HuntUi.Button("edit-preset", active is null ? "Preset library" : "Edit preset", FontAwesomeIcon.PencilAlt))
+        {
+            if (active is not null) EditPreset(active, SharingPresetTrain ? PresetDraftSource.Server : PresetDraftSource.Local);
+            else OpenPresetEditor();
+        }
+        TrainControlSameLine(HuntUi.ButtonWidth("Calculate rallies", FontAwesomeIcon.MapMarkedAlt));
+        var unavailable = RallyCalculationUnavailable;
+        ImGui.BeginDisabled(unavailable is not null);
+        if (HuntUi.Button("calculate-rallies", "Calculate rallies", FontAwesomeIcon.MapMarkedAlt,
+            tooltip: unavailable ?? "Calculate pending rally flags for the current route order") && RallyCalculationUnavailable is null)
+        {
+            if (SharingPresetTrain) _sync.SendPreset("recalculate-rallies");
+            else ApplyLocalTrainPreset(force: true, recalculateRallies: true);
+        }
+        ImGui.EndDisabled();
+        if (ActivePresetId is not null && PresetOrderingPaused)
+            ImGui.TextColored(HuntTheme.Warning, "Ordering paused");
+        ImGui.Spacing();
+        ImGui.Separator();
+        ImGui.TextUnformatted("Scout credits");
+        DrawTrainPlanCredits();
+        ImGui.Spacing();
+        if (ImGui.CollapsingHeader("Train watches")) DrawSRankWatches();
+        ImGui.EndDisabled();
+        ImGui.Spacing();
+        if (ImGui.CollapsingHeader("Route tools & recovery"))
+        {
+            ImGui.BeginDisabled(TrainMutationBusy);
+            if (HuntUi.Button("plan-import", "Import", FontAwesomeIcon.Clipboard)) ImportFromClipboard();
+            TrainControlSameLine(HuntUi.ButtonWidth("Export", FontAwesomeIcon.Copy));
+            if (HuntUi.Button("plan-export", "Export", FontAwesomeIcon.Copy)) CopyTrainExport();
+            ImGui.Spacing();
+            DrawAddTrainFlagControls(labelWidth: Math.Min(180, ImGui.GetContentRegionAvail().X));
+            ImGui.EndDisabled();
+            DrawTrainRecoveryControls();
+        }
+        if (HuntUi.Button("train-preferences", "Train preferences", FontAwesomeIcon.Cog, quiet: true))
+            OpenPreferences(SettingsPage.Train);
+    }
+
+    private void DrawTrainPlanZones(TrainPreset preset)
+    {
+        string? previousExpansion = null;
+        foreach (var zone in preset.Zones)
+        {
+            if (!RouteCatalog.ByTerritory.TryGetValue(zone.TerritoryId, out var info)) continue;
+            ImGui.PushID((int)zone.TerritoryId);
+            if (previousExpansion != info.Expansion)
+            {
+                ImGui.Spacing();
+                ImGui.TextDisabled(info.Expansion);
+            }
+            var canMove = previousExpansion == info.Expansion;
+            previousExpansion = info.Expansion;
+            var start = ImGui.GetCursorPos();
+            var width = ImGui.GetContentRegionAvail().X;
+            var height = ImGui.GetFrameHeight();
+            ImGui.AlignTextToFramePadding();
+            ImGui.TextUnformatted(TrainRowPresentation.FitText(info.Name,
+                Math.Max(1, width - height - ImGui.GetStyle().ItemSpacing.X), static text => ImGui.CalcTextSize(text).X));
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip(info.Name);
+            ImGui.SameLine();
+            ImGui.SetCursorPosX(start.X + width - height);
+            ImGui.BeginDisabled(!canMove || _presetDraftRequest is not null);
+            if (HuntUi.IconButton("move-zone-up", FontAwesomeIcon.ArrowUp,
+                _presetDraftRequest is not null ? "Wait for the server to confirm the preset change."
+                : "Move this zone earlier in the editor draft. Save to apply the change."))
+            {
+                EditPreset(preset, SharingPresetTrain ? PresetDraftSource.Server : PresetDraftSource.Local,
+                    earlierZone: zone.TerritoryId);
+            }
+            ImGui.EndDisabled();
+            ImGui.SetCursorPos(new Vector2(start.X, start.Y + height + 1));
+            ImGui.Separator();
+            ImGui.PopID();
+        }
+    }
+
+    private void DrawTrainPlanCredits()
+    {
+        var sharedRemoval = _sync.IsConnected && _config.SyncShareTrain && _sync.SupportsScoutRemoval;
+        foreach (var name in CombinedTrainScouts())
+        {
+            ImGui.PushID(name);
+            var start = ImGui.GetCursorPosX();
+            var width = ImGui.GetContentRegionAvail().X;
+            var local = _config.AdditionalScouts.Any(credit => credit.Trim().Equals(name, StringComparison.OrdinalIgnoreCase));
+            ImGui.AlignTextToFramePadding();
+            ImGui.TextUnformatted(TrainRowPresentation.FitText(name, Math.Max(1, width - ImGui.GetFrameHeight() - ImGui.GetStyle().ItemSpacing.X), static text => ImGui.CalcTextSize(text).X));
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip(name);
+            ImGui.SameLine();
+            ImGui.SetCursorPosX(start + width - ImGui.GetFrameHeight());
+            ImGui.BeginDisabled(!local && !sharedRemoval);
+            if (HuntUi.IconButton("remove-credit", FontAwesomeIcon.Times,
+                local || sharedRemoval ? "Remove scout credit" : "Automatic credit while scouting is active"))
+            {
+                _config.AdditionalScouts.RemoveAll(credit => credit.Trim().Equals(name, StringComparison.OrdinalIgnoreCase));
+                _sync.ChangeScoutCredit(name, false);
+                _config.Save();
+            }
+            ImGui.EndDisabled();
+            ImGui.PopID();
+        }
+        var names = _config.AdditionalScouts.Where(name => !string.IsNullOrWhiteSpace(name)).ToList();
+        ImGui.BeginDisabled(names.Count >= MaxAdditionalScouts);
+        ImGui.SetNextItemWidth(Math.Max(1, ImGui.GetContentRegionAvail().X - ImGui.GetFrameHeight() - ImGui.GetStyle().ItemSpacing.X));
+        var submit = ImGui.InputTextWithHint("##Scout credit", "Scout name", ref _manualScoutDraft, 100, ImGuiInputTextFlags.EnterReturnsTrue);
+        ImGui.SameLine();
+        var draft = _manualScoutDraft.Trim();
+        var valid = draft.Length > 0 && !draft.Any(char.IsControl)
+            && !names.Any(name => name.Trim().Equals(draft, StringComparison.OrdinalIgnoreCase));
+        ImGui.BeginDisabled(!valid);
+        var clicked = HuntUi.IconButton("add-credit", FontAwesomeIcon.Plus, "Add scout credit");
+        ImGui.EndDisabled();
+        if (names.Count < MaxAdditionalScouts && valid && (submit || clicked))
+        {
+            _config.AdditionalScouts.RemoveAll(string.IsNullOrWhiteSpace);
+            _config.AdditionalScouts.Add(draft);
+            _sync.ChangeScoutCredit(draft, true);
+            _manualScoutDraft = string.Empty;
             _config.Save();
         }
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("Show spicing markers and enable right-click > Being spiced on mark rows.");
-        ImGui.Spacing();
-        DrawSettingsHeading("Scout credits");
-        DrawTrainScouts();
-        ImGui.Spacing();
-        if (ImGui.CollapsingHeader("S-rank watch setup")) DrawSRankWatches();
-        ImGui.Spacing();
-        DrawSettingsHeading("Recovery");
+        ImGui.EndDisabled();
+        if (names.Count >= MaxAdditionalScouts) ImGui.TextDisabled($"Maximum {MaxAdditionalScouts} additional scouts");
+        var removed = _sync.ScoutCredits.Where(credit => credit.Removed).ToList();
+        if (removed.Count == 0 || !ImGui.CollapsingHeader($"Removed credits ({removed.Count})")) return;
+        foreach (var credit in removed)
+        {
+            ImGui.PushID("removed-" + credit.Name);
+            ImGui.BeginDisabled(!sharedRemoval);
+            var width = ImGui.GetContentRegionAvail().X;
+            var label = TrainRowPresentation.FitText(credit.Name, Math.Max(1, width - ImGui.GetFrameHeight() * 2), static text => ImGui.CalcTextSize(text).X);
+            if (HuntUi.Button("restore-credit", label, FontAwesomeIcon.Undo, quiet: true,
+                tooltip: "Restore " + credit.Name)) _sync.ChangeScoutCredit(credit.Name, true);
+            ImGui.EndDisabled();
+            ImGui.PopID();
+        }
+    }
+
+    private void DrawTrainRecoveryControls()
+    {
+        ImGui.BeginDisabled(TrainMutationBusy);
         if (ImGui.Button("Remove Dead")) _detector.RemoveDead();
         if (ImGui.IsItemHovered()) ImGui.SetTooltip("Remove dead route rows; their report history is retained.");
         TrainControlSameLine("Reset train");
         ImGui.BeginDisabled(!ImGui.GetIO().KeyShift);
-        ImGui.PushStyleColor(ImGuiCol.Text, new Vector4(1f, 0.4f, 0.4f, 1f));
+        ImGui.PushStyleColor(ImGuiCol.Text, HuntTheme.Danger);
         if (ImGui.Button("Reset train")) ResetTrainWithUndo();
         ImGui.PopStyleColor();
         ImGui.EndDisabled();
@@ -187,11 +583,24 @@ public sealed partial class Plugin
         ImGui.EndDisabled();
     }
 
-    private void DrawTrainReports()
+    private void DrawTrainUndoNotice()
     {
+        if (!_showTrainUndoNotice || _config.ResetUndoAt is null) return;
+        ImGui.PushID("Recovery notice");
+        ImGui.BeginDisabled(TrainMutationBusy);
+        DrawTrainUndo();
+        ImGui.EndDisabled();
+        if (ImGui.SmallButton("Dismiss recovery notice")) _showTrainUndoNotice = false;
+        ImGui.Separator();
+        ImGui.PopID();
+    }
+
+    private void DrawTrainReports(bool compact)
+    {
+        _trainReportsDrawnAt = DateTime.UtcNow;
         var report = _trainCompletionReport ? 1 : 0;
         ImGui.BeginDisabled(TrainMutationBusy);
-        ImGui.SetNextItemWidth(Math.Min(240, ImGui.GetContentRegionAvail().X));
+        ImGui.SetNextItemWidth(Math.Max(1, ImGui.GetContentRegionAvail().X));
         if (ImGui.Combo("##Report type", ref report, new[] { "Scouting report", "Train completion" }, 2))
         {
             _trainCompletionReport = report == 1;
@@ -206,9 +615,13 @@ public sealed partial class Plugin
             _scoutNote.ObserveTrain(_detector.TrainGeneration);
             var note = _scoutNote.Text;
             ImGui.Spacing();
-            ImGui.TextUnformatted($"Scout notes (optional) — {ScoutingReport.NoteCharacterCount(note)} / {ScoutingReport.MaxNotesLength}");
+            ImGui.TextUnformatted("Scout note");
+            var count = $"{ScoutingReport.NoteCharacterCount(note)} / {ScoutingReport.MaxNotesLength}";
+            ImGui.SameLine();
+            ImGui.SetCursorPosX(ImGui.GetWindowContentRegionMax().X - ImGui.CalcTextSize(count).X);
+            ImGui.TextDisabled(count);
             if (ImGui.InputTextMultiline("##Scout notes", ref note, 4096,
-                new Vector2(-1, ImGui.GetTextLineHeightWithSpacing() * 3)))
+                new Vector2(-1, ImGui.GetTextLineHeightWithSpacing() * 2.5f)))
             {
                 _scoutNote.SetText(note, _detector.TrainGeneration);
                 _trainPreviewFingerprint = null;
@@ -228,35 +641,29 @@ public sealed partial class Plugin
                     ImGui.TreePop();
                 }
             }
-            ImGui.Spacing();
-            var scouts = CombinedTrainScouts();
-            var credits = scouts.Count == 0 ? "No scouts credited" : "Scouts: " + string.Join(", ", scouts.Take(3));
-            if (scouts.Count > 3) credits += $" (+{scouts.Count - 3})";
-            ImGui.TextWrapped(credits);
-            if (ImGui.SmallButton("Edit credits")) SelectTrainPage(TrainWorkspacePage.Setup);
+            if (HuntUi.Button("report-credits", "Scout credits", FontAwesomeIcon.Users, quiet: true))
+                SelectTrainPanel(TrainWorkspacePage.Setup, compact);
         }
         else
         {
-            ImGui.TextWrapped("Reports expansions with observed kills. Reported dead marks are cleared after success; unfinished marks remain.");
             if (_config.SyncEnabled && _config.SyncShareTrain && (!_sync.IsConnected || !_sync.SupportsPartialFinish))
                 ImGui.TextWrapped("Connect to a server with persistent partial-report support before finishing this shared train.");
         }
 
         ImGui.Spacing();
         ImGui.Separator();
-        if (TrainMutationBusy)
-            ImGui.TextWrapped("Sending the captured report. Note edits are saved for your next report.");
-        else
-            ImGui.TextWrapped("Live preview — sending refreshes the latest train state.");
+        ImGui.TextColored(HuntTheme.Muted, TrainMutationBusy ? "Captured report" : "Live preview");
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip(TrainMutationBusy
+            ? "Sending this captured report. Note edits are saved for the next report."
+            : $"Sending refreshes the latest train state.\nUpdated {_trainPreviewAt.ToLocalTime():T}");
         if (!string.IsNullOrEmpty(_trainPreviewError)) ImGui.TextWrapped(_trainPreviewError);
         if (_trainReportPreview is { } preview)
         {
             var destinations = TrainMutationBusy ? _trainReportDestinationCount : ReportDestinationCount();
-            ImGui.TextWrapped($"{preview.MessageCount} Discord message(s) per destination · {destinations} enabled destination(s)");
+            ImGui.TextDisabled($"{destinations} destinations / {preview.MessageCount} messages each");
             if (!_trainCompletionReport && preview.MessageCount == 2)
                 ImGui.TextWrapped("The import code will be sent first, followed by the report in a second message.");
             if (preview.MessageCount == 0) ImGui.TextWrapped(preview.EmptyMessage);
-            ImGui.TextDisabled($"Preview updated {_trainPreviewAt.ToLocalTime():T}");
             DrawPreparedTrainReport(_trainReportDisplay);
         }
         else if (string.IsNullOrEmpty(_trainPreviewError)) ImGui.TextDisabled("Preparing preview…");
@@ -283,6 +690,10 @@ public sealed partial class Plugin
 
     private void DrawPreparedTrainReport(IReadOnlyList<DiscordEmbedPreview> embeds)
     {
+        var start = ImGui.GetCursorScreenPos();
+        var inset = 10 * ImGuiHelpers.GlobalScale;
+        ImGui.Indent(inset);
+        ImGui.BeginGroup();
         for (var i = 0; i < embeds.Count; i++)
         {
             var embed = embeds[i];
@@ -292,7 +703,7 @@ public sealed partial class Plugin
                 ImGui.TextDisabled(i == 0 ? "Message 1 — import code" : "Message 2 — scouting report");
             if (embed.Description.StartsWith("```", StringComparison.Ordinal))
             {
-                if (embed.Title != "Import code") DrawSettingsHeading(embed.Title);
+                if (embed.Title != "Import code") ImGui.TextUnformatted(embed.Title);
                 if (ImGui.CollapsingHeader("Import code"))
                 {
                     var code = embed.Description.Trim().Trim('`').Trim();
@@ -310,61 +721,63 @@ public sealed partial class Plugin
             }
             else
             {
-                DrawSettingsHeading(embed.Title);
+                ImGui.TextWrapped(embed.Title);
                 ImGui.TextWrapped(embed.Description);
             }
             foreach (var field in embed.Fields ?? Array.Empty<DiscordEmbedFieldPreview>())
             {
                 if (!string.IsNullOrWhiteSpace(field.Name.Replace("\u200b", string.Empty)))
-                    DrawSettingsHeading(field.Name);
+                    ImGui.TextColored(HuntTheme.Muted, field.Name);
                 ImGui.TextWrapped(field.Value);
             }
             ImGui.PopID();
         }
+        ImGui.EndGroup();
+        var end = ImGui.GetItemRectMax();
+        ImGui.Unindent(inset);
+        if (end.Y > start.Y) ImGui.GetWindowDrawList().AddLine(start, new Vector2(start.X, end.Y),
+            ImGui.GetColorU32(HuntTheme.Telemetry), 3 * ImGuiHelpers.GlobalScale);
     }
 
-    private float TrainWorkspaceFooterHeight()
+    private float TrainRouteFooterHeight(bool compact)
     {
-        if (!HasTrainWorkspaceFooter) return 0;
+        if (compact) return CompactTrainFooterHeight();
         var style = ImGui.GetStyle();
         var width = Math.Max(1, ImGui.GetContentRegionAvail().X);
-        var height = 0f;
-        void AddRow(float rowHeight)
-        {
-            if (height > 0) height += style.ItemSpacing.Y;
-            height += rowHeight;
-        }
-        float TextHeight(string text) => ImGui.CalcTextSize(text, false, width).Y;
-
-        if (_trainWorkspacePage == TrainWorkspacePage.Route)
-        {
-            var summary = TrainRouteCountText();
-            if (TrainFooterEndFits(summary, width))
-                AddRow(Math.Max(TextHeight(summary), ImGui.GetFrameHeight()));
-            else
-            {
-                AddRow(TextHeight(summary));
-                AddRow(ImGui.GetFrameHeight());
-            }
-        }
-        else if (_trainWorkspacePage == TrainWorkspacePage.Reports)
-        {
-            AddRow(ImGui.GetFrameHeight());
-            AddRow(TextHeight(TrainReportSendHint));
-        }
-        if (ShowTrainReportProgress) AddRow(TextHeight(TrainReportBusyText));
-        if (!string.IsNullOrEmpty(TrainWorkspaceResultText)) AddRow(TextHeight(TrainWorkspaceResultText));
-        // EndChild and the separator each advance by ItemSpacing.Y. The last
-        // footer row needs its visible height, without another trailing gap.
+        var summary = TrainRouteCountText();
+        var textHeight = ImGui.CalcTextSize(summary, false, width).Y;
+        var height = TrainFooterEndFits(summary, width) ? Math.Max(textHeight, ImGui.GetFrameHeight())
+            : textHeight + style.ItemSpacing.Y + ImGui.GetFrameHeight();
+        if (TrainMutationBusy) height += style.ItemSpacing.Y + ImGui.CalcTextSize(TrainReportBusyText, false, width).Y;
+        if (!string.IsNullOrEmpty(TrainRouteResultText))
+            height += style.ItemSpacing.Y + ImGui.CalcTextSize(TrainRouteResultText, false, width).Y;
         return height + style.ItemSpacing.Y * 2;
+    }
+
+    private float TrainReportFooterHeight()
+    {
+        var spacing = ImGui.GetStyle().ItemSpacing.Y;
+        var width = Math.Max(1, ImGui.GetContentRegionAvail().X);
+        var height = ImGui.GetFrameHeight() + spacing + ImGui.CalcTextSize(TrainReportSendHint, false, width).Y;
+        if (TrainMutationBusy) height += spacing + ImGui.CalcTextSize(TrainReportBusyText, false, width).Y;
+        if (!string.IsNullOrEmpty(_lastPostResult)) height += spacing + ImGui.CalcTextSize(_lastPostResult, false, width).Y;
+        return height + spacing * 2;
+    }
+
+    private void OpenTrainCompletionPreview(bool compact)
+    {
+        if (!_trainCompletionReport)
+        {
+            _trainCompletionReport = true;
+            _trainReportPreview = null;
+            _trainPreviewFingerprint = null;
+        }
+        SelectTrainPanel(TrainWorkspacePage.Reports, compact);
     }
 
     private const string TrainEndLabel = "End train";
     private const string TrainReportSendHint = "Hold Shift and click to send.";
-    private bool HasTrainWorkspaceFooter => _trainWorkspacePage != TrainWorkspacePage.Setup
-        || !string.IsNullOrEmpty(TrainWorkspaceResultText);
-    private bool ShowTrainReportProgress => _trainWorkspacePage == TrainWorkspacePage.Reports && TrainMutationBusy;
-    private string TrainWorkspaceResultText => !_trainResultReportsOnly || _trainWorkspacePage == TrainWorkspacePage.Reports
+    private string TrainRouteResultText => !_trainResultReportsOnly || _trainWorkspacePage != TrainWorkspacePage.Reports
         ? _lastPostResult : string.Empty;
     private string TrainReportBusyText => _completion.IsBusy ? "Finishing report…" : "Sending report…";
 
@@ -378,7 +791,7 @@ public sealed partial class Plugin
             recorded++;
             if (!mark.Dead) remaining++;
         }
-        return $"{recorded} records · {remaining} recorded up";
+        return $"{remaining} left / {recorded} recorded";
     }
 
     private static bool TrainFooterEndFits(string summary, float width) =>
@@ -394,36 +807,48 @@ public sealed partial class Plugin
 
     private void DrawTrainWorkspaceFooter()
     {
-        if (!HasTrainWorkspaceFooter) return;
         ImGui.Separator();
-        if (_trainWorkspacePage == TrainWorkspacePage.Route)
+        var summary = TrainRouteCountText();
+        var endFits = TrainFooterEndFits(summary, ImGui.GetContentRegionAvail().X);
+        DrawTrainFooterMutedText(summary);
+        if (endFits)
         {
-            var summary = TrainRouteCountText();
-            var endFits = TrainFooterEndFits(summary, ImGui.GetContentRegionAvail().X);
-            DrawTrainFooterMutedText(summary);
-            if (endFits) ImGui.SameLine();
-            var armed = ImGui.GetIO().KeyShift;
-            ImGui.BeginDisabled(TrainMutationBusy || !armed);
-            if (ImGui.Button(TrainEndLabel) && armed) _ = EndTrainNowAsync();
-            ImGui.EndDisabled();
-            if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
-                ImGui.SetTooltip("Hold Shift and click to send the completion report.\nReported dead marks are cleared after success; unfinished marks remain.\nPreview available in Reports > Train completion.");
+            ImGui.SameLine();
+            ImGui.SetCursorPosX(ImGui.GetWindowContentRegionMax().X - HuntUi.ButtonWidth(TrainEndLabel));
         }
-        else if (_trainWorkspacePage == TrainWorkspacePage.Reports)
+        DrawTrainEndButton(compact: false);
+        if (TrainMutationBusy) DrawTrainFooterMutedText(TrainReportBusyText);
+        if (!string.IsNullOrEmpty(TrainRouteResultText)) ImGui.TextWrapped(TrainRouteResultText);
+    }
+
+    private void DrawTrainEndButton(bool compact)
+    {
+        ImGui.BeginDisabled(TrainMutationBusy);
+        if (HuntUi.Button("end-train", TrainEndLabel))
         {
-            var canFinish = !_trainCompletionReport || !_config.SyncEnabled || !_config.SyncShareTrain
-                || _sync.IsConnected && _sync.SupportsPartialFinish;
-            ImGui.BeginDisabled(TrainMutationBusy || !ImGui.GetIO().KeyShift || !canFinish || _trainReportPreview is not { MessageCount: > 0 });
-            if (_trainCompletionReport)
-            {
-                if (ImGui.Button("Send & finish completed legs")) _ = EndTrainNowAsync();
-            }
-            else if (ImGui.Button("Send scouting report")) _ = SendScoutingReportAsync();
-            ImGui.EndDisabled();
-            DrawTrainFooterMutedText(TrainReportSendHint);
+            if (ImGui.GetIO().KeyShift) _ = EndTrainNowAsync();
+            else OpenTrainCompletionPreview(compact);
         }
-        if (ShowTrainReportProgress) DrawTrainFooterMutedText(TrainReportBusyText);
-        if (!string.IsNullOrEmpty(TrainWorkspaceResultText)) ImGui.TextWrapped(TrainWorkspaceResultText);
+        ImGui.EndDisabled();
+        if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+            ImGui.SetTooltip("Preview the completion report. Shift-click to send immediately.\nReported dead marks clear after success; unfinished marks remain.");
+    }
+
+    private void DrawTrainReportFooter()
+    {
+        ImGui.Separator();
+        var canFinish = !_trainCompletionReport || !_config.SyncEnabled || !_config.SyncShareTrain
+            || _sync.IsConnected && _sync.SupportsPartialFinish;
+        ImGui.BeginDisabled(TrainMutationBusy || !ImGui.GetIO().KeyShift || !canFinish || _trainReportPreview is not { MessageCount: > 0 });
+        if (_trainCompletionReport)
+        {
+            if (HuntUi.Button("send-completion", "Send completion", FontAwesomeIcon.PaperPlane, primary: true)) _ = EndTrainNowAsync();
+        }
+        else if (HuntUi.Button("send-scouting", "Send scouting report", FontAwesomeIcon.PaperPlane, primary: true)) _ = SendScoutingReportAsync();
+        ImGui.EndDisabled();
+        DrawTrainFooterMutedText(TrainReportSendHint);
+        if (TrainMutationBusy) DrawTrainFooterMutedText(TrainReportBusyText);
+        if (!string.IsNullOrEmpty(_lastPostResult)) ImGui.TextWrapped(_lastPostResult);
     }
 
     private void SetTrainReportPreview(PreparedDiscordReport report)
@@ -448,8 +873,7 @@ public sealed partial class Plugin
     {
         _scoutNote.ObserveTrain(_detector.TrainGeneration);
         var now = DateTime.UtcNow;
-        if (TrainMutationBusy || _trainWorkspacePage != TrainWorkspacePage.Reports
-            || now - _trainWorkspaceDrawnAt > TimeSpan.FromSeconds(1) || now < _nextTrainPreviewUpdate) return;
+        if (TrainMutationBusy || now - _trainReportsDrawnAt > TimeSpan.FromSeconds(1) || now < _nextTrainPreviewUpdate) return;
         _nextTrainPreviewUpdate = now.AddSeconds(1);
         try
         {

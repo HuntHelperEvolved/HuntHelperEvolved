@@ -34,6 +34,13 @@ public static class ReleaseNotes
 
     public static readonly Release[] All =
     {
+        new("0.6.0.4", "2026-09-30", "Local preview: reimagined UI and opt-in Bear Toolkit reports.",
+        [
+            new("Interface", "Includes the reimagined hunt workspace, compact train view, settings and connection controls from the UI testing branch.", Kihtli),
+            new("Bear Toolkit preview", "An optional server feed supplies community sightings, health and death reports. Enable the Bear preview in Sharing settings on a compatible server. Reports remain separate from shared scouting, trains and lifetime kill credit.", Kihtli),
+            new("Source priority", "Live reports use plugin, then Bear, then Faloop. Pull-time clocks stay anchored to Faloop even when another source supplies health; Bear does not change the existing timer boards.", Kihtli),
+            new("Compatibility", "Protocol 4 is retained. Existing servers remain usable, and clients that do not opt in keep their existing feeds. Bear health expires when observations become stale or the feed disconnects.", Kihtli),
+        ]),
         new("0.6.0.3", "2026-09-28", "Shared A-rank locations, Ctrl-click travel and more compact timer boards.",
         [
             new("A-rank locations", "Last known location in /hha flags the latest coordinates reported by anyone in the sync group, including the current position when seen up. Positions survive cleared trains and reloads, stay separate by world and instance, and are greyed out when unavailable. Server 0.3.32 or later also supplies saved positions to users joining after a train has cleared.", Kihtli),

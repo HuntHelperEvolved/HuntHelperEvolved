@@ -155,6 +155,7 @@ public static class SettingsReset
                 config.SyncAllowPlaintext = defaults.SyncAllowPlaintext;
                 config.SyncShareTrain = defaults.SyncShareTrain;
                 config.SyncShareSightings = defaults.SyncShareSightings;
+                config.SyncReceiveBearFeed = defaults.SyncReceiveBearFeed;
                 config.SyncReportSRankKills = defaults.SyncReportSRankKills;
                 break;
             case SettingsResetCategory.HuntWindows:
@@ -191,6 +192,7 @@ public static class SettingsReset
                 break;
             case SettingsResetCategory.General:
                 config.ShowReleaseNotesOnUpdate = defaults.ShowReleaseNotesOnUpdate;
+                config.Theme = defaults.Theme;
                 break;
             case SettingsResetCategory.SyncConnection:
                 config.SyncEnabled = defaults.SyncEnabled;

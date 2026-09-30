@@ -10,10 +10,62 @@ public static class TimerTableUi
     public const ImGuiTableFlags Flags = ImGuiTableFlags.RowBg | ImGuiTableFlags.BordersInnerH | ImGuiTableFlags.ScrollY
         | ImGuiTableFlags.Resizable | ImGuiTableFlags.Hideable | ImGuiTableFlags.SizingStretchProp
         | ImGuiTableFlags.Sortable | ImGuiTableFlags.SortTristate;
-    public static readonly Vector4 Up = new(0.3f,1f,0.4f,1f);
-    public static readonly Vector4 Window = new(1f,0.85f,0.3f,1f);
-    public static readonly Vector4 Cooldown = new(0.7f,0.7f,0.7f,1f);
-    public static readonly Vector4 Unknown = new(0.5f,0.5f,0.5f,1f);
+    public static Vector4 Up => HuntTheme.Success;
+    public static Vector4 Window => HuntTheme.Warning;
+    public static Vector4 Cooldown => HuntTheme.Muted;
+    public static Vector4 Unknown => HuntTheme.Muted;
+
+    public static float FooterHeight => ImGui.GetFrameHeightWithSpacing() + ImGui.GetStyle().ItemSpacing.Y + 1;
+
+    public static void Footer(string id, string summary, Configuration config, SyncCoordinator sync, Action openSettings)
+    {
+        ImGui.Separator();
+        var width = ImGui.GetContentRegionAvail().X;
+        var fullWidth = ConnectionUi.Width();
+        var connectionWidth = width >= fullWidth ? fullWidth : Math.Min(ConnectionUi.Width(compact: true), width);
+        var gap = ImGui.GetStyle().ItemSpacing.X;
+        var summaryWidth = Math.Max(0, width - connectionWidth - gap);
+        if (summaryWidth > 0)
+        {
+            ImGui.AlignTextToFramePadding();
+            ImGui.TextColored(HuntTheme.Muted, TrainRowPresentation.FitText(summary, summaryWidth,
+                static text => ImGui.CalcTextSize(text).X));
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip(summary);
+            ImGui.SameLine();
+        }
+        ImGui.SetCursorPosX(ImGui.GetCursorPosX() + Math.Max(0, ImGui.GetContentRegionAvail().X - connectionWidth));
+        ConnectionUi.Draw(id, config, sync, openSettings, connectionWidth);
+    }
+
+    public static void Status(SRankPhase phase, double percent, DateTime? opens, DateTime? ready, DateTime now,
+        bool offline = false, string upLabel = "UP", string? unknownLabel = null, string? evidence = null)
+    {
+        ImGui.AlignTextToFramePadding();
+        if (offline) ImGui.TextColored(Cooldown, "OFFLINE / MAINTENANCE");
+        else if (phase == SRankPhase.Window) Progress(percent);
+        else
+        {
+            var (label, colour) = phase switch
+            {
+                SRankPhase.Up => (upLabel, Up),
+                SRankPhase.Forced => ("READY", Up),
+                SRankPhase.Cooldown => ("opens in " + Duration((opens ?? now) - now), Cooldown),
+                SRankPhase.Uncertain => (opens is { } earliest && earliest > now
+                    ? "sniped; not before " + Duration(earliest - now) : "sniped; timing unknown", Window),
+                _ => (unknownLabel ?? "no kill recorded", Unknown)
+            };
+            ImGui.TextColored(colour, label);
+        }
+        if (!ImGui.IsItemHovered()) return;
+        var lines = new List<string>();
+        if (offline) lines.Add("This world is offline or in maintenance. Timers are not actionable.");
+        if (phase != SRankPhase.Up && opens is { } opening) lines.Add("Opens: " + Local(opening));
+        if (phase != SRankPhase.Up && ready is { } end) lines.Add("Ready by: " + Local(end));
+        if (!offline && phase == SRankPhase.Window)
+            lines.Add($"{percent:F0}% of the respawn window elapsed; not spawn probability.");
+        if (!string.IsNullOrEmpty(evidence)) lines.Add(evidence);
+        if (lines.Count > 0) ImGui.SetTooltip(string.Join("\n", lines));
+    }
 
     public static List<T> Sort<T>(List<T> rows, Func<T,int,IComparable?> key)
     {
@@ -32,7 +84,7 @@ public static class TimerTableUi
     }
     public static void Progress(double percent)
     {
-        ImGui.PushStyleColor(ImGuiCol.PlotHistogram,Window * new Vector4(1f,1f,1f,0.8f));
+        ImGui.PushStyleColor(ImGuiCol.PlotHistogram, Window with { W = 0.22f });
         ImGui.ProgressBar((float)Math.Clamp(percent/100,0,1),new Vector2(-1,ImGui.GetTextLineHeight()),$"{percent:F0}%");
         ImGui.PopStyleColor();
     }

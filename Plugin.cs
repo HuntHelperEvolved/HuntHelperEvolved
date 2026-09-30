@@ -100,7 +100,6 @@ public sealed partial class Plugin : IDalamudPlugin
     // Sharing with a group through their own server. See Sync/.
     private readonly SyncCoordinator _sync;
     private readonly SRankWindow _srankWindow;
-    private bool _selectSyncTab;
     private readonly ActiveMarksWindow _activeMarksWindow;
     private readonly LifestreamTravel _srankTravel;
     private readonly ARankWindow _arankWindow;
@@ -148,7 +147,6 @@ public sealed partial class Plugin : IDalamudPlugin
     /// config", which used to open the tally's own settings window. Consumed by
     /// the tab on the next frame it draws.
     /// </summary>
-    private bool _selectTallyTab;
 
     /// <summary>
     /// The release notes window. Its own window rather than a tab because it
@@ -399,9 +397,14 @@ public sealed partial class Plugin : IDalamudPlugin
             _sync.SRankSpawned += OnRemoteSRankSpawn;
             _srankTravel = new LifestreamTravel(_pluginInterface, framework, _detector, _chatGui, _log);
             startup.Add(_srankTravel.Dispose);
-            _activeMarksWindow = new ActiveMarksWindow(_config, _sync, _worldData, _detector, _gameGui, _srankTravel, () => { _configWindowVisible=true; _selectActiveMarksSettings=true; });
+            _activeMarksWindow = new ActiveMarksWindow(_config, _sync, _worldData, _detector, _gameGui, _srankTravel, () => OpenPreferences(SettingsPage.ActiveMarks));
             _srankWindow = new SRankWindow(_config, _sync, _worldData, _detector, _srankTravel);
+            _srankWindow.FlagMappingPoint = (territory, instance, x, y) =>
+                MapFlagHelper.FlagPosition(_gameGui, territory, _detector.GetMapId(territory), instance, x, y);
             _arankWindow = new ARankWindow(_config, _sync, _worldData, _detector, _srankTravel, _gameGui);
+            _activeMarksWindow.OpenConnectionSettings = () => OpenPreferences(SettingsPage.Sharing);
+            _srankWindow.OpenConnectionSettings = () => OpenPreferences(SettingsPage.Sharing);
+            _arankWindow.OpenConnectionSettings = () => OpenPreferences(SettingsPage.Sharing);
             // Publish framework-thread snapshots after the detector exists.
             _trainIpc = new TrainIpcProvider(_pluginInterface, _framework, _detector, _log);
             startup.Add(_trainIpc.Dispose);
@@ -456,7 +459,7 @@ public sealed partial class Plugin : IDalamudPlugin
 
     // Tally
 
-    private void OpenMainWindow() => _configWindowVisible = true;
+    private void OpenMainWindow() => OpenWorkspace(_workspacePage);
 
     private void ToggleTallyWindow() => _tallyWindow.Toggle();
 
@@ -508,8 +511,7 @@ public sealed partial class Plugin : IDalamudPlugin
 
         if (arg.Equals("config", StringComparison.OrdinalIgnoreCase))
         {
-            _configWindowVisible = true;
-            _selectTallyTab = true;
+            OpenPreferences(SettingsPage.Tally);
         }
         else if (arg.Equals("ipc", StringComparison.OrdinalIgnoreCase))
         {
@@ -640,7 +642,7 @@ public sealed partial class Plugin : IDalamudPlugin
 
         // ---- Chat ----
         var chat = _config.EchoOnDetection;
-        if (ImGui.Checkbox("Announce in chat", ref chat))
+        if (HuntUi.WrappedCheckbox("Announce in chat", ref chat))
         {
             _config.EchoOnDetection = chat;
             _config.Save();
@@ -651,16 +653,17 @@ public sealed partial class Plugin : IDalamudPlugin
             ImGui.Indent();
 
             var cB = _config.EchoBRanks;
-            if (ImGui.Checkbox("B##chatrank", ref cB)) { _config.EchoBRanks = cB; _config.Save(); }
+            if (HuntUi.WrappedCheckbox("B##chatrank", ref cB)) { _config.EchoBRanks = cB; _config.Save(); }
             ImGui.SameLine();
             var cA = _config.EchoARanks;
-            if (ImGui.Checkbox("A##chatrank", ref cA)) { _config.EchoARanks = cA; _config.Save(); }
+            if (HuntUi.WrappedCheckbox("A##chatrank", ref cA)) { _config.EchoARanks = cA; _config.Save(); }
             ImGui.SameLine();
             var cS = _config.EchoSRanks;
-            if (ImGui.Checkbox("S##chatrank", ref cS)) { _config.EchoSRanks = cS; _config.Save(); }
-            ImGui.SameLine();
+            if (HuntUi.WrappedCheckbox("S##chatrank", ref cS)) { _config.EchoSRanks = cS; _config.Save(); }
+            HuntUi.SameLineIfFits(ImGui.CalcTextSize("which ranks").X);
             ImGui.TextDisabled("which ranks");
 
+            RevealPreferenceSection();
             if (ImGui.TreeNode("Chat message templates"))
             {
                 DrawMessageBox("B message##chat", _config.DetectionChatMessageB, v => _config.DetectionChatMessageB = v);
@@ -676,7 +679,7 @@ public sealed partial class Plugin : IDalamudPlugin
 
         // ---- Fly text ----
         var fly = _config.DetectionFlyTextEnabled;
-        if (ImGui.Checkbox("Show fly text", ref fly))
+        if (HuntUi.WrappedCheckbox("Show fly text", ref fly))
         {
             _config.DetectionFlyTextEnabled = fly;
             _config.Save();
@@ -686,13 +689,13 @@ public sealed partial class Plugin : IDalamudPlugin
         {
             ImGui.Indent();
             var fB = _config.FlyTextBRanks;
-            if (ImGui.Checkbox("B##flyrank", ref fB)) { _config.FlyTextBRanks = fB; _config.Save(); }
+            if (HuntUi.WrappedCheckbox("B##flyrank", ref fB)) { _config.FlyTextBRanks = fB; _config.Save(); }
             ImGui.SameLine();
             var fA = _config.FlyTextARanks;
-            if (ImGui.Checkbox("A##flyrank", ref fA)) { _config.FlyTextARanks = fA; _config.Save(); }
+            if (HuntUi.WrappedCheckbox("A##flyrank", ref fA)) { _config.FlyTextARanks = fA; _config.Save(); }
             ImGui.SameLine();
             var fS = _config.FlyTextSRanks;
-            if (ImGui.Checkbox("S##flyrank", ref fS)) { _config.FlyTextSRanks = fS; _config.Save(); }
+            if (HuntUi.WrappedCheckbox("S##flyrank", ref fS)) { _config.FlyTextSRanks = fS; _config.Save(); }
             ImGui.SameLine();
             ImGui.TextDisabled("which ranks");
             ImGui.TextDisabled("The rank and name use fixed chat colours.");
@@ -703,7 +706,7 @@ public sealed partial class Plugin : IDalamudPlugin
 
         // ---- Speech ----
         var tts = _config.DetectionTtsEnabled;
-        if (ImGui.Checkbox("Speak detections", ref tts))
+        if (HuntUi.WrappedCheckbox("Speak detections", ref tts))
         {
             _config.DetectionTtsEnabled = tts;
             _config.Save();
@@ -714,16 +717,17 @@ public sealed partial class Plugin : IDalamudPlugin
             ImGui.Indent();
 
             var tB = _config.TtsBRanks;
-            if (ImGui.Checkbox("B##ttsrank", ref tB)) { _config.TtsBRanks = tB; _config.Save(); }
+            if (HuntUi.WrappedCheckbox("B##ttsrank", ref tB)) { _config.TtsBRanks = tB; _config.Save(); }
             ImGui.SameLine();
             var tA = _config.TtsARanks;
-            if (ImGui.Checkbox("A##ttsrank", ref tA)) { _config.TtsARanks = tA; _config.Save(); }
+            if (HuntUi.WrappedCheckbox("A##ttsrank", ref tA)) { _config.TtsARanks = tA; _config.Save(); }
             ImGui.SameLine();
             var tS = _config.TtsSRanks;
-            if (ImGui.Checkbox("S##ttsrank", ref tS)) { _config.TtsSRanks = tS; _config.Save(); }
+            if (HuntUi.WrappedCheckbox("S##ttsrank", ref tS)) { _config.TtsSRanks = tS; _config.Save(); }
             ImGui.SameLine();
             ImGui.TextDisabled("which ranks");
 
+            RevealPreferenceSection();
             if (ImGui.TreeNode("Spoken message templates"))
             {
                 DrawMessageBox("B message##tts", _config.DetectionTtsMessageB, v => _config.DetectionTtsMessageB = v);
@@ -742,7 +746,7 @@ public sealed partial class Plugin : IDalamudPlugin
     {
         var value = current;
         ImGui.SetNextItemWidth(320);
-        if (ImGui.InputText(label, ref value, 512))
+        if (ImGui.InputText(HuntUi.FieldLabel(label), ref value, 512))
             apply(value);
 
         if (ImGui.IsItemDeactivatedAfterEdit())
@@ -764,7 +768,7 @@ public sealed partial class Plugin : IDalamudPlugin
         if (index < 0) index = 0;
 
         ImGui.SetNextItemWidth(220);
-        if (ImGui.Combo("Voice", ref index, _voices, _voices.Length))
+        if (ImGui.Combo(HuntUi.FieldLabel("Voice"), ref index, _voices, _voices.Length))
         {
             _config.TtsVoiceName = _voices[index];
             _config.Save();
@@ -772,7 +776,7 @@ public sealed partial class Plugin : IDalamudPlugin
 
         var volume = _config.TtsVolume;
         ImGui.SetNextItemWidth(220);
-        if (ImGui.SliderInt("Volume", ref volume, 0, 100))
+        if (ImGui.SliderInt(HuntUi.FieldLabel("Volume"), ref volume, 0, 100))
         {
             _config.TtsVolume = Math.Clamp(volume, 0, 100);
             _config.Save();
@@ -821,7 +825,7 @@ public sealed partial class Plugin : IDalamudPlugin
         _chatGui.Print($"[Hunt Helper Evolved] Map control bar {(_config.ShowMapControlBar ? "shown" : "hidden")}.");
     }
 
-    private void OnOpenConfigUi() => _configWindowVisible = true;
+    private void OnOpenConfigUi() => OpenPreferences(_settingsPage);
 
     /// <summary>Native report history, including removed dead rows and full world identity.</summary>
     private List<TrackedMark> BuildCurrentMarks() => _watcher.GetTrackedSnapshot().Values.ToList();
@@ -1047,6 +1051,7 @@ public sealed partial class Plugin : IDalamudPlugin
     private void DrawUI()
     {
         if (_disposed) return;
+        using var theme = HuntTheme.Push(_config);
         // Keep startup quiet, but preserve Active Marks after the first login
         // while DC travel passes through character selection.
         if (!_clientState.IsLoggedIn)
@@ -1070,51 +1075,36 @@ public sealed partial class Plugin : IDalamudPlugin
         DrawReleaseNotesWindow();
         DrawMapControlBar();
         _tallyWindows.Draw();
+        DrawWorkspaceHelp();
 
-        if (!_configWindowVisible) return;
-
-        ImGui.SetNextWindowSize(new Vector2(900, 620), ImGuiCond.FirstUseEver);
-        ImGui.SetNextWindowSizeConstraints(new Vector2(560, 320), new Vector2(float.MaxValue, float.MaxValue));
-        if (ImGui.Begin("Hunt Helper Evolved", ref _configWindowVisible, ImGuiWindowFlags.MenuBar))
+        if (_srankWindow.ConsumeMappingWorkspaceRequest())
         {
-            DrawWindowMenu();
-            if (ImGui.BeginTabBar("HuntHelperEvolvedTabs"))
-            {
-                if (ImGui.BeginTabItem("Train"))
-                {
-                    DrawTrainTab();
-                    ImGui.EndTabItem();
-                }
-                if (ImGui.BeginTabItem("S Ranks"))
-                {
-                    DrawSRankWorkspace();
-                    ImGui.EndTabItem();
-                }
-
-                var settingsRequested = _selectSyncTab || _selectTallyTab || _selectActiveMarksSettings;
-                if (_selectSyncTab) _settingsPage = SettingsPage.Sharing;
-                if (_selectTallyTab) _settingsPage = SettingsPage.Tally;
-                if (_selectActiveMarksSettings) _settingsPage = SettingsPage.ActiveMarks;
-                if (ImGui.BeginTabItem("Settings", settingsRequested ? ImGuiTabItemFlags.SetSelected : ImGuiTabItemFlags.None))
-                {
-                    _selectSyncTab = false;
-                    _selectTallyTab = false;
-                    _selectActiveMarksSettings = false;
-                    DrawSettingsTab();
-                    ImGui.EndTabItem();
-                }
-                if (ImGui.BeginTabItem("Help"))
-                {
-                    DrawHelpPage();
-                    ImGui.EndTabItem();
-                }
-
-                ImGui.EndTabBar();
-            }
-
-
+            OpenWorkspace(WorkspacePage.SRanks);
         }
-        ImGui.End();
+
+        if (_configWindowVisible)
+        {
+            if (_workspaceNextPosition is { } position)
+            {
+                ImGui.SetNextWindowPos(position, ImGuiCond.Always);
+                _workspaceNextPosition = null;
+            }
+            ImGui.SetNextWindowSize(new Vector2(900, 620), ImGuiCond.FirstUseEver);
+            var minimumWidth = Math.Max(560, HuntUi.ButtonWidth("Tally", FontAwesomeIcon.ChartBar)
+                + ImGui.GetFrameHeight() * 5 + ImGui.GetStyle().ItemSpacing.X * 5
+                + ImGui.CalcTextSize("HHE").X + ImGui.GetStyle().WindowPadding.X * 2);
+            ImGui.SetNextWindowSizeConstraints(new Vector2(minimumWidth, 320), new Vector2(float.MaxValue, float.MaxValue));
+            ImGui.SetNextWindowCollapsed(false, ImGuiCond.Always);
+            if (_focusWorkspace)
+            {
+                ImGui.SetNextWindowFocus();
+                _focusWorkspace = false;
+            }
+            if (ImGui.Begin("Hunt Helper Evolved", ref _configWindowVisible, ImGuiWindowFlags.NoTitleBar))
+                DrawWorkspace();
+            ImGui.End();
+        }
+        DrawPreferencesWindow();
     }
 
     /// <summary>
@@ -1130,7 +1120,7 @@ public sealed partial class Plugin : IDalamudPlugin
         if (_standaloneTallyPresent)
         {
             ImGui.Spacing();
-            ImGui.PushStyleColor(ImGuiCol.Text, new Vector4(1f, 0.4f, 0.4f, 1f));
+            ImGui.PushStyleColor(ImGuiCol.Text, HuntTheme.Danger);
             ImGui.TextWrapped(
                 "The separate Hunt Tally plugin is still installed, so this one is not "
                 + "counting anything and is not writing your tally file. Uninstall it from "
@@ -1371,7 +1361,7 @@ public sealed partial class Plugin : IDalamudPlugin
     {
         var expansionNames = ExpansionRanges.Select(e => e.Name).ToArray();
         ImGui.SetNextItemWidth(160);
-        if (ImGui.Combo("Expansion", ref _blacklistExpansion, expansionNames, expansionNames.Length))
+        if (ImGui.Combo(HuntUi.FieldLabel("Expansion"), ref _blacklistExpansion, expansionNames, expansionNames.Length))
         {
             _blacklistZone = 0;
             _blacklistAetheryte = 0;
@@ -1395,7 +1385,7 @@ public sealed partial class Plugin : IDalamudPlugin
         var zoneNames = zones.Select(t => _detector.GetZoneName(t)).ToArray();
         _blacklistZone = Math.Clamp(_blacklistZone, 0, zones.Count - 1);
         ImGui.SetNextItemWidth(200);
-        if (ImGui.Combo("Zone", ref _blacklistZone, zoneNames, zoneNames.Length))
+        if (ImGui.Combo(HuntUi.FieldLabel("Zone"), ref _blacklistZone, zoneNames, zoneNames.Length))
         {
             _blacklistAetheryte = 0;
         }
@@ -1414,9 +1404,9 @@ public sealed partial class Plugin : IDalamudPlugin
         var aetheryteNames = inZone.Select(a => a.Name).ToArray();
         _blacklistAetheryte = Math.Clamp(_blacklistAetheryte, 0, inZone.Count - 1);
         ImGui.SetNextItemWidth(200);
-        ImGui.Combo("Aetheryte", ref _blacklistAetheryte, aetheryteNames, aetheryteNames.Length);
+        ImGui.Combo(HuntUi.FieldLabel("Aetheryte"), ref _blacklistAetheryte, aetheryteNames, aetheryteNames.Length);
 
-        ImGui.SameLine();
+        HuntUi.SameLineIfFits(HuntUi.ButtonWidth("Blacklist"));
         if (ImGui.Button("Blacklist"))
         {
             var chosen = inZone[_blacklistAetheryte];
@@ -1449,7 +1439,7 @@ public sealed partial class Plugin : IDalamudPlugin
 
             ImGui.PushID((int)id);
             ImGui.TextWrapped($"{label}{zoneLabel}");
-            ImGui.SameLine();
+            HuntUi.SameLineIfFits(HuntUi.ButtonWidth("remove"));
             if (ImGui.SmallButton("remove")) toUnblock = id;
             ImGui.PopID();
         }
@@ -1481,7 +1471,7 @@ public sealed partial class Plugin : IDalamudPlugin
             ImGuiColorEditFlags.AlphaBar | ImGuiColorEditFlags.AlphaPreviewHalf;
 
         var guides = _config.ShowPlayerGuides;
-        if (ImGui.Checkbox("Show these at all", ref guides))
+        if (HuntUi.WrappedCheckbox("Show these at all", ref guides))
         {
             _config.ShowPlayerGuides = guides;
             _config.Save();
@@ -1492,7 +1482,7 @@ public sealed partial class Plugin : IDalamudPlugin
         using var guideGroup = ImRaii.Disabled(!_config.ShowPlayerGuides);
 
         var circle = _config.ShowPlayerCircleOnMap;
-        if (ImGui.Checkbox("Range circle", ref circle))
+        if (HuntUi.WrappedCheckbox("Range circle", ref circle))
         {
             _config.ShowPlayerCircleOnMap = circle;
             _config.Save();
@@ -1501,7 +1491,7 @@ public sealed partial class Plugin : IDalamudPlugin
         if (_config.ShowPlayerCircleOnMap)
         {
             var circleColour = _config.PlayerCircleColour;
-            if (ImGui.ColorEdit4("Circle colour", ref circleColour, flags))
+            if (ImGui.ColorEdit4(HuntUi.FieldLabel("Circle colour"), ref circleColour, flags))
             {
                 _config.PlayerCircleColour = circleColour;
                 _config.Save();
@@ -1509,7 +1499,7 @@ public sealed partial class Plugin : IDalamudPlugin
 
             var scale = _config.PlayerCircleRadiusScale;
             ImGui.SetNextItemWidth(140);
-            if (ImGui.SliderFloat("Circle radius scale", ref scale, 0.25f, 4f, "%.2f"))
+            if (ImGui.SliderFloat(HuntUi.FieldLabel("Circle radius scale"), ref scale, 0.25f, 4f, "%.2f"))
             {
                 _config.PlayerCircleRadiusScale = Math.Clamp(scale, 0.25f, 4f);
                 _config.Save();
@@ -1517,7 +1507,7 @@ public sealed partial class Plugin : IDalamudPlugin
 
             var thickness = _config.PlayerCircleThickness;
             ImGui.SetNextItemWidth(140);
-            if (ImGui.SliderFloat("Circle line width", ref thickness, 1f, 40f, "%.0f"))
+            if (ImGui.SliderFloat(HuntUi.FieldLabel("Circle line width"), ref thickness, 1f, 40f, "%.0f"))
             {
                 _config.PlayerCircleThickness = Math.Clamp(thickness, 1f, 40f);
                 _config.Save();
@@ -1528,7 +1518,7 @@ public sealed partial class Plugin : IDalamudPlugin
         ImGui.Spacing();
 
         var dirLine = _config.ShowPlayerDirectionLine;
-        if (ImGui.Checkbox("Heading line", ref dirLine))
+        if (HuntUi.WrappedCheckbox("Heading line", ref dirLine))
         {
             _config.ShowPlayerDirectionLine = dirLine;
             _config.Save();
@@ -1538,7 +1528,7 @@ public sealed partial class Plugin : IDalamudPlugin
         if (_config.ShowPlayerDirectionLine)
         {
             var dirColour = _config.PlayerDirectionLineColour;
-            if (ImGui.ColorEdit4("Heading line colour", ref dirColour, flags))
+            if (ImGui.ColorEdit4(HuntUi.FieldLabel("Heading line colour"), ref dirColour, flags))
             {
                 _config.PlayerDirectionLineColour = dirColour;
                 _config.Save();
@@ -1548,7 +1538,7 @@ public sealed partial class Plugin : IDalamudPlugin
             // is — a proportion, so it holds at any zoom.
             var dirThickness = _config.PlayerDirectionLineThickness * 100f;
             ImGui.SetNextItemWidth(140);
-            if (ImGui.SliderFloat("Heading line thickness", ref dirThickness, 1f, 40f, "%.0f%%"))
+            if (ImGui.SliderFloat(HuntUi.FieldLabel("Heading line thickness"), ref dirThickness, 1f, 40f, "%.0f%%"))
             {
                 _config.PlayerDirectionLineThickness = Math.Clamp(dirThickness / 100f, 0.01f, 0.4f);
                 _config.Save();
@@ -1558,7 +1548,7 @@ public sealed partial class Plugin : IDalamudPlugin
         ImGui.Spacing();
 
         var posDot = _config.ShowPlayerPositionDot;
-        if (ImGui.Checkbox("Position dot", ref posDot))
+        if (HuntUi.WrappedCheckbox("Position dot", ref posDot))
         {
             _config.ShowPlayerPositionDot = posDot;
             _config.Save();
@@ -1568,7 +1558,7 @@ public sealed partial class Plugin : IDalamudPlugin
         if (_config.ShowPlayerPositionDot)
         {
             var dotColour = _config.PlayerPositionDotColour;
-            if (ImGui.ColorEdit4("Position dot colour", ref dotColour, flags))
+            if (ImGui.ColorEdit4(HuntUi.FieldLabel("Position dot colour"), ref dotColour, flags))
             {
                 _config.PlayerPositionDotColour = dotColour;
                 _config.Save();
@@ -1576,7 +1566,7 @@ public sealed partial class Plugin : IDalamudPlugin
 
             var dotSize = _config.PlayerPositionDotSize * 100f;
             ImGui.SetNextItemWidth(140);
-            if (ImGui.SliderFloat("Position dot size", ref dotSize, 1f, 50f, "%.0f%%"))
+            if (ImGui.SliderFloat(HuntUi.FieldLabel("Position dot size"), ref dotSize, 1f, 50f, "%.0f%%"))
             {
                 _config.PlayerPositionDotSize = Math.Clamp(dotSize / 100f, 0.01f, 0.5f);
                 _config.Save();
@@ -1587,7 +1577,7 @@ public sealed partial class Plugin : IDalamudPlugin
         ImGui.Spacing();
 
         var facing = _config.ShowPlayerFacingOnMap;
-        if (ImGui.Checkbox("Projected path", ref facing))
+        if (HuntUi.WrappedCheckbox("Projected path", ref facing))
         {
             _config.ShowPlayerFacingOnMap = facing;
             _config.Save();
@@ -1596,7 +1586,7 @@ public sealed partial class Plugin : IDalamudPlugin
         if (_config.ShowPlayerFacingOnMap)
         {
             var facingColour = _config.PlayerFacingColour;
-            if (ImGui.ColorEdit4("Path colour", ref facingColour, flags))
+            if (ImGui.ColorEdit4(HuntUi.FieldLabel("Path colour"), ref facingColour, flags))
             {
                 _config.PlayerFacingColour = facingColour;
                 _config.Save();
@@ -1622,14 +1612,14 @@ public sealed partial class Plugin : IDalamudPlugin
             ImGuiColorEditFlags.AlphaBar | ImGuiColorEditFlags.AlphaPreviewHalf;
 
         var empty = _config.SpawnDotColourEmpty;
-        if (ImGui.ColorEdit4("Empty point", ref empty, flags))
+        if (ImGui.ColorEdit4(HuntUi.FieldLabel("Empty point"), ref empty, flags))
         {
             _config.SpawnDotColourEmpty = empty;
             _config.Save();
         }
 
         var inTrain = _config.SpawnDotColourInTrain;
-        if (ImGui.ColorEdit4("Spawn point in train", ref inTrain, flags))
+        if (ImGui.ColorEdit4(HuntUi.FieldLabel("Spawn point in train"), ref inTrain, flags))
         {
             _config.SpawnDotColourInTrain = inTrain;
             _config.Save();
@@ -1638,42 +1628,42 @@ public sealed partial class Plugin : IDalamudPlugin
             ImGui.SetTooltip("Visible spawn points matched to living marks in the current world's train. Returns to the normal colour when dead, sniped or removed. S-rank candidate outlines are preserved.");
 
         var b = _config.SpawnDotColourB;
-        if (ImGui.ColorEdit4("Live B rank", ref b, flags))
+        if (ImGui.ColorEdit4(HuntUi.FieldLabel("Live B rank"), ref b, flags))
         {
             _config.SpawnDotColourB = b;
             _config.Save();
         }
 
         var a = _config.SpawnDotColourA;
-        if (ImGui.ColorEdit4("Live A rank", ref a, flags))
+        if (ImGui.ColorEdit4(HuntUi.FieldLabel("Live A rank"), ref a, flags))
         {
             _config.SpawnDotColourA = a;
             _config.Save();
         }
 
         var sRank = _config.SpawnDotColourS;
-        if (ImGui.ColorEdit4("Live S rank", ref sRank, flags))
+        if (ImGui.ColorEdit4(HuntUi.FieldLabel("Live S rank"), ref sRank, flags))
         {
             _config.SpawnDotColourS = sRank;
             _config.Save();
         }
 
         var minion = _config.SsMinionColour;
-        if (ImGui.ColorEdit4("SS event minions", ref minion, flags))
+        if (ImGui.ColorEdit4(HuntUi.FieldLabel("SS event minions"), ref minion, flags))
         {
             _config.SsMinionColour = minion;
             _config.Save();
         }
 
         var labelColour = _config.MarkLabelColour;
-        if (ImGui.ColorEdit4("Mark name text", ref labelColour, flags))
+        if (ImGui.ColorEdit4(HuntUi.FieldLabel("Mark name text"), ref labelColour, flags))
         {
             _config.MarkLabelColour = labelColour;
             _config.Save();
         }
 
         var labelOutline = _config.MarkLabelOutlineColour;
-        if (ImGui.ColorEdit4("Mark name outline", ref labelOutline, flags))
+        if (ImGui.ColorEdit4(HuntUi.FieldLabel("Mark name outline"), ref labelOutline, flags))
         {
             _config.MarkLabelOutlineColour = labelOutline;
             _config.Save();
@@ -1685,7 +1675,7 @@ public sealed partial class Plugin : IDalamudPlugin
             SettingsReset.Apply(_config, _tallyConfig, SettingsResetCategory.MapColours);
             _config.Save();
         }
-        ImGui.SameLine();
+        HuntUi.SameLineIfFits(ImGui.CalcTextSize("Includes labels and S-rank mapping colours.").X);
         ImGui.TextDisabled("Includes labels and S-rank mapping colours.");
     }
 
@@ -1945,8 +1935,12 @@ public sealed partial class Plugin : IDalamudPlugin
             if (buttonRight + ImGui.GetStyle().ItemSpacing.X <= x) ImGui.SameLine();
             ImGui.SetCursorPosX(x);
         }
-        else TrainControlSameLine("flag name (optional)");
-        ImGui.SetNextItemWidth(labelWidth);
+        else
+        {
+            var right = ImGui.GetWindowContentRegionMax().X;
+            if (buttonRight + ImGui.GetStyle().ItemSpacing.X + labelWidth <= right) ImGui.SameLine();
+        }
+        ImGui.SetNextItemWidth(Math.Max(1, Math.Min(labelWidth, ImGui.GetContentRegionAvail().X)));
         ImGui.InputTextWithHint("##customFlagLabel", "flag name", ref _customFlagLabel, 64);
         ImGui.EndDisabled();
     }
@@ -2233,7 +2227,7 @@ public sealed partial class Plugin : IDalamudPlugin
 
         ImGui.Spacing();
         ImGui.Separator();
-        ImGui.PushStyleColor(ImGuiCol.Text, new Vector4(0.62f, 0.78f, 1f, 1f));
+        ImGui.PushStyleColor(ImGuiCol.Text, HuntTheme.Accent);
         ImGui.TextUnformatted("S-rank watches");
         ImGui.PopStyleColor();
 
@@ -2251,9 +2245,9 @@ public sealed partial class Plugin : IDalamudPlugin
             TrainControlSameLine(flag.Label);
             var colour = flag.SpawnStatus switch
             {
-                SpawnStatus.Spawned => new Vector4(0.45f, 0.95f, 0.5f, 1f),
-                SpawnStatus.NotSpawned => new Vector4(0.55f, 0.55f, 0.55f, 1f),
-                _ => Vector4.One,
+                SpawnStatus.Spawned => HuntTheme.Success,
+                SpawnStatus.NotSpawned => HuntTheme.Muted,
+                _ => ImGui.GetStyle().Colors[(int)ImGuiCol.Text],
             };
             ImGui.PushStyleColor(ImGuiCol.Text, colour);
             ImGui.TextWrapped(flag.Label);
@@ -2300,9 +2294,9 @@ public sealed partial class Plugin : IDalamudPlugin
     private void DrawTrainPopout()
     {
         if (!_trainPopoutVisible) return;
-        ImGui.SetNextWindowSize(new Vector2(600, 420), ImGuiCond.FirstUseEver);
-        ImGui.SetNextWindowSizeConstraints(new Vector2(420, 280), new Vector2(float.MaxValue, float.MaxValue));
-        if (ImGui.Begin("Hunt Train", ref _trainPopoutVisible)) DrawTrainWorkspace(popout: true);
+        ImGui.SetNextWindowSize(new Vector2(400, 340), ImGuiCond.FirstUseEver);
+        ImGui.SetNextWindowSizeConstraints(new Vector2(300, 180), new Vector2(float.MaxValue, float.MaxValue));
+        if (ImGui.Begin("Hunt Train", ref _trainPopoutVisible)) DrawCompactTrainWindowContents();
         ImGui.End();
     }
 
@@ -2310,9 +2304,10 @@ public sealed partial class Plugin : IDalamudPlugin
     /// Counter rows for one world. Counts are kept per world, so the same mark
     /// tracked on Mateus and on Zalera are genuinely separate tallies.
     /// </summary>
-    private void DrawCounterList(bool currentZoneOnly, uint worldId, uint instance, string worldName)
+    private void DrawCounterList(bool currentZoneOnly, uint worldId, uint instance, string worldName, string? markName = null)
     {
         var defs = HuntCounter.Definitions.AsEnumerable();
+        if (markName is not null) defs = defs.Where(d => d.MarkName == markName);
         if (currentZoneOnly)
         {
             var here = _clientTerritory;
@@ -2336,25 +2331,44 @@ public sealed partial class Plugin : IDalamudPlugin
 
         foreach (var def in list)
         {
-            ImGui.PushID($"{def.MarkName}_{worldId}");
-            ImGui.TextWrapped($"{def.MarkName} — {def.Zone} ({worldName})");
+            ImGui.PushID($"{def.MarkName}_{worldId}_{instance}");
+            ImGui.TextWrapped($"{def.MarkName} — {def.Zone}");
+            ImGui.TextDisabled(worldName + (instance == 0 ? " / uninstanced" : $" / I{instance}"));
 
-            foreach (var mob in def.MobNames)
+            var personal = _config.CountOnlyMyKills || def.TriggerPatterns.Length > 0;
+            if (ImGui.BeginTable("Counts", 3, ImGuiTableFlags.SizingStretchProp | ImGuiTableFlags.BordersInnerH))
             {
-                var count = _counter.GetTally(worldId, instance, mob);
-                var shared = def.TriggerPatterns.Length == 0
-                    ? _sync.SharedCounterTotal(worldId, def.TerritoryId, instance, mob) : null;
-                ImGui.TextDisabled($"    {mob}: {count}" + (shared is { } total ? $" ({total})" : string.Empty));
-                if (ImGui.IsItemHovered() && def.TriggerPatterns.Length == 0)
-                    ImGui.SetTooltip(shared is not null
-                        ? "Brackets: group total of personal kills since the shared reset. Nearby kills and older local counts are not uploaded. Local Reset/auto-reset does not change the group total."
-                        : "Shared total unavailable: connect to a server with counter syncing enabled.");
+                ImGui.TableSetupColumn("Mob / event", ImGuiTableColumnFlags.WidthStretch, 3);
+                var localLabel = personal ? "Mine" : "Nearby";
+                ImGui.TableSetupColumn(localLabel, ImGuiTableColumnFlags.WidthFixed, ImGui.CalcTextSize(localLabel).X);
+                ImGui.TableSetupColumn("Group", ImGuiTableColumnFlags.WidthFixed, ImGui.CalcTextSize("Group").X);
+                ImGui.TableHeadersRow();
+                foreach (var mob in def.MobNames)
+                {
+                    ImGui.TableNextRow();
+                    ImGui.TableNextColumn();
+                    ImGui.TextWrapped(mob);
+                    ImGui.TableNextColumn();
+                    ImGui.TextUnformatted(_counter.GetTally(worldId, instance, mob).ToString());
+                    if (ImGui.IsItemHovered()) ImGui.SetTooltip(personal
+                        ? "Locally recorded personal events. Local resets do not change the group total."
+                        : "Locally recorded nearby kills. Nearby kills are not uploaded to the group total.");
+                    ImGui.TableNextColumn();
+                    var shared = def.TriggerPatterns.Length == 0
+                        ? _sync.SharedCounterTotal(worldId, def.TerritoryId, instance, mob) : null;
+                    ImGui.TextUnformatted(shared?.ToString() ?? "-");
+                    if (ImGui.IsItemHovered()) ImGui.SetTooltip(def.TriggerPatterns.Length > 0
+                        ? "This event does not have a shared group counter."
+                        : shared is null ? "Connect to a server with counter syncing enabled."
+                        : "Group total of personal kills since the shared reset. Nearby kills and older local counts are not uploaded. Local resets do not change this total.");
+                }
+                ImGui.EndTable();
             }
 
             var settings = _counter.SettingsFor(def.MarkName);
 
             var autoReset = settings.AutoResetEnabled;
-            if (ImGui.Checkbox("Auto-reset", ref autoReset))
+            if (HuntUi.WrappedCheckbox("Auto-reset local counts", ref autoReset))
             {
                 settings.AutoResetEnabled = autoReset;
                 _config.Save();
@@ -2362,10 +2376,11 @@ public sealed partial class Plugin : IDalamudPlugin
 
             if (settings.AutoResetEnabled)
             {
-                ImGui.SameLine();
                 var hours = settings.AutoResetHours;
-                ImGui.SetNextItemWidth(90);
-                if (ImGui.InputInt("hrs", ref hours))
+                var inputWidth = ImGui.GetFontSize() * 5;
+                HuntUi.SameLineIfFits(inputWidth + ImGui.CalcTextSize("hours").X + ImGui.GetStyle().ItemInnerSpacing.X);
+                ImGui.SetNextItemWidth(inputWidth);
+                if (ImGui.InputInt("hours", ref hours))
                 {
                     settings.AutoResetHours = Math.Clamp(hours, 1, 9);
                     _config.Save();
@@ -2377,33 +2392,38 @@ public sealed partial class Plugin : IDalamudPlugin
                 {
                     var due = lastKill.AddHours(Math.Clamp(settings.AutoResetHours, 1, 9));
                     var remaining = due - DateTime.UtcNow;
-                    ImGui.SameLine();
-                    ImGui.TextDisabled(remaining > TimeSpan.Zero
-                        ? $"resets in {FormatRemaining(remaining)}"
-                        : "resetting…");
+                    var countdown = remaining > TimeSpan.Zero
+                        ? $"Resets in {FormatRemaining(remaining)}" : "Resetting";
+                    HuntUi.SameLineIfFits(ImGui.CalcTextSize(countdown).X);
+                    ImGui.TextDisabled(countdown);
                 }
             }
 
-            ImGui.SameLine();
-            if (ImGui.SmallButton("Reset"))
+            if (HuntUi.Button("resetLocal", "Reset local", FontAwesomeIcon.Undo))
             {
                 _counter.ResetFor(def, worldId, instance);
             }
-            if (def.TriggerPatterns.Length == 0 && _sync.CountersAvailable)
+            if (def.TriggerPatterns.Length == 0)
             {
-                ImGui.SameLine();
-                if (ImGui.SmallButton("Reset shared…")) ImGui.OpenPopup("Reset shared counter");
+                HuntUi.SameLineIfFits(HuntUi.ButtonWidth("Reset group", FontAwesomeIcon.Undo));
+                ImGui.BeginDisabled(!_sync.CountersAvailable);
+                if (HuntUi.Button("resetGroup", "Reset group", FontAwesomeIcon.Undo,
+                    tooltip: _sync.CountersAvailable ? "Reset this mark's group attempt for this world and instance."
+                        : "Connect to a server with counter syncing enabled."))
+                    ImGui.OpenPopup("Reset shared counter");
+                ImGui.EndDisabled();
+                ImGui.SetNextWindowSizeConstraints(new Vector2(250, 0), new Vector2(420, float.MaxValue));
                 if (ImGui.BeginPopup("Reset shared counter"))
                 {
                     ImGui.TextWrapped($"Clear the group counts for {def.MarkName} on {worldName}" +
-                        (instance > 0 ? $" (instance {instance})?" : "?"));
-                    if (ImGui.Button("Reset shared counts"))
+                        (instance > 0 ? $" (instance {instance})?" : " (uninstanced)?"));
+                    if (HuntUi.Button("confirmResetGroup", "Reset group counts", FontAwesomeIcon.Undo))
                     {
                         _sync.ResetSharedCounters(def, worldId, instance);
                         ImGui.CloseCurrentPopup();
                     }
-                    ImGui.SameLine();
-                    if (ImGui.Button("Cancel")) ImGui.CloseCurrentPopup();
+                    HuntUi.SameLineIfFits(HuntUi.ButtonWidth("Cancel"));
+                    if (HuntUi.Button("cancelResetGroup", "Cancel")) ImGui.CloseCurrentPopup();
                     ImGui.EndPopup();
                 }
             }
@@ -2425,9 +2445,12 @@ public sealed partial class Plugin : IDalamudPlugin
         if (!_counterPopoutVisible) return;
 
         ImGui.SetNextWindowSize(new Vector2(300, 400), ImGuiCond.FirstUseEver);
+        ImGui.SetNextWindowSizeConstraints(new Vector2(220, 160), new Vector2(float.MaxValue, float.MaxValue));
         if (ImGui.Begin("Hunt Counter", ref _counterPopoutVisible))
         {
+            ImGui.PushTextWrapPos(0);
             DrawSpawnWatches();
+            ImGui.PopTextWrapPos();
 
             DrawCounterList(
                 currentZoneOnly: true,
@@ -2444,9 +2467,9 @@ public sealed partial class Plugin : IDalamudPlugin
     /// Everything here is read straight off <see cref="_spawnWatch"/>, which
     /// keeps running regardless of whether this window is open.
     /// </summary>
-    private static readonly Vector4 _counterGreen = new(0f, 1f, 0f, 1f);
-    private static readonly Vector4 _counterWhite = new(1f, 1f, 1f, 1f);
-    private static readonly Vector4 _counterRed = new(1f, 0.4f, 0.4f, 1f);
+    private static Vector4 _counterGreen => HuntTheme.Success;
+    private static Vector4 _counterWhite => ImGui.GetStyle().Colors[(int)ImGuiCol.Text];
+    private static Vector4 _counterRed => HuntTheme.Danger;
 
     /// <summary>
     /// The live-state S-rank counter for the current zone — Narrow-rift's Wee
@@ -2596,7 +2619,7 @@ public sealed partial class Plugin : IDalamudPlugin
             // Better to say so than to show the previous release as though it
             // were this one.
             ImGui.TextColored(
-                new Vector4(1f, 0.6f, 0.3f, 1f),
+                HuntTheme.Warning,
                 $"Running {ReleaseNotes.CurrentVersion}, which has no notes written for it yet.");
             ImGui.Spacing();
         }
@@ -2648,7 +2671,7 @@ public sealed partial class Plugin : IDalamudPlugin
                 if (change.Area != lastArea)
                 {
                     if (lastArea != null) ImGui.Spacing();
-                    ImGui.TextColored(new Vector4(0.55f, 0.78f, 1f, 1f), change.Area);
+                    ImGui.TextColored(HuntTheme.Accent, change.Area);
                     lastArea = change.Area;
                 }
 
@@ -2673,7 +2696,7 @@ public sealed partial class Plugin : IDalamudPlugin
         ImGui.Separator();
         ImGui.Spacing();
 
-        ImGui.TextColored(new Vector4(0.55f, 0.78f, 1f, 1f), "Credits");
+        ImGui.TextColored(HuntTheme.Accent, "Credits");
         ImGui.TextWrapped(
             "Hunt Train Relay by MusicManBowls and Hunt Tally by kihtli, merged and carried on here.");
         ImGui.TextWrapped(
@@ -2867,7 +2890,7 @@ public sealed partial class Plugin : IDalamudPlugin
             var hook = _config.Webhooks[i];
 
             var enabled = hook.Enabled;
-            if (ImGui.Checkbox("##enabled", ref enabled))
+            if (HuntUi.WrappedCheckbox("##enabled", ref enabled))
             {
                 hook.Enabled = enabled;
                 _config.Save();
@@ -2875,16 +2898,15 @@ public sealed partial class Plugin : IDalamudPlugin
 
             ImGui.SameLine();
             var label = hook.Label;
-            ImGui.SetNextItemWidth(120);
+            ImGui.SetNextItemWidth(Math.Max(1, ImGui.GetContentRegionAvail().X));
             if (ImGui.InputTextWithHint("##label", "Label (optional)", ref label, 128))
             {
                 hook.Label = label;
             }
             if (ImGui.IsItemDeactivatedAfterEdit()) _config.Save();
 
-            ImGui.SameLine();
             var url = hook.Url;
-            ImGui.SetNextItemWidth(220);
+            ImGui.SetNextItemWidth(Math.Max(1, ImGui.GetContentRegionAvail().X));
             if (ImGui.InputTextWithHint("##url", "Webhook URL", ref url, 512))
             {
                 hook.Url = url;
@@ -2893,13 +2915,13 @@ public sealed partial class Plugin : IDalamudPlugin
 
             if (_config.Webhooks.Count > 1)
             {
-                ImGui.SameLine();
                 if (ImGui.Button("Remove"))
                 {
                     toRemove = i;
                 }
             }
 
+            ImGui.Separator();
             ImGui.PopID();
         }
 
@@ -3136,7 +3158,7 @@ public sealed partial class Plugin : IDalamudPlugin
         _scoutNote.ObserveTrain(_detector.TrainGeneration);
         _lastPostResult = "Train reset — nothing was posted.";
         if (_config.ResetUndoAt is not null)
-            _chatGui.Print("[Hunt Helper Evolved] Train reset. Use /hht > Setup > Undo reset to restore it locally.");
+            _chatGui.Print("[Hunt Helper Evolved] Train reset. Use /hh > Train > Recovery > Undo reset to restore it locally.");
     }
 
     private DateTime? _ownResetPendingAt;
@@ -3287,7 +3309,7 @@ public sealed partial class Plugin : IDalamudPlugin
         _config.Flags.Clear();
         _config.Save();
         ClearSavedTrain();
-        _chatGui.Print($"[Hunt Helper Evolved] {by} cleared the shared train. Use /hht > Setup > Undo reset to recover it locally.");
+        _chatGui.Print($"[Hunt Helper Evolved] {by} cleared the shared train. Use /hh > Train > Recovery > Undo reset to recover it locally.");
     }
 
     /// <summary>

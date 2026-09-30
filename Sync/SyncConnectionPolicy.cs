@@ -5,7 +5,7 @@ namespace HuntHelperEvolved.Sync;
 public sealed class SyncConnectionPolicy
 {
     public sealed record Settings(bool Enabled, string Url, string Password, string Alias,
-        bool ShareTrain, bool AllowPlaintext);
+        bool ShareTrain, bool AllowPlaintext, bool ReceiveBearFeed = false);
     private Settings? _applied;
     public void Apply(Settings wanted, bool force, Action stopAndForget,
         Action<string> setError, Action<Uri> start)
