@@ -39,9 +39,10 @@ public static class VisibleMarkFilter
         : mark.InCombat switch { true => "Pulled", false => "Not pulled", null => "Unknown" };
 }
 
-public sealed record ActiveMarkRow(SyncSighting Mark, VisibleMark? Visible, SyncSRankStatus? Status, BearMark? Bear = null, bool BearHealthKnown = false)
+public sealed record ActiveMarkRow(SyncSighting Mark, VisibleMark? Visible, SyncSRankStatus? Status, BearMark? Bear = null, bool BearHealthKnown = false, bool BearHealthStale = false)
 {
     public bool HealthKnown => Visible is not null || BearHealthKnown;
+    public bool HealthStale => Visible is null && BearHealthStale;
     public bool HasPosition => float.IsFinite(Mark.X) && float.IsFinite(Mark.Y) && Mark.X >= 1 && Mark.X <= 100 && Mark.Y >= 1 && Mark.Y <= 100;
 }
 public static class ActiveMarkRows
@@ -104,7 +105,7 @@ public static class ActiveMarkRows
             var dead = !active && bear.RecentDeath(serverNow) && (death is null || bear.Report.KilledAt >= death);
             if (!active && !dead) continue;
             byKey[bear.Key] = new() { new(bear.Sighting(serverNow, dead), null, status, bear,
-                dead || bear.HealthFresh(serverNow)) };
+                dead || bear.HealthFresh(serverNow), !dead && bear.HealthStale(serverNow)) };
         }
         return byKey.Values.SelectMany(group => group).ToList();
     }

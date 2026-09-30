@@ -3,20 +3,34 @@ using System.Collections.Generic;
 
 namespace HuntHelperEvolved.Sync;
 
-internal enum ActiveMarkState { Community, Unpulled, Pulled, CombatUnknown, Dead }
+internal enum ActiveMarkState { Community, Unpulled, Pulled, CombatUnknown, Dead, StaleHealth }
 
 internal static class ActiveMarkPresentation
 {
-    internal static ActiveMarkState State(ActiveMarkRow row) => !row.HealthKnown ? ActiveMarkState.Community
+    internal static ActiveMarkState State(ActiveMarkRow row) => row.HealthStale ? ActiveMarkState.StaleHealth : !row.HealthKnown ? ActiveMarkState.Community
         : row.Mark.HpPercent == 0 ? ActiveMarkState.Dead
         : row.Mark.InCombat switch { true => ActiveMarkState.Pulled, false => ActiveMarkState.Unpulled, _ => ActiveMarkState.CombatUnknown };
 
     internal static string Health(ActiveMarkRow row)
     {
-        if (!row.HealthKnown) return "?%";
+        if (!row.HealthKnown && !row.HealthStale) return "?%";
         var hp = row.Mark.HpPercent;
         var value = hp is > 0 and < .1f ? "<0.1%" : $"{hp:0.#}%";
+        if (row.HealthStale) return "~" + value;
         return value + (State(row) switch { ActiveMarkState.Pulled => " !", ActiveMarkState.CombatUnknown => " ?", _ => "" });
+    }
+
+    internal static string BearHealthEvidence(ActiveMarkRow row, DateTime now)
+    {
+        if (row.Bear is not { } bear) return string.Empty;
+        var at = bear.Report.HealthReceivedAt ?? bear.Report.HealthObservedAt;
+        if (at is null) return "Bear HP not reported.";
+        var label = bear.Report.HealthReceivedAt is not null ? "HP report received" : "HP observed";
+        var age = now > at.Value ? now-at.Value : TimeSpan.Zero;
+        var ageText = $"{(int)age.TotalHours:00}:{age.Minutes:00}:{age.Seconds:00}";
+        return $"Bear {label} {ageText} ago. " + (row.HealthStale
+            ? "Stale: ~ is the last reported HP; current HP and combat are unknown."
+            : bear.HealthFresh(now) ? "Fresh HP report." : "HP is unknown.");
     }
 
     internal static string Players(ActiveMarkRow row) => row.HealthKnown && row.Mark.NearbyPlayers is { } count && count >= 0

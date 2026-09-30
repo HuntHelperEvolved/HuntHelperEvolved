@@ -34,6 +34,11 @@ public static class ReleaseNotes
 
     public static readonly Release[] All =
     {
+        new("0.6.0.5", "2026-10-01", "Bear S-rank preview: keep last reported HP clearly marked when stale.",
+        [
+            new("Bear health", "After 15 seconds without a new HP report, Active Marks keeps the Bear source and shows the last reported positive HP with ~. Hover for its age. The value is marked stale and does not imply current health or combat; it clears when the sighting expires or the feed disconnects.", Kihtli),
+            new("S-ranks only", "The Bear feed now contains S-rank reports only. A-ranks keep their existing sources. Live plugin observations still take priority and pull-time clocks always use Faloop.", Kihtli),
+        ]),
         new("0.6.0.4", "2026-09-30", "Local preview: reimagined UI and opt-in Bear Toolkit reports.",
         [
             new("Interface", "Includes the reimagined hunt workspace, compact train view, settings and connection controls from the UI testing branch.", Kihtli),

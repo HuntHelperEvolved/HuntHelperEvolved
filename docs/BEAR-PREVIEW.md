@@ -1,7 +1,7 @@
 # Local Bear Toolkit preview
 
 Branch `codex/bear-integration-ui` combines the current reimagined UI with Bear
-Toolkit integration. Plugin version `0.6.0.4` is a local preview; `repo.json`
+Toolkit S-rank integration. Plugin version `0.6.0.5` is a local preview; `repo.json`
 continues to point to the existing public build.
 
 Build with the .NET 10 SDK and Dalamud development references installed:
@@ -26,10 +26,15 @@ Bear credential file. Bear credentials stay on the server. Each plugin opts
 in independently; the server never sends Bear snapshots to existing clients
 that omit the opt-in field.
 
+The Bear feed contains S-rank reports only; A-rank scouting and existing sources remain unchanged.
 Bear reports are a separate read model. They do not become group scout
 observations, train edits, shared kill reports, spawn-point exclusions or tally
-credit. Live evidence uses **plugin > Bear > Faloop** priority. Health has a shorter
-validity period than spawn membership and returns to unknown when stale.
+credit. Live evidence uses **plugin > Bear > Faloop** priority. HP is fresh for
+15 seconds. While the Bear sighting remains active, an older positive HP report
+stays visible as `~80%` with its age in the tooltip. This is the last reported
+value, not current health or combat evidence. The sighting still expires after
+five minutes without a new qualifying report. Zero HP lasts only 15 seconds
+unless a separate death report confirms the kill.
 Disconnecting clears live Bear evidence; it does not create a kill.
 
 The pull-time clock always uses the Faloop report time, even when a plugin or
@@ -37,11 +42,11 @@ Bear supplies the displayed health. If Faloop has not supplied a timer, the
 clock is unknown. Bear updates never restart it. The existing S/A timer-board
 values remain unchanged; Bear kill reports are shown separately in Active Marks.
 
-For in-game verification, compare the same world and instance in Bear and HHE:
+For in-game verification, compare the same S-rank, world and instance in Bear and HHE:
 
 1. Observe a spawn, its coordinates and subsequent HP changes.
 2. Observe a kill and check that the corresponding live community row clears.
-3. Disconnect/reconnect the feed and check that old HP is not displayed as fresh.
+3. Wait 15 seconds without HP changes: Bear should remain the source and HP should show `~` with its age. Disconnect/reconnect and check that old HP is not displayed as fresh.
 4. Have an existing plugin connected simultaneously; its normal scouting,
    Faloop and train behaviour should continue without Bear reports.
 5. Disable the preview and confirm the UI returns to its normal sources.

@@ -594,13 +594,13 @@ public sealed partial class Plugin
         }
 
         var bear = _config.SyncReceiveBearFeed;
-        if (HuntUi.WrappedCheckbox("Receive Bear Toolkit reports (preview)", ref bear))
+        if (HuntUi.WrappedCheckbox("Receive Bear Toolkit S-rank reports (preview)", ref bear))
         {
             _config.SyncReceiveBearFeed = bear;
             _config.Save();
             _sync.ApplySettings();
         }
-        ImGui.TextDisabled("Show Bear spawns, recent deaths and fresh HP in Active Marks.");
+        ImGui.TextDisabled("Show Bear S-rank spawns, recent deaths and reported HP in Active Marks.");
         ImGui.TextDisabled("Requires Bear enabled on the server. Reports stay separate from your train.");
 
         var sightings = _config.SyncShareSightings;

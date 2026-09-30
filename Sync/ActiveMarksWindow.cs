@@ -225,7 +225,7 @@ public sealed class ActiveMarksWindow(Configuration config, SyncCoordinator sync
                 {
                     ActiveMarkState.Community => HuntTheme.Accent,
                     ActiveMarkState.Unpulled => HuntTheme.Success,
-                    ActiveMarkState.Pulled => HuntTheme.Warning,
+                    ActiveMarkState.Pulled or ActiveMarkState.StaleHealth => HuntTheme.Warning,
                     ActiveMarkState.Dead => HuntTheme.Danger,
                     _ => HuntTheme.Muted
                 };
@@ -280,7 +280,7 @@ public sealed class ActiveMarksWindow(Configuration config, SyncCoordinator sync
                 }
                 if(hovered)
                 {
-                    var state=dead ? "Dead" : !row.HealthKnown ? "Community report — health and combat unknown"
+                    var state=dead ? "Dead" : row.HealthStale ? "Last reported Bear HP (stale) — combat unknown" : !row.HealthKnown ? "Community report — health and combat unknown"
                         : m.InCombat is null ? "Alive — combat unknown" : m.InCombat==true ? "Alive — pulled" : "Alive — not pulled";
                     var detail=$"{m.Rank} {m.Name}\n{state}\n{r.World}{instance} · {r.Dc.Name??"Unknown DC"}\n{r.Zone}";
                     if(row.HasPosition) detail+=$" ({m.X:0.0}, {m.Y:0.0})";
@@ -288,11 +288,7 @@ public sealed class ActiveMarksWindow(Configuration config, SyncCoordinator sync
                     detail+="\nHealth: "+stateLabel;
                     if (row.Bear is { } bearReport)
                     {
-                        var healthAt = bearReport.Report.HealthReceivedAt ?? bearReport.Report.HealthObservedAt;
-                        var healthLabel = bearReport.Report.HealthReceivedAt is not null ? "HP report received" : "HP observed";
-                        detail += healthAt is { } at
-                            ? $"\nBear {healthLabel} {Elapsed(serverNow-at)} ago" + (bearReport.HealthFresh(serverNow) ? "." : "; stale — HP unknown.")
-                            : "\nBear HP not reported.";
+                        detail += "\n" + ActiveMarkPresentation.BearHealthEvidence(row,serverNow);
                         if (dead && bearReport.RecentDeath(serverNow) && bearReport.Report.KilledAt is { } deathAt)
                             detail += $"\nBear death reported {Elapsed(serverNow-deathAt)} ago.";
                         else if (dead)
@@ -361,13 +357,13 @@ public sealed class ActiveMarksWindow(Configuration config, SyncCoordinator sync
         }
         Heading(layout.NameX,layout.NameWidth,"Mark","Mark and zone");
         Heading(layout.WorldX,layout.WorldWidth,"World","World and instance");
-        Heading(layout.HealthX,layout.HealthWidth,"HP","Health and combat state");
+        Heading(layout.HealthX,layout.HealthWidth,"HP","Health and combat state. ~ marks last reported Bear HP older than 15 seconds; hover the row for its age.");
         ImGui.SetCursorPos(new Vector2(start.X+layout.PlayersX,start.Y));
         using (ImRaii.PushFont(UiBuilder.IconFont)) ImGui.TextColored(HuntTheme.Muted,FontAwesomeIcon.Users.ToIconString());
         if (ImGui.IsItemHovered()) ImGui.SetTooltip("Nearby players");
         ImGui.SetCursorPos(new Vector2(start.X,start.Y+ImGui.GetTextLineHeightWithSpacing()));
     }
-    private static readonly string[] StatusLabels = { "Unpulled", "Pulled", "Dead", "Community report", "Combat unknown" };
+    private static readonly string[] StatusLabels = { "Unpulled", "Pulled", "Dead", "Community report", "Combat unknown", "Last reported HP (~)" };
     private static float StatusLegendHeight()
     {
         var available=ImGui.GetContentRegionAvail().X;
@@ -383,7 +379,7 @@ public sealed class ActiveMarksWindow(Configuration config, SyncCoordinator sync
     }
     private static void DrawStatusLegend()
     {
-        var colours=new[] { HuntTheme.Success,HuntTheme.Warning,HuntTheme.Danger,HuntTheme.Accent,HuntTheme.Muted };
+        var colours=new[] { HuntTheme.Success,HuntTheme.Warning,HuntTheme.Danger,HuntTheme.Accent,HuntTheme.Muted,HuntTheme.Warning };
         for (var i=0;i<StatusLabels.Length;i++)
         {
             if (i>0) SameLineIfFits(ImGui.CalcTextSize(StatusLabels[i]).X);

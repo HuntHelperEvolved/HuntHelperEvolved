@@ -40,7 +40,7 @@ public sealed class BearSnapshot
     public List<BearReport> Marks { get; set; } = new();
 }
 
-/// <summary>A display-only report. Never added to train, detector, persisted history or outgoing sync.</summary>
+/// <summary>A display-only S-rank report. Never added to train, detector, persisted history or outgoing sync.</summary>
 public sealed record BearMark(uint NameId, uint WorldId, uint TerritoryId, string Name, string Rank, BearReport Report)
 {
     public (uint NameId, uint Instance, uint WorldId) Key => (NameId, Report.Instance, WorldId);
@@ -49,13 +49,15 @@ public sealed record BearMark(uint NameId, uint WorldId, uint TerritoryId, strin
         && (Report.ActiveConfirmedAt is null || Report.ActiveConfirmedAt <= now.AddSeconds(10))
         && expiry <= (Report.ActiveConfirmedAt ?? seen).AddMinutes(5)
         && (Report.KilledAt is null || seen > Report.KilledAt);
-    public bool HealthFresh(DateTime now) => IsActive(now) && Report.HpPercent is { } hp
+    private bool HasHealthReport(DateTime now) => IsActive(now) && Report.HpPercent is { } hp
         && float.IsFinite(hp) && hp is >= 0 and <= 100 && Report.HealthObservedAt is { } observed
         && observed > DateTime.UnixEpoch && observed <= now.AddSeconds(10)
         && (Report.HealthReceivedAt is null || Report.HealthReceivedAt <= now.AddSeconds(10))
-        && Report.HealthExpiresAt is { } expires && now < expires
+        && Report.HealthExpiresAt is { } expires
         && expires <= (Report.HealthReceivedAt ?? observed).AddSeconds(15)
         && (Report.KilledAt is null || observed > Report.KilledAt);
+    public bool HealthFresh(DateTime now) => HasHealthReport(now) && now < Report.HealthExpiresAt;
+    public bool HealthStale(DateTime now) => HasHealthReport(now) && Report.HpPercent > 0 && now >= Report.HealthExpiresAt;
     public bool RecentDeath(DateTime now) => !Report.Maintenance && !Report.Uncertain
         && Report.KilledAt is { } killed && killed <= now && now - killed < TimeSpan.FromSeconds(30)
         && (Report.SeenAt is null || killed >= Report.SeenAt);
@@ -67,7 +69,7 @@ public sealed record BearMark(uint NameId, uint WorldId, uint TerritoryId, strin
         NameId = NameId, WorldId = WorldId, Instance = Report.Instance, TerritoryId = TerritoryId,
         Name = Name, Rank = Rank, SeenAt = Report.SeenAt ?? default,
         X = Report.X ?? float.NaN, Y = Report.Y ?? float.NaN,
-        HpPercent = dead ? 0 : HealthFresh(now) ? Report.HpPercent!.Value : 100,
+        HpPercent = dead ? 0 : (HealthFresh(now) || HealthStale(now)) ? Report.HpPercent!.Value : 100,
         // Bear does not supply combat state or player counts. Damaged is not necessarily pulled.
         InCombat = null
     };
@@ -81,9 +83,6 @@ public static class BearFeed
         var result = new Dictionary<string, (uint, uint, string, string)>(StringComparer.OrdinalIgnoreCase);
         foreach (var timer in SRankTimerData.All)
             result.TryAdd(timer.Name, (timer.NameId, timer.TerritoryId, timer.Name, "S"));
-        foreach (var entry in ExpansionData.ModelIdToMark)
-            if (ARankZoneInstances.ZoneTerritories.TryGetValue(entry.Value.Location, out var territories) && territories.Length > 0)
-                result.TryAdd(entry.Value.Name, (entry.Key, territories[0], entry.Value.Name, "A"));
         return result;
     }
 

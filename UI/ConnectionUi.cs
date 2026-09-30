@@ -95,7 +95,7 @@ internal static class ConnectionUi
         if (config.SyncReceiveBearFeed)
         {
             ImGui.Separator();
-            ImGui.TextUnformatted("Bear Toolkit preview");
+            ImGui.TextUnformatted("Bear Toolkit S-rank preview");
             if (!sync.IsConnected) ImGui.TextDisabled("Waiting for the group server.");
             else if (!sync.SupportsBearFeed) ImGui.TextDisabled("This server does not support the Bear preview.");
             else
@@ -106,7 +106,8 @@ internal static class ConnectionUi
                 if (bear.DataCenters.Count > 0) ImGui.TextDisabled("Server feed: " + string.Join(", ", bear.DataCenters));
                 if (bear.LastMessageAt is { } last)
                     ImGui.TextDisabled("Last Bear event: " + TimerTableUi.Duration(sync.ServerTimeFor(DateTime.UtcNow) - last) + " ago");
-                ImGui.TextDisabled($"{sync.BearMarks.Count} reports; HP expires after 15 seconds.");
+                ImGui.TextDisabled($"{sync.BearMarks.Count} reports; HP is fresh for 15 seconds.");
+                ImGui.TextDisabled("~HP is the last reported value while the Bear sighting remains active.");
             }
         }
     }
