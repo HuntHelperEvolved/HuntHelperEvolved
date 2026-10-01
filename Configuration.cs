@@ -618,6 +618,10 @@ public class Configuration : IPluginConfiguration
     public string CounterSyncScope { get; set; } = string.Empty;
     public List<Sync.CounterContribution> CounterContributions { get; set; } = new();
     public Sync.VisibleMarkOptions VisibleMarkFilters { get; set; } = new();
+    public List<Sync.MarkScopePreset> ActiveMarkPresets { get; set; } = new();
+    public string? ActiveMarkPresetId { get; set; }
+    public List<Sync.MarkScopePreset> RelayPresets { get; set; } = new();
+    public string? RelayPresetId { get; set; }
     public bool SyncEnabled { get; set; } = false;
     public List<Sync.SyncWatch> SyncLocalWatchBackup { get; set; } = new();
     public bool SyncSpawnAlerts { get; set; } = true;

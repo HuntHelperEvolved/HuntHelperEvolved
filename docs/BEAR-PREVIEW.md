@@ -1,7 +1,7 @@
 # Local Bear Toolkit preview
 
 Branch `codex/bear-integration-ui` combines the current reimagined UI with Bear
-Toolkit S-rank integration. Plugin version `0.6.0.9` is a local preview; `repo.json`
+Toolkit S-rank integration. Plugin version `0.6.0.10` is a local preview; `repo.json`
 continues to point to the existing public build.
 
 Build with the .NET 10 SDK and Dalamud development references installed:
@@ -61,23 +61,31 @@ expansions includes every expansion; **None** includes nothing. **ShB+** selects
 Shadowbringers, Endwalker and Dawntrail. Search and the rank tabs further narrow
 the result. **Status & display** controls common source, life and combat filters.
 
-Use **NA hunt mix** to replace the rules with all S/SS ranks on Crystal, A-ranks
-on Mateus, and ShB/EW/DT S/SS ranks on Aether, Primal and Dynamis. To make the
-A-rank rule follow you, select Mateus in the rule list and change **Where** to
-**Current world**. Old saved filters retain their previous results when first
-opened in the new editor. These are local display rules; chat notification
-preferences and the server's feed coverage stay separate.
+Use **Saved presets** to create your own named collection. Configure the rules,
+choose **Save as...** and enter a name. Selecting a saved preset does not apply
+it: use **Load** to replace the current rules, or **Update saved** to replace
+that preset with the current rules. **Rename...** changes its name; **Delete...**
+asks for confirmation and keeps the current rules. The current preset name
+shows **(modified)** when active rules differ. Active rules save as you edit;
+saved presets change only when explicitly updated. Presets store scope rules,
+not the common status/display settings or temporary rank tabs and search.
 
-S-rank RELAY chat has its own rule editor in **Settings > Notifications >
-Community S-rank alerts**. These rules control both the chat line and relay
-sound. The chat **NA hunt mix** preset selects all S ranks on Crystal and
-ShB/EW/DT S ranks on Aether, Primal and Dynamis. **Copy /hhv S-rank rules** copies
-only S-rank location and expansion selections; later edits remain independent.
-No A-rank or SS relays are added. Existing relay DC preferences migrate with
-their previous meaning, including an empty selected-DC list allowing nothing.
-**Reset relay rules** returns to all S ranks in the current DC. **Test chat
-format** displays a local TEST example regardless of the chat-alert switch or
-rules, without consuming notification suppression for a real spawn.
+For example, add an S-rank rule for Crystal with all expansions, an A-rank rule
+for Mateus (or **Current world**), and S-rank **ShB+** rules for Aether, Primal and
+Dynamis; then save that combination with a name of your choice. There is no
+predefined NA hunt mix. Existing active rules stay intact on upgrade.
+
+S-rank RELAY chat has its own rule editor and separate saved-preset library in
+**Settings > Notifications > Community S-rank alerts**. These rules control both
+the chat line and relay sound. **Copy /hhv S-rank rules** copies only S-rank
+location and expansion selections into active chat rules; later edits remain
+independent. You can then save these as a named chat preset. No A-rank or SS
+relays are added. Existing relay DC preferences migrate with their previous
+meaning, including an empty selected-DC list allowing nothing. **Reset relay
+rules** returns to all S ranks in the current DC. Preference resets preserve
+both saved-preset libraries. **Test chat format** displays a local TEST example
+regardless of the chat-alert switch or rules, without consuming notification
+suppression for a real spawn. The server's feed coverage remains separate.
 
 The pull-time clock always uses the Faloop report time, even when a plugin or
 Bear supplies the displayed health. If Faloop has not supplied a timer, the
@@ -101,14 +109,16 @@ For in-game verification, compare the same S-rank, world and instance in Bear an
 7. Check RELAY chat HP against the latest plugin/Bear report. The same spawn
    arriving from another source or being released should not notify again;
    a different world or instance should still notify independently.
-8. Open `/hhv` filters, choose **NA hunt mix** and verify rank/expansion coverage
-   across Crystal, Mateus and the other NA DCs. Change the Mateus rule to
-   **Current world** and travel to another world; the A-rank selection should
-   follow. Check overlapping rules, all/none expansions, saving/reloading and
-   the filter editor at narrow window widths and larger UI scales.
-9. In Notifications, apply the chat preset or copy the `/hhv` S rules. Check
-   chat and sound exclusions, per-expansion matching, current-world/DC travel,
-   saving/reloading, and that later `/hhv` edits do not alter chat rules.
+8. Open `/hhv` filters, create rules for your chosen worlds, ranks and expansions,
+   then save them under a name. Change rules and check the modified indicator;
+   Load should restore the saved rules, while Update saved should keep the edits.
+   Verify Save as, Rename and Delete, including duplicate-name validation,
+   independent copies, reload persistence and preference resets retaining presets.
+9. In Notifications, create chat presets or copy the `/hhv` S rules and save
+   them. Check chat and sound exclusions, per-expansion matching, current-world/DC
+   travel, and that later `/hhv` edits do not alter chat rules or presets.
+10. Check preset controls and the rule editor at narrow window widths and larger
+    UI scales in both compact `/hhv` and workspace Active Marks settings.
 
 Automated tests exercise parsing, freshness and compatibility. Account access,
 token renewal and actual in-game rendering still require this live check.

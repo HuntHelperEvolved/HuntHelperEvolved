@@ -34,6 +34,11 @@ public static class ReleaseNotes
 
     public static readonly Release[] All =
     {
+        new("0.6.0.10", "2026-10-01", "Create and manage your own named hunt presets.",
+        [
+            new("Named presets", "Save as, Load, Update saved, Rename and Delete are available in /hhv filters and S-rank chat relay settings. Each preset stores world, DC, rank and expansion rules. The fixed NA hunt mix button has been removed; your current rules stay in place.", Kihtli),
+            new("Saved libraries", "Window and chat presets have separate libraries. Active rules continue saving as you edit; saved presets change only when explicitly updated. Loading makes an independent copy. Deleting a saved preset keeps the active rules, and preference resets preserve saved presets.", Kihtli),
+        ]),
         new("0.6.0.9", "2026-10-01", "Choose chat relays with world, DC and expansion rules.",
         [
             new("S-rank relay presets", "Settings > Notifications now uses the same rule editor as /hhv for S-rank RELAY chat and its sound. Choose worlds, DCs and expansions, including Current world, Current DC and ShB+. Existing relay DC preferences are preserved.", Kihtli),

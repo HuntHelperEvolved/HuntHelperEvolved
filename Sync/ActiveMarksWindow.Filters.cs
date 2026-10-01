@@ -27,7 +27,9 @@ public sealed partial class ActiveMarksWindow
                 ImGui.PushStyleColor(ImGuiCol.Text, HuntTheme.Muted);
                 ImGui.TextWrapped("The rank tabs and search narrow the list further.");
                 ImGui.PopStyleColor();
-                (_ruleEditor ??= new(worlds, detector.CurrentWorldId, config.Save)).Draw(rules);
+                (_ruleEditor ??= new(worlds, detector.CurrentWorldId, config.Save,
+                    () => config.ActiveMarkPresetId, id => config.ActiveMarkPresetId = id))
+                    .Draw(rules, config.ActiveMarkPresets ??= new());
                 ImGui.EndTabItem();
             }
             if (ImGui.BeginTabItem("Status & display"))
@@ -58,6 +60,6 @@ public sealed partial class ActiveMarksWindow
         { DrawStatusLegend(); ImGui.TreePop(); }
         ImGui.TextWrapped("These settings apply to every rule. The rank tabs and search can narrow the list further.");
         if (ImGui.Button("Reset window filters"))
-        { config.VisibleMarkFilters = new(); _ruleEditor?.Reset(); config.Save(); }
+        { config.VisibleMarkFilters = new(); config.ActiveMarkPresetId = null; _ruleEditor?.Reset(); config.Save(); }
     }
 }

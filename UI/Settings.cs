@@ -41,7 +41,7 @@ public sealed partial class Plugin
         SettingsPage.Train => "AutoMarkDeadEnabled Hunt Tally observed defeat EchoOnMarkClick MarkDeadOnObservedDefeat TeleportAlsoFlags ShowMarkAge HideZonesInPopout SwapMarkAndZoneInPopout ShowSpicing AutoAdvance EchoOnAdvance TrainRowHeight row height pixels PollIntervalSeconds detection interval SRankZoneReminderEnabled SRankZoneReminderSound ShowSRankWatchesInTrainList follow scouting scan zone reminder watches bongo",
         SettingsPage.Counters => "CountOnlyMyKills personal kill credit reset spawn S rank watches",
         SettingsPage.Map => "spawn points live marks occupied dim found ranks A B S SS minions names health label font size map control bar alt click flag dots colours colors dark outlines dot size player guides range radius scale circle heading projected path facing bearing position remote sightings S candidates outline width mapping SpawnDotColour MarkLabelFontSize HideOccupiedSpawnPoints DimFoundARankSpawnPoints",
-        SettingsPage.Notifications => "chat flytext speech spoken voice volume text to speech TTS templates message test notification rank A B S SS detection bongo sound community Faloop spawn release alerts data centre DC DetectionTtsEnabled DetectionTtsVoice DetectionTtsVolume DetectionFlyTextEnabled EchoOnDetection SyncSpawnSound SyncSpawnAlerts SyncSpawnCurrentDc SyncSpawnDataCenters SyncRelayRules relay rules preset NA hunt mix current world expansions Shadowbringers copy hhv",
+        SettingsPage.Notifications => "chat flytext speech spoken voice volume text to speech TTS templates message test notification rank A B S SS detection bongo sound community Faloop spawn release alerts data centre DC DetectionTtsEnabled DetectionTtsVoice DetectionTtsVolume DetectionFlyTextEnabled EchoOnDetection SyncSpawnSound SyncSpawnAlerts SyncSpawnCurrentDc SyncSpawnDataCenters SyncRelayRules relay rules preset Saved presets Save as Load Update saved Rename preset Delete preset current world expansions Shadowbringers copy hhv",
         SettingsPage.Travel => "aetheryte blacklist excluded teleport Lifestream expansion zone destinations",
         SettingsPage.Sharing => "SyncEnabled server URL password alias display name encrypted development plaintext wss ws connect reconnect backup upload status presence Faloop Bear SyncReceiveBearFeed group train sightings witnessed kills SyncShareTrain SyncShareSightings SyncReportSRankKills SyncAllowPlaintext SyncServerUrl SyncPassword SyncDisplayName",
         SettingsPage.ActiveMarks => "live rank A B S SS local own community remote server data centre DC current world combat engaged alive dead life pulled health distance age coordinates search auto open auto close inactive linger",
@@ -684,11 +684,13 @@ public sealed partial class Plugin
             _config.SyncRelayRules = Sync.RelayScopeFilter.MigrateLegacy(_config.SyncSpawnCurrentDc, _config.SyncSpawnDataCenters);
             _config.Save();
         }
-        _relayRuleEditor ??= new(_worldData, _detector.CurrentWorldId, _config.Save, relayOnly: true);
+        _relayRuleEditor ??= new(_worldData, _detector.CurrentWorldId, _config.Save,
+            () => _config.RelayPresetId, id => _config.RelayPresetId = id, relayOnly: true);
         ImGui.TextWrapped("S-rank relays matching any enabled rule appear in chat. These rules also control the relay sound.");
         if (ImGui.Button("Copy /hhv S-rank rules"))
         {
             _config.SyncRelayRules = Sync.RelayScopeFilter.FromActiveMarks(_config.VisibleMarkFilters);
+            _config.RelayPresetId = null;
             _relayRuleEditor.Reset(); _config.Save();
         }
         if (ImGui.IsItemHovered())
@@ -697,11 +699,12 @@ public sealed partial class Plugin
         if (ImGui.Button("Reset relay rules"))
         {
             _config.SyncRelayRules = Sync.RelayScopeFilter.MigrateLegacy(true, null);
+            _config.RelayPresetId = null;
             _relayRuleEditor.Reset(); _config.Save();
         }
         if (ImGui.IsItemHovered()) ImGui.SetTooltip("Restore all S-rank relays in your current DC, across every expansion.");
         ImGui.Spacing();
-        _relayRuleEditor.Draw(_config.SyncRelayRules);
+        _relayRuleEditor.Draw(_config.SyncRelayRules, _config.RelayPresets ??= new());
         ImGui.Separator();
         ImGui.TextWrapped("Server coverage: " + string.Join(", ", _sync.Faloop.DataCenters));
         if (ImGui.Button("Test chat format"))

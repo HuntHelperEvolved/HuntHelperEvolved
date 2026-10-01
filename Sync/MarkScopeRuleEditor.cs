@@ -9,10 +9,19 @@ using System.Numerics;
 namespace HuntHelperEvolved.Sync;
 
 /// <summary>The same scope editor with independent state for display and relay preferences.</summary>
-internal sealed class MarkScopeRuleEditor(WorldData worlds, Func<uint> currentWorld, Action save, bool relayOnly = false)
+internal sealed class MarkScopeRuleEditor(WorldData worlds, Func<uint> currentWorld, Action save,
+    Func<string?> loadedPresetId, Action<string?> setLoadedPresetId, bool relayOnly = false)
 {
     private int _selectedFilterRule;
     private string _filterTargetSearch = string.Empty;
+    private string? _selectedPresetId;
+    private string? _renamePresetId;
+    private string? _deletePresetId;
+    private string _deletePresetName = string.Empty;
+    private bool _namingPreset;
+    private string _presetName = string.Empty;
+    private string _presetError = string.Empty;
+    private string _presetMessage = string.Empty;
     private static readonly string[] FilterRanks = { "S", "SS", "A", "B" };
     private static readonly (string Name, string Short)[] FilterExpansions =
     {
@@ -23,13 +32,89 @@ internal sealed class MarkScopeRuleEditor(WorldData worlds, Func<uint> currentWo
     private IReadOnlyList<string> EditableRanks => relayOnly ? RelayRanks : FilterRanks;
     private static readonly string[] RelayRanks = { "S" };
 
-    public void Draw(List<VisibleMarkRule> rules)
+    public void Draw(List<VisibleMarkRule> rules, List<MarkScopePreset> presets)
     {
         rules.RemoveAll(rule => rule is null);
         foreach (var rule in rules) VisibleMarkFilter.Normalize(rule);
         ImGui.PushID(relayOnly ? "relayScopeRules" : "visibleScopeRules");
+        DrawPresets(rules, presets);
+        ImGui.Separator();
         DrawRuleEditor(rules);
         ImGui.PopID();
+    }
+
+    private void DrawPresets(List<VisibleMarkRule> rules, List<MarkScopePreset> presets)
+    {
+        var loaded = presets.FirstOrDefault(p => p is not null && p.Id == loadedPresetId());
+        ImGui.TextWrapped(loaded is null ? "Current rules: Custom" : "Current rules: " + loaded.Name
+            + (MarkScopePresets.SnapshotMatches(loaded, rules, relayOnly) ? "" : " (modified)"));
+        if (!ImGui.CollapsingHeader("Saved presets", ImGuiTreeNodeFlags.DefaultOpen)) return;
+        var selected = presets.FirstOrDefault(p => p is not null && p.Id == (_selectedPresetId ?? loadedPresetId()));
+        _selectedPresetId = selected?.Id;
+        ImGui.SetNextItemWidth(Math.Max(1, ImGui.GetContentRegionAvail().X));
+        if (ImGui.BeginCombo("##savedPreset", selected?.Name ?? "Select a preset", ImGuiComboFlags.HeightLarge))
+        {
+            foreach (var preset in presets.Where(p => p is not null))
+            {
+                ImGui.PushID(preset.Id);
+                if (ImGui.Selectable(preset.Name, preset.Id == _selectedPresetId))
+                { _selectedPresetId = preset.Id; selected = preset; _presetMessage = _presetError = string.Empty; }
+                ImGui.PopID();
+            }
+            ImGui.EndCombo();
+        }
+        ImGui.BeginDisabled(selected is null);
+        if (ImGui.Button("Load") && selected is not null) LoadPreset(presets, rules, selected.Id);
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip("Replace the current rules with this saved preset.");
+        ImGui.EndDisabled();
+        SameLineIfFits(HuntUi.ButtonWidth("Save as..."));
+        if (ImGui.Button("Save as..."))
+        {
+            _namingPreset = true; _renamePresetId = null; _presetName = string.Empty;
+            _deletePresetId = null; _presetMessage = _presetError = string.Empty;
+        }
+        SameLineIfFits(HuntUi.ButtonWidth("Update saved"));
+        ImGui.BeginDisabled(selected is null);
+        if (ImGui.Button("Update saved") && selected is not null) UpdatePreset(presets, rules, selected.Id);
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip("Replace the selected preset's saved rules with your current rules.");
+        SameLineIfFits(HuntUi.ButtonWidth("Rename..."));
+        if (ImGui.Button("Rename...") && selected is not null)
+        {
+            _namingPreset = true; _renamePresetId = selected.Id; _presetName = selected.Name;
+            _deletePresetId = null; _presetMessage = _presetError = string.Empty;
+        }
+        SameLineIfFits(HuntUi.ButtonWidth("Delete..."));
+        if (ImGui.Button("Delete...") && selected is not null)
+        {
+            _deletePresetId = selected.Id; _deletePresetName = selected.Name;
+            _namingPreset = false; _presetMessage = _presetError = string.Empty;
+        }
+        ImGui.EndDisabled();
+        if (_namingPreset)
+        {
+            ImGui.TextUnformatted(_renamePresetId is null ? "Save current rules as" : "Rename preset");
+            ImGui.SetNextItemWidth(Math.Max(1, ImGui.GetContentRegionAvail().X));
+            ImGui.InputTextWithHint("##presetName", "Preset name", ref _presetName, MarkScopePresets.MaxNameLength + 1);
+            if (ImGui.Button("Save##presetName") && (_renamePresetId is null
+                ? CreatePreset(presets, rules, _presetName) : RenamePreset(presets, _renamePresetId, _presetName)))
+                _namingPreset = false;
+            SameLineIfFits(HuntUi.ButtonWidth("Cancel"));
+            if (ImGui.Button("Cancel##presetName")) { _namingPreset = false; _presetError = string.Empty; }
+        }
+        if (_deletePresetId is not null)
+        {
+            ImGui.TextWrapped("Delete \"" + _deletePresetName + "\"? Your current rules will stay in place.");
+            if (ImGui.Button("Delete preset"))
+            {
+                DeletePreset(presets, _deletePresetId, _deletePresetName);
+                _deletePresetId = null;
+            }
+            SameLineIfFits(HuntUi.ButtonWidth("Cancel"));
+            if (ImGui.Button("Cancel##deletePreset")) _deletePresetId = null;
+        }
+        if (_presetError.Length > 0) ImGui.TextWrapped(_presetError);
+        else if (_presetMessage.Length > 0) ImGui.TextWrapped(_presetMessage);
+        ImGui.TextWrapped("Rule edits apply immediately. Use Update saved to keep them in the selected preset. Presets save world, rank and expansion rules.");
     }
 
     private void DrawRuleEditor(List<VisibleMarkRule> rules)
@@ -40,20 +125,6 @@ internal sealed class MarkScopeRuleEditor(WorldData worlds, Func<uint> currentWo
             _selectedFilterRule = rules.Count - 1;
             save();
         }
-        SameLineIfFits(HuntUi.ButtonWidth("NA hunt mix"));
-        var preset = NorthAmericanHuntRules();
-        ImGui.BeginDisabled(preset is null);
-        if (HuntUi.Button("naHuntMix", "NA hunt mix", tooltip:
-            relayOnly ? "Replace chat rules: all S ranks on Crystal; ShB/EW/DT S ranks on Aether, Primal and Dynamis."
-                : "Replace rules: S/SS on Crystal, A on Mateus, and ShB/EW/DT S/SS on Aether, Primal and Dynamis."))
-        {
-            rules.Clear(); rules.AddRange(preset!);
-            _selectedFilterRule = 0;
-            save();
-        }
-        ImGui.EndDisabled();
-        if (preset is null && ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
-            ImGui.SetTooltip("The North American world list is not available yet.");
         var unrestricted = rules.Where(rule => rule.Enabled && rule.Scope == VisibleMarkScope.Any
             && rule.Worlds.Count == 0 && rule.DataCenters.Count == 0 && rule.AllExpansions
             && EditableRanks.All(rule.Ranks.Contains)).ToList();
@@ -240,26 +311,68 @@ internal sealed class MarkScopeRuleEditor(WorldData worlds, Func<uint> currentWo
         return "Custom saved selection";
     }
 
-    private List<VisibleMarkRule>? NorthAmericanHuntRules()
+    private bool CreatePreset(List<MarkScopePreset> library, List<VisibleMarkRule> rules, string name)
     {
-        var mateus = worlds.IdOf("Mateus");
-        var names = new[] { "Crystal", "Aether", "Primal", "Dynamis" };
-        var dcs = names.Select(name => worlds.DataCenters.FirstOrDefault(dc => dc.Name == name).Id).ToArray();
-        if ((!relayOnly && mateus == 0) || dcs.Any(id => id == 0)) return null;
-        var result = new List<VisibleMarkRule>
-        {
-            new() { DataCenters = new() { dcs[0] }, Ranks = relayOnly ? new() { "S" } : new() { "S", "SS" } },
-        };
-        if (!relayOnly) result.Add(new() { Worlds = new() { mateus }, Ranks = new() { "A" } });
-        foreach (var dc in dcs.Skip(1)) result.Add(new()
-        {
-            DataCenters = new() { dc }, Ranks = relayOnly ? new() { "S" } : new() { "S", "SS" }, AllExpansions = false,
-            Expansions = new() { "Shadowbringers", "Endwalker", "Dawntrail" },
-        });
-        return result;
+        if (!MarkScopePresets.TryCreate(library, name, rules, relayOnly, out var preset, out _presetError)) return false;
+        _selectedPresetId = preset.Id;
+        setLoadedPresetId(preset.Id);
+        _presetMessage = "Saved \"" + preset.Name + "\".";
+        save();
+        return true;
     }
 
-    public void Reset() { _selectedFilterRule = 0; _filterTargetSearch = string.Empty; }
+    private bool LoadPreset(List<MarkScopePreset> library, List<VisibleMarkRule> rules, string id)
+    {
+        var preset = library.FirstOrDefault(p => p is not null && p.Id == id);
+        if (preset is null) { _presetError = "Preset not found."; return false; }
+        var snapshot = MarkScopePresets.Apply(preset, relayOnly);
+        rules.Clear(); rules.AddRange(snapshot);
+        _selectedFilterRule = 0; _filterTargetSearch = string.Empty;
+        _selectedPresetId = preset.Id;
+        setLoadedPresetId(preset.Id);
+        _presetError = string.Empty; _presetMessage = "Loaded \"" + preset.Name + "\".";
+        save();
+        return true;
+    }
+
+    private bool UpdatePreset(List<MarkScopePreset> library, List<VisibleMarkRule> rules, string id)
+    {
+        if (!MarkScopePresets.TryUpdate(library, id, rules, relayOnly, out _presetError)) return false;
+        _selectedPresetId = id;
+        setLoadedPresetId(id);
+        _presetMessage = "Updated the saved preset.";
+        save();
+        return true;
+    }
+
+    private bool RenamePreset(List<MarkScopePreset> library, string id, string name)
+    {
+        if (!MarkScopePresets.TryRename(library, id, name, out _presetError)) return false;
+        _presetMessage = "Renamed the saved preset.";
+        save();
+        return true;
+    }
+
+    private bool DeletePreset(List<MarkScopePreset> library, string id, string name)
+    {
+        var preset = library.FirstOrDefault(p => p is not null && p.Id == id);
+        if (preset is null || preset.Name != name)
+        { _presetError = "The preset changed. Select it again before deleting."; return false; }
+        if (!MarkScopePresets.Delete(library, id)) return false;
+        if (loadedPresetId() == id) setLoadedPresetId(null);
+        if (_selectedPresetId == id) _selectedPresetId = null;
+        _presetError = string.Empty; _presetMessage = "Deleted \"" + name + "\". Current rules are unchanged.";
+        save();
+        return true;
+    }
+
+    public void Reset()
+    {
+        _selectedFilterRule = 0; _filterTargetSearch = string.Empty;
+        _selectedPresetId = _renamePresetId = _deletePresetId = null;
+        _namingPreset = false;
+        _presetName = _presetError = _presetMessage = _deletePresetName = string.Empty;
+    }
 
     private static void SameLineIfFits(float width) => HuntUi.SameLineIfFits(width);
 }

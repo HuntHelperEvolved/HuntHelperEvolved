@@ -145,6 +145,7 @@ public static class SettingsReset
                 config.SyncSpawnCurrentDc = defaults.SyncSpawnCurrentDc;
                 config.SyncSpawnDataCenters = defaults.SyncSpawnDataCenters;
                 config.SyncRelayRules = defaults.SyncRelayRules;
+                config.RelayPresetId = defaults.RelayPresetId;
                 break;
             case SettingsResetCategory.Travel:
                 config.BlacklistedAetherytes = Configuration.CreateDefaultAetheryteBlacklist();
@@ -161,6 +162,7 @@ public static class SettingsReset
                 break;
             case SettingsResetCategory.HuntWindows:
                 config.VisibleMarkFilters = defaults.VisibleMarkFilters;
+                config.ActiveMarkPresetId = defaults.ActiveMarkPresetId;
                 config.ARankWindowCurrentWorld = defaults.ARankWindowCurrentWorld;
                 config.ARankWindowWorlds = defaults.ARankWindowWorlds;
                 config.ARankWindowExpansions = defaults.ARankWindowExpansions;
