@@ -26,6 +26,8 @@ internal static class HuntTheme
     public static IDisposable Push(Configuration config)
     {
         var scope = new StyleScope();
+        // Dalamud applies saved per-window opacity after this shared default.
+        scope.Var(ImGuiStyleVar.Alpha, ImGui.GetStyle().Alpha * config.WindowOpacity);
         var background = ImGui.GetStyle().Colors[(int)ImGuiCol.WindowBg];
         _light = config.Theme == InterfaceTheme.Daylight ||
             config.Theme == InterfaceTheme.Dalamud && background.X + background.Y + background.Z > 1.5f;
@@ -124,6 +126,23 @@ internal static class HuntTheme
             config.Theme = (InterfaceTheme)selected;
             config.Save();
         }
+    }
+
+    public static void DrawOpacityPreferences(Configuration config)
+    {
+        var percent = config.WindowOpacity * 100f;
+        ImGui.SetNextItemWidth(Math.Min(220 * ImGuiHelpers.GlobalScale, ImGui.GetContentRegionAvail().X));
+        if (ImGui.SliderFloat(HuntUi.FieldLabel("Window opacity"), ref percent, 20f, 100f, "%.0f%%"))
+        {
+            config.WindowOpacity = percent / 100f;
+            config.Save();
+        }
+        if (ImGui.Button("Reset opacity"))
+        {
+            config.WindowOpacity = 1f;
+            config.Save();
+        }
+        ImGui.TextWrapped("Default opacity for all HHE windows, including Tally. Each window's Dalamud title-bar menu can override it; use Reset beside Opacity in that menu to follow this setting again.");
     }
 
     private static Vector4 Rgb(int hex) => new((hex >> 16 & 255) / 255f,

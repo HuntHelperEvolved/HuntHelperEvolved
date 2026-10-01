@@ -103,22 +103,12 @@ public sealed class SRankWindow
         }
     }
 
-    public void Draw()
+    internal HuntWindow CreateWindow(Func<bool> available) => new("S Ranks", () => Visible, value => Visible = value,
+        DrawStandaloneContents)
     {
-        if (!Visible) return;
-
-        var open = true;
-        ImGui.SetNextWindowSize(new Vector2(880, 520), ImGuiCond.FirstUseEver);
-        ImGui.SetNextWindowSizeConstraints(new Vector2(520, 240), new Vector2(float.MaxValue, float.MaxValue));
-        if (_focusWindow) { ImGui.SetNextWindowFocus(); _focusWindow = false; }
-        if (ImGui.Begin("S Ranks", ref open))
-        {
-            DrawStandaloneContents();
-        }
-        ImGui.End();
-
-        if (!open) Visible = false;
-    }
+        Available = available,
+        ConsumeFocus = () => Plugin.TakeFocus(ref _focusWindow)
+    };
 
     public void DrawContents()
     {

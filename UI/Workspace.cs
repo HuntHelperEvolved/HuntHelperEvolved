@@ -12,7 +12,6 @@ public sealed partial class Plugin
     private enum WorkspacePage { Train, ActiveMarks, ARanks, SRanks }
     private WorkspacePage _workspacePage;
     private bool _focusWorkspace;
-    private Vector2? _workspaceNextPosition;
     private bool _workspaceHelpVisible;
     private bool _preferencesVisible;
     private bool _focusPreferences;
@@ -81,22 +80,20 @@ public sealed partial class Plugin
         var scale = ImGuiHelpers.GlobalScale;
         var height = ImGui.GetFrameHeight();
         var gap = ImGui.GetStyle().ItemSpacing.X;
-        var fixedUtilityWidth = HuntUi.ButtonWidth("Tally", FontAwesomeIcon.ChartBar) + height * 3 + gap * 5;
+        var fixedUtilityWidth = HuntUi.ButtonWidth("Tally", FontAwesomeIcon.ChartBar) + height * 2 + gap * 4;
         var connectionWidth = ImGui.GetContentRegionAvail().X >= fixedUtilityWidth + ConnectionUi.Width()
             + ImGui.CalcTextSize("Hunt Helper Evolved").X + 20 * scale
             ? ConnectionUi.Width() : ConnectionUi.Width(compact: true);
         var utilityWidth = fixedUtilityWidth + connectionWidth;
         HuntUi.FillBand(height + ImGui.GetStyle().ItemSpacing.Y);
         var start = ImGui.GetCursorScreenPos();
-        var dragWidth = Math.Max(height, ImGui.GetContentRegionAvail().X - utilityWidth);
-        HuntUi.Button("Workspace drag", string.Empty, quiet: true, size: new Vector2(dragWidth, height));
-        if (ImGui.IsItemActive() && ImGui.IsMouseDragging(ImGuiMouseButton.Left))
-            _workspaceNextPosition = ImGui.GetWindowPos() + ImGui.GetIO().MouseDelta;
+        var brandWidth = Math.Max(height, ImGui.GetContentRegionAvail().X - utilityWidth);
+        ImGui.Dummy(new Vector2(brandWidth, height));
         var draw = ImGui.GetWindowDrawList();
         draw.AddRectFilled(start + new Vector2(0, 5 * scale), start + new Vector2(3 * scale, height - 5 * scale),
             ImGui.GetColorU32(HuntTheme.Telemetry));
-        draw.PushClipRect(start, start + new Vector2(dragWidth, height), true);
-        var brand = ImGui.CalcTextSize("Hunt Helper Evolved").X + 11 * scale <= dragWidth
+        draw.PushClipRect(start, start + new Vector2(brandWidth, height), true);
+        var brand = ImGui.CalcTextSize("Hunt Helper Evolved").X + 11 * scale <= brandWidth
             ? "Hunt Helper Evolved" : "HHE";
         draw.AddText(start + new Vector2(11 * scale, (height - ImGui.GetFontSize()) / 2),
             ImGui.GetColorU32(ImGuiCol.Text), brand);
@@ -115,25 +112,6 @@ public sealed partial class Plugin
         ImGui.SameLine();
         if (HuntUi.IconButton("More", FontAwesomeIcon.EllipsisH, "Windows and help")) ImGui.OpenPopup("Workspace tools");
         DrawWindowMenu();
-        ImGui.SameLine();
-        if (HuntUi.IconButton("Close workspace", FontAwesomeIcon.Times, "Close Hunt Helper Evolved")) _configWindowVisible = false;
-    }
-
-    private void DrawPreferencesWindow()
-    {
-        if (!_preferencesVisible) return;
-        var scale = ImGuiHelpers.GlobalScale;
-        ImGui.SetNextWindowSize(new Vector2(680, 580) * scale, ImGuiCond.FirstUseEver);
-        ImGui.SetNextWindowSizeConstraints(new Vector2(480, 320) * scale, new Vector2(float.MaxValue));
-        if (_focusPreferences)
-        {
-            ImGui.SetNextWindowFocus();
-            _focusPreferences = false;
-        }
-        ImGui.PushStyleColor(ImGuiCol.WindowBg, HuntTheme.Panel);
-        if (ImGui.Begin("HHE Settings", ref _preferencesVisible)) DrawSettingsTab();
-        ImGui.End();
-        ImGui.PopStyleColor();
     }
 
     private static void WorkspaceSameLine(string label, bool button = false)
@@ -141,14 +119,6 @@ public sealed partial class Plugin
         ImGui.SameLine();
         var width = ImGui.CalcTextSize(label).X + (button ? ImGui.GetStyle().FramePadding.X * 2 : 0);
         if (ImGui.GetContentRegionAvail().X < width) ImGui.NewLine();
-    }
-
-    private void DrawWorkspaceHelp()
-    {
-        if (!_workspaceHelpVisible) return;
-        ImGui.SetNextWindowSize(new Vector2(720, 520), ImGuiCond.FirstUseEver);
-        if (ImGui.Begin("HHE Help", ref _workspaceHelpVisible)) DrawHelpPage();
-        ImGui.End();
     }
 
     private void DrawWindowMenu()

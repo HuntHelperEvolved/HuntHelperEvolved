@@ -196,6 +196,7 @@ public static class SettingsReset
             case SettingsResetCategory.General:
                 config.ShowReleaseNotesOnUpdate = defaults.ShowReleaseNotesOnUpdate;
                 config.Theme = defaults.Theme;
+                config.WindowOpacity = defaults.WindowOpacity;
                 break;
             case SettingsResetCategory.SyncConnection:
                 config.SyncEnabled = defaults.SyncEnabled;

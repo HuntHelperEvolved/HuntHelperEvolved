@@ -432,6 +432,9 @@ public sealed partial class Plugin : IDalamudPlugin
             startup.Add(() => { _clientState.Logout -= OnPluginLogout; });
             _clientState.Logout += OnPluginLogout;
 
+            startup.Add(_huntWindows.RemoveAllWindows);
+            InitializeHuntWindows();
+
             startup.Add(UnregisterCommands);
             RegisterCommands();
             startup.Add(() => { _framework.Update -= OnPluginFrameworkUpdate; });
@@ -997,59 +1000,21 @@ public sealed partial class Plugin : IDalamudPlugin
     {
         if (_disposed) return;
         using var theme = HuntTheme.Push(_config);
-        // Keep startup quiet, but preserve Active Marks after the first login
-        // while DC travel passes through character selection.
-        if (!_clientState.IsLoggedIn)
+        // Active Marks stays available during DC travel after the first login.
+        if (_clientState.IsLoggedIn)
         {
-            if (_releaseNotesChecked)
-                _activeMarksWindow.Draw();
-            return;
-        }
-        if (!_releaseNotesChecked)
-        {
-            _releaseNotesChecked = true;
-            ShowReleaseNotesIfUpdated();
-        }
-
-        DrawTrainPopout();
-        DrawPresetEditor();
-        DrawCounterPopout();
-        _activeMarksWindow.Draw();
-        _srankWindow.Draw();
-        _arankWindow.Draw();
-        DrawReleaseNotesWindow();
-        DrawMapControlBar();
-        _tallyWindows.Draw();
-        DrawWorkspaceHelp();
-
-        if (_srankWindow.ConsumeMappingWorkspaceRequest())
-        {
-            OpenWorkspace(WorkspacePage.SRanks);
-        }
-
-        if (_configWindowVisible)
-        {
-            if (_workspaceNextPosition is { } position)
+            if (!_releaseNotesChecked)
             {
-                ImGui.SetNextWindowPos(position, ImGuiCond.Always);
-                _workspaceNextPosition = null;
+                _releaseNotesChecked = true;
+                ShowReleaseNotesIfUpdated();
             }
-            ImGui.SetNextWindowSize(new Vector2(900, 620), ImGuiCond.FirstUseEver);
-            var minimumWidth = Math.Max(560, HuntUi.ButtonWidth("Tally", FontAwesomeIcon.ChartBar)
-                + ImGui.GetFrameHeight() * 5 + ImGui.GetStyle().ItemSpacing.X * 5
-                + ImGui.CalcTextSize("HHE").X + ImGui.GetStyle().WindowPadding.X * 2);
-            ImGui.SetNextWindowSizeConstraints(new Vector2(minimumWidth, 320), new Vector2(float.MaxValue, float.MaxValue));
-            ImGui.SetNextWindowCollapsed(false, ImGuiCond.Always);
-            if (_focusWorkspace)
-            {
-                ImGui.SetNextWindowFocus();
-                _focusWorkspace = false;
-            }
-            if (ImGui.Begin("Hunt Helper Evolved", ref _configWindowVisible, ImGuiWindowFlags.NoTitleBar))
-                DrawWorkspace();
-            ImGui.End();
+            _arankWindow.CaptureHistory();
+            UpdatePresetDraftRequest();
+            if (_srankWindow.ConsumeMappingWorkspaceRequest()) OpenWorkspace(WorkspacePage.SRanks);
+            DrawMapControlBar();
+            _tallyWindows.Draw();
         }
-        DrawPreferencesWindow();
+        _huntWindows.Draw();
     }
 
     /// <summary>
@@ -2306,15 +2271,6 @@ public sealed partial class Plugin : IDalamudPlugin
         }
     }
 
-    private void DrawTrainPopout()
-    {
-        if (!_trainPopoutVisible) return;
-        ImGui.SetNextWindowSize(new Vector2(400, 340), ImGuiCond.FirstUseEver);
-        ImGui.SetNextWindowSizeConstraints(new Vector2(300, 180), new Vector2(float.MaxValue, float.MaxValue));
-        if (ImGui.Begin("Hunt Train", ref _trainPopoutVisible)) DrawCompactTrainWindowContents();
-        ImGui.End();
-    }
-
     /// <summary>
     /// Counter rows for one world. Counts are kept per world, so the same mark
     /// tracked on Mateus and on Zalera are genuinely separate tallies.
@@ -2455,25 +2411,17 @@ public sealed partial class Plugin : IDalamudPlugin
         return "<1m";
     }
 
-    private void DrawCounterPopout()
+    private void DrawCounterPopoutContents()
     {
-        if (!_counterPopoutVisible) return;
+        ImGui.PushTextWrapPos(0);
+        DrawSpawnWatches();
+        ImGui.PopTextWrapPos();
 
-        ImGui.SetNextWindowSize(new Vector2(300, 400), ImGuiCond.FirstUseEver);
-        ImGui.SetNextWindowSizeConstraints(new Vector2(220, 160), new Vector2(float.MaxValue, float.MaxValue));
-        if (ImGui.Begin("Hunt Counter", ref _counterPopoutVisible))
-        {
-            ImGui.PushTextWrapPos(0);
-            DrawSpawnWatches();
-            ImGui.PopTextWrapPos();
-
-            DrawCounterList(
-                currentZoneOnly: true,
-                worldId: _counter.CurrentWorldId(),
-                instance: MarkDetector.GetCurrentInstance(),
-                worldName: _counter.CurrentWorldName());
-        }
-        ImGui.End();
+        DrawCounterList(
+            currentZoneOnly: true,
+            worldId: _counter.CurrentWorldId(),
+            instance: MarkDetector.GetCurrentInstance(),
+            worldName: _counter.CurrentWorldName());
     }
 
     /// <summary>
@@ -2606,23 +2554,6 @@ public sealed partial class Plugin : IDalamudPlugin
             // A window that fails to open is not worth taking the plugin down.
             _log.Warning(ex, "Could not decide whether to show the release notes.");
         }
-    }
-
-    private void DrawReleaseNotesWindow()
-    {
-        if (!_releaseNotesVisible) return;
-
-        ImGui.SetNextWindowSize(new Vector2(560, 520), ImGuiCond.FirstUseEver);
-        ImGui.SetNextWindowSizeConstraints(new Vector2(380, 240), new Vector2(float.MaxValue, float.MaxValue));
-
-        if (!ImGui.Begin("Hunt Helper Evolved — what's new###HHEReleaseNotes", ref _releaseNotesVisible))
-        {
-            ImGui.End();
-            return;
-        }
-
-        DrawReleaseNotesBody();
-        ImGui.End();
     }
 
     private void DrawReleaseNotesBody()
@@ -3052,6 +2983,7 @@ public sealed partial class Plugin : IDalamudPlugin
         cleanup.Run("_seeder.Dispose", () => { _seeder.Dispose(); });
         cleanup.Run("_trainIpc.Dispose", () => { _trainIpc.Dispose(); });
         cleanup.Run("_trainStatusIpc.Dispose", () => { _trainStatusIpc.Dispose(); });
+        cleanup.Run("_huntWindows.RemoveAllWindows", () => _huntWindows.RemoveAllWindows());
         cleanup.Run("_tallyWindows.RemoveAllWindows", () => { _tallyWindows.RemoveAllWindows(); });
         cleanup.Run("_tallyWindow.Dispose", () => { _tallyWindow.Dispose(); });
         cleanup.Run("_tallyConfig.Flush", () => { _tallyConfig.Flush(force: true); });

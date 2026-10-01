@@ -298,7 +298,7 @@ public sealed partial class Plugin
         if (!open) _presetDeletion = null;
     }
 
-    private void DrawPresetEditor()
+    private void UpdatePresetDraftRequest()
     {
         if (_presetDraftRequest is not null && _sync.PendingPresetRequest is null)
         {
@@ -311,15 +311,10 @@ public sealed partial class Plugin
             _presetSubmittedDraft = null;
             _presetDeletingId = null;
         }
-        if (!_presetEditorOpen) return;
-        ImGui.SetNextWindowSize(new Vector2(640, 700), ImGuiCond.FirstUseEver);
-        if (_presetEditorFocusRequested) ImGui.SetNextWindowFocus();
-        _presetEditorFocusRequested = false;
-        if (!ImGui.Begin("Train presets", ref _presetEditorOpen))
-        {
-            ImGui.End();
-            return;
-        }
+    }
+
+    private void DrawPresetEditorContents()
+    {
         ImGui.TextWrapped("Save a conductor's preferences for future trains, then select the preset before scouting. Strict zones use your mark order; other zones use estimated travel distance from an aetheryte.");
         ImGui.BeginDisabled(_presetDraftRequest is not null);
         ImGui.SetNextItemWidth(Math.Max(120, ImGui.GetContentRegionAvail().X - 120));
@@ -342,7 +337,6 @@ public sealed partial class Plugin
         if (_presetDrafts.Draft is not { } draft)
         {
             ImGui.TextWrapped("Create a preset or choose one from your local or server library.");
-            ImGui.End();
             return;
         }
         TrainControlSameLine("Duplicate");
@@ -534,6 +528,5 @@ public sealed partial class Plugin
         if (!string.IsNullOrEmpty(_sync.PresetStatus)) ImGui.TextWrapped(_sync.PresetStatus);
         DrawPresetReplacementConfirmation();
         DrawPresetDeletionConfirmation();
-        ImGui.End();
     }
 }

@@ -158,6 +158,7 @@ public sealed partial class Plugin
         {
             case SettingsPage.Appearance:
                 if (SettingMatches("Theme", "Graphite Daylight Dalamud light dark appearance")) HuntTheme.DrawPreferences(_config);
+                if (SettingMatches("Window opacity", "WindowOpacity global transparency transparent alpha appearance")) HuntTheme.DrawOpacityPreferences(_config);
                 if (SettingMatches("Show release notes after updates", "ShowReleaseNotesOnUpdate"))
                 {
                     var releaseNotes = _config.ShowReleaseNotesOnUpdate;

@@ -27,7 +27,7 @@ public sealed partial class Plugin
         SettingsResetCategory.Sharing => "Sharing preferences",
         SettingsResetCategory.HuntWindows => "Active Marks and A/S-rank filters",
         SettingsResetCategory.Tally => "Hunt tally preferences",
-        SettingsResetCategory.General => "Update notifications",
+        SettingsResetCategory.General => "Appearance and update notifications",
         SettingsResetCategory.SyncConnection => "Saved sync connection",
         SettingsResetCategory.DiscordWebhooks => "Discord destinations",
         _ => throw new ArgumentOutOfRangeException(nameof(category)),
@@ -57,7 +57,7 @@ public sealed partial class Plugin
             + "and condition filters. Clear searches. Open windows and recorded sightings are kept.",
         SettingsResetCategory.Tally => "Restore kill-credit rules, tracked ranks, chat, integration settings, "
             + "automatic achievement seeding and the history limit. Character totals and achievement baselines are kept.",
-        SettingsResetCategory.General => "Restore automatic display of release notes after an update.",
+        SettingsResetCategory.General => "Restore the Graphite theme, full default window opacity and automatic display of release notes after an update. Per-window Dalamud overrides remain in their title-bar menus.",
         SettingsResetCategory.SyncConnection => "Turn sync off and remove the saved server address, password and display name. "
             + "You will need to enter them again to reconnect. Your train and local recovery copies are kept.",
         SettingsResetCategory.DiscordWebhooks => "Remove every saved Discord webhook URL and label, including disabled destinations. "

@@ -288,6 +288,12 @@ local. Nothing is sent to anyone else.
 These are Hunt Helper's own placeholders, defaults and colours, so a message
 pasted across from it produces the same line.
 
+All standalone HHE windows have Dalamud title-bar controls for opacity, pinning
+and click-through. **Settings > Appearance > Window opacity** sets a shared
+20–100% default, including Tally. A saved per-window opacity takes precedence;
+use **Reset** beside **Opacity** in that window's title-bar menu to follow the
+shared setting again. The attached map control bar also follows the shared opacity.
+
 ## The train
 
 The main **Train** page and `/hht` popout share **Next mark**, **Next Aetheryte**,

@@ -46,7 +46,7 @@ public sealed class ARankWindow
         _workspaceView = null;
     }
 
-    public void Draw()
+    public void CaptureHistory()
     {
         var now = DateTime.UtcNow;
         // Capture while closed too, so clearing the train does not erase its known kill times.
@@ -72,15 +72,17 @@ public sealed class ARankWindow
             _sync.RememberARankSightings(sightings);
             if (ARankHistory.Merge(_config.ARankKills, captured, now)) _config.Save();
         }
-        if (!_config.ARankWindowOpen) return;
-        var open = true;
-        ImGui.SetNextWindowSize(new Vector2(1040,520), ImGuiCond.FirstUseEver);
-        ImGui.SetNextWindowSizeConstraints(new Vector2(520,240),new Vector2(float.MaxValue,float.MaxValue));
-        if (_focusWindow) { ImGui.SetNextWindowFocus(); _focusWindow=false; }
-        if (ImGui.Begin("A Ranks", ref open)) DrawContents(now);
-        ImGui.End();
-        if (!open) { _config.ARankWindowOpen = false; _config.DeferWindowStateSave(); }
     }
+
+    internal HuntWindow CreateWindow(Func<bool> available) => new("A Ranks",
+        () => _config.ARankWindowOpen,
+        value => { _config.ARankWindowOpen = value; _config.DeferWindowStateSave(); },
+        () => DrawContents(DateTime.UtcNow))
+    {
+        Available = available,
+        ConsumeFocus = () => Plugin.TakeFocus(ref _focusWindow)
+    };
+
     public void DrawContents() => DrawContents(DateTime.UtcNow,
         _workspaceView ??= ReadView(), _workspaceBoard, persist: false);
 

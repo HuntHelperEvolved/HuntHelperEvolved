@@ -27,18 +27,14 @@ public sealed partial class ActiveMarksWindow(Configuration config, SyncCoordina
     private bool _focusWindow;
     public void Toggle() { config.ActiveSRankWindowOpen = !config.ActiveSRankWindowOpen; config.DeferWindowStateSave(); }
     public void OnSettingsReset() { _compactView = new(); _workspaceView = new(); _ruleEditor?.Reset(); }
-    public void Draw()
+    internal HuntWindow CreateWindow(Func<bool> available) => new("Active Marks###ActiveMarksCompact",
+        () => config.ActiveSRankWindowOpen,
+        value => { config.ActiveSRankWindowOpen = value; config.DeferWindowStateSave(); },
+        () => DrawContents(compactWindow: true))
     {
-        if (!config.ActiveSRankWindowOpen) return;
-        var open=true;
-        ImGui.SetNextWindowSize(new Vector2(430,260),ImGuiCond.FirstUseEver);
-        ImGui.SetNextWindowSizeConstraints(new Vector2(300,150),new Vector2(float.MaxValue));
-        if (_focusWindow) { ImGui.SetNextWindowFocus(); _focusWindow=false; }
-        if (ImGui.Begin("Active Marks###ActiveMarksCompact",ref open))
-            DrawContents(compactWindow:true);
-        ImGui.End();
-        if (!open) { config.ActiveSRankWindowOpen=false; config.DeferWindowStateSave(); }
-    }
+        Available = available,
+        ConsumeFocus = () => Plugin.TakeFocus(ref _focusWindow)
+    };
 
     public void DrawContents(bool compactWindow = false)
     {

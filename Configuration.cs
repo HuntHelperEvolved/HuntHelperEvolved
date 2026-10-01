@@ -67,6 +67,12 @@ public enum InterfaceTheme { Graphite, Daylight, Dalamud }
 public class Configuration : IPluginConfiguration
 {
     public InterfaceTheme Theme { get; set; } = InterfaceTheme.Graphite;
+    private float _windowOpacity = 1f;
+    public float WindowOpacity
+    {
+        get => _windowOpacity;
+        set => _windowOpacity = float.IsFinite(value) ? Math.Clamp(value, 0.2f, 1f) : 1f;
+    }
     public List<TrainPresets.TrainPreset> TrainPresets { get; set; } = new();
     public string? ActiveTrainPresetId { get; set; }
     public bool TrainPresetOrderingPaused { get; set; }
