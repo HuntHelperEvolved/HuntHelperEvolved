@@ -1,8 +1,10 @@
 # Hunt Helper Evolved
 
 > **Local preview 0.6.0.6:** This branch combines the reimagined UI with an
-> opt-in Bear Toolkit S-rank feed. See [Bear preview testing](docs/BEAR-PREVIEW.md).
-> The public installation feed still points to the existing release.
+> opt-in Bear Toolkit S-rank feed. Confirmed Bear S-rank kills on an updated server
+> also update shared timers and spawn mapping for all connected clients.
+> See [Bear preview testing](docs/BEAR-PREVIEW.md). The public installation feed
+> still points to the existing release.
 
 A hunting plugin for FFXIV, built from two that came before it. It scouts and
 records a train with exact kill times, posts a Discord report with respawn
