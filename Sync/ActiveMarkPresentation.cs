@@ -52,13 +52,29 @@ internal static class ActiveMarkPresentation
         if (!options.IncludeOwn || !options.IncludeCommunity) filters.Add("sources");
         if (!options.Alive || !options.Dead || !options.Pulled || !options.NotPulled || !options.UnknownCombat)
             filters.Add("status");
-        if (options.Ranks.Count != 4 || !options.Ranks.Contains("B") || !options.Ranks.Contains("A")
-            || !options.Ranks.Contains("S") || !options.Ranks.Contains("SS")) filters.Add("ranks");
-        if (options.Worlds.Count > 0) filters.Add("worlds");
-        if (options.DataCenters.Count > 0) filters.Add("data centres");
-        if (options.Expansions.Count > 0) filters.Add("expansions");
+        if (options.Rules is { } rules)
+        {
+            var enabled = 0;
+            VisibleMarkRule? only = null;
+            foreach (var rule in rules)
+                if (rule is { Enabled: true }) { enabled++; only = rule; }
+            if (enabled == 0) filters.Add("no rules enabled");
+            else if (enabled != 1 || !Unrestricted(only!))
+                filters.Add($"{enabled} scope rule{(enabled == 1 ? string.Empty : "s")}");
+            return string.Join(", ", filters);
+        }
+        if (options.Ranks is not { Count: 4 } ranks || !ranks.Contains("B") || !ranks.Contains("A")
+            || !ranks.Contains("S") || !ranks.Contains("SS")) filters.Add("ranks");
+        if (options.Worlds is { Count: > 0 }) filters.Add("worlds");
+        if (options.DataCenters is { Count: > 0 }) filters.Add("data centres");
+        if (options.Expansions is { Count: > 0 }) filters.Add("expansions");
         return string.Join(", ", filters);
     }
+
+    private static bool Unrestricted(VisibleMarkRule rule) => rule.Scope == VisibleMarkScope.Any
+        && (rule.Worlds is null || rule.Worlds.Count == 0) && (rule.DataCenters is null || rule.DataCenters.Count == 0)
+        && rule.AllExpansions && rule.Ranks is { } ranks
+        && ranks.Contains("B") && ranks.Contains("A") && ranks.Contains("S") && ranks.Contains("SS");
 }
 
 internal readonly record struct ActiveMarkRowLayout(float Width, float SourceWidth, float NameX, float NameWidth,

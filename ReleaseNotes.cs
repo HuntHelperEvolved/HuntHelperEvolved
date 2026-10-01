@@ -34,6 +34,12 @@ public static class ReleaseNotes
 
     public static readonly Release[] All =
     {
+        new("0.6.0.8", "2026-10-01", "Choose Active Marks by world, DC, rank and expansion.",
+        [
+            new("Active Marks filters", "The /hhv filter editor combines independent rules: choose a world or DC, ranks and expansions for each. Current world and Current DC follow you when travelling. Existing saved filters are preserved.", Kihtli),
+            new("North American hunt mix", "The NA hunt mix preset shows all S/SS ranks on Crystal, A-ranks on Mateus, and Shadowbringers, Endwalker and Dawntrail S/SS ranks on Aether, Primal and Dynamis. Each rule can be edited, duplicated or disabled.", Kihtli),
+            new("Filter layout", "A wider editor separates world/rank rules from shared status and display settings, with a stacked layout in narrow windows. The rank tabs and search still narrow the resulting list. Notification preferences are unchanged.", Kihtli),
+        ]),
         new("0.6.0.7", "2026-10-01", "Show reported HP in RELAY and notify once per spawn.",
         [
             new("Relay health", "RELAY chat briefly waits for accompanying reports, then shows current plugin HP or Bear HP. Older Bear health keeps a grey ~ prefix; unknown is used only when no usable health is available.", Kihtli),

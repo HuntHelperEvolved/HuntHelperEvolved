@@ -1,7 +1,7 @@
 # Local Bear Toolkit preview
 
 Branch `codex/bear-integration-ui` combines the current reimagined UI with Bear
-Toolkit S-rank integration. Plugin version `0.6.0.7` is a local preview; `repo.json`
+Toolkit S-rank integration. Plugin version `0.6.0.8` is a local preview; `repo.json`
 continues to point to the existing public build.
 
 Build with the .NET 10 SDK and Dalamud development references installed:
@@ -53,6 +53,21 @@ one notification per mark, world, instance and spawn cycle. Confirmed deaths,
 maintenance resets or the mark's minimum respawn interval allow a later spawn
 to notify again.
 
+Active Marks (`/hhv`) has independent inclusion rules under its filter button.
+In **Worlds & ranks**, each rule chooses a world or DC, ranks and expansions;
+marks matching any enabled rule appear once. **Current world** and **Current DC**
+follow the visited world, and wait for a known world during loading. **All**
+expansions includes every expansion; **None** includes nothing. **ShB+** selects
+Shadowbringers, Endwalker and Dawntrail. Search and the rank tabs further narrow
+the result. **Status & display** controls common source, life and combat filters.
+
+Use **NA hunt mix** to replace the rules with all S/SS ranks on Crystal, A-ranks
+on Mateus, and ShB/EW/DT S/SS ranks on Aether, Primal and Dynamis. To make the
+A-rank rule follow you, select Mateus in the rule list and change **Where** to
+**Current world**. Old saved filters retain their previous results when first
+opened in the new editor. These are local display rules; chat notification
+preferences and the server's feed coverage stay separate.
+
 The pull-time clock always uses the Faloop report time, even when a plugin or
 Bear supplies the displayed health. If Faloop has not supplied a timer, the
 clock is unknown. Bear updates never restart this pull-time clock. Confirmed
@@ -75,6 +90,11 @@ For in-game verification, compare the same S-rank, world and instance in Bear an
 7. Check RELAY chat HP against the latest plugin/Bear report. The same spawn
    arriving from another source or being released should not notify again;
    a different world or instance should still notify independently.
+8. Open `/hhv` filters, choose **NA hunt mix** and verify rank/expansion coverage
+   across Crystal, Mateus and the other NA DCs. Change the Mateus rule to
+   **Current world** and travel to another world; the A-rank selection should
+   follow. Check overlapping rules, all/none expansions, saving/reloading and
+   the filter editor at narrow window widths and larger UI scales.
 
 Automated tests exercise parsing, freshness and compatibility. Account access,
 token renewal and actual in-game rendering still require this live check.

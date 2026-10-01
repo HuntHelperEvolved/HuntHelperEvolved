@@ -9,7 +9,7 @@ using System.Linq;
 using System.Numerics;
 namespace HuntHelperEvolved.Sync;
 
-public sealed class ActiveMarksWindow(Configuration config, SyncCoordinator sync, WorldData worlds,
+public sealed partial class ActiveMarksWindow(Configuration config, SyncCoordinator sync, WorldData worlds,
     MarkDetector detector, IGameGui gameGui, LifestreamTravel travel, Action openSettings)
 {
     public Action? OpenConnectionSettings { get; set; }
@@ -26,7 +26,7 @@ public sealed class ActiveMarksWindow(Configuration config, SyncCoordinator sync
     private ViewState _workspaceView = new();
     private bool _focusWindow;
     public void Toggle() { config.ActiveSRankWindowOpen = !config.ActiveSRankWindowOpen; config.DeferWindowStateSave(); }
-    public void OnSettingsReset() { _compactView = new(); _workspaceView = new(); }
+    public void OnSettingsReset() { _compactView = new(); _workspaceView = new(); _selectedFilterRule = 0; _filterTargetSearch = string.Empty; }
     public void Draw()
     {
         if (!config.ActiveSRankWindowOpen) return;
@@ -81,16 +81,20 @@ public sealed class ActiveMarksWindow(Configuration config, SyncCoordinator sync
             }
         }
         if (view.OpenFilters) { ImGui.OpenPopup("ActiveMarkFilters"); view.OpenFilters = false; }
-        var popupSize = Vector2.Min(new Vector2(350,420)*ImGuiHelpers.GlobalScale,
+        var popupSize = Vector2.Min(new Vector2(720,570)*ImGuiHelpers.GlobalScale,
             Vector2.Max(Vector2.One,ImGui.GetMainViewport().WorkSize-new Vector2(20)*ImGuiHelpers.GlobalScale));
         ImGui.SetNextWindowSize(popupSize,ImGuiCond.Appearing);
+        ImGui.SetNextWindowSizeConstraints(Vector2.Min(new Vector2(330,360)*ImGuiHelpers.GlobalScale,popupSize),
+            Vector2.Max(Vector2.One,ImGui.GetMainViewport().WorkSize-new Vector2(20)*ImGuiHelpers.GlobalScale));
         if (ImGui.BeginPopup("ActiveMarkFilters"))
         {
             ImGui.TextUnformatted("Active Marks filters");
             ImGui.Separator();
             if (ImGui.BeginChild("filterOptions",new Vector2(0,-ImGui.GetFrameHeightWithSpacing()),false,
-                    ImGuiWindowFlags.HorizontalScrollbar)) DrawFilterOptions();
+                    ImGuiWindowFlags.None)) DrawFilterOptions();
             ImGui.EndChild();
+            if (ImGui.Button("Done")) ImGui.CloseCurrentPopup();
+            ImGui.SameLine();
             if (ImGui.Button("All settings")) { openSettings(); ImGui.CloseCurrentPopup(); }
             ImGui.EndPopup();
         }
@@ -107,7 +111,9 @@ public sealed class ActiveMarksWindow(Configuration config, SyncCoordinator sync
                 ImGui.TextWrapped("Live health and combat state require server 0.3.11 or later.");
             var count = DrawRows(view,compactWindow);
             if (!compactWindow) DrawStatusLegend();
-            summary=$"{count} marks"+(filterSummary.Length>0 ? " / filtered" : string.Empty);
+            summary=$"{count} marks"+(filterSummary.Length>0 ? " / filtered" : string.Empty)
+                +(view.RankTab != "All" ? " / "+(view.RankTab == "S" ? "S/SS" : view.RankTab) : string.Empty)
+                +(view.Search.Length > 0 ? " / search" : string.Empty);
         }
         TimerTableUi.Footer("activeConnection",summary,config,sync,()=>OpenConnectionSettings?.Invoke());
         ImGui.PopID();
@@ -141,7 +147,9 @@ public sealed class ActiveMarksWindow(Configuration config, SyncCoordinator sync
         var tab = view.RankTab;
         var now=DateTime.UtcNow;
         var serverNow=sync.ServerTimeFor(now);
-        var scope=(detector.CurrentTerritoryId,detector.CurrentWorldId(),MarkDetector.GetCurrentInstance());
+        var currentWorld = detector.CurrentWorldId();
+        var currentDc = worlds.LocateWorld(currentWorld) is { } currentLocation ? worlds.DataCenters[currentLocation.DcIndex].Id : 0;
+        var scope=(detector.CurrentTerritoryId,currentWorld,MarkDetector.GetCurrentInstance());
         if (scope != _localScope) { _localGrace.Clear(); _localScope=scope; }
         var visible=sync.ActiveMarkDisplay.ToDictionary(v=>v.Mark.LiveKey);
         if(config.VisibleMarkFilters.IncludeOwn)
@@ -179,7 +187,7 @@ public sealed class ActiveMarksWindow(Configuration config, SyncCoordinator sync
             return (Row:row,Dc:dc,Expansion:expansion,World:worlds.NameOf(row.Mark.WorldId),Zone:detector.GetZoneName(row.Mark.TerritoryId));
         }).Where(r => !ActiveMarkRows.SuppressedByFaloop(r.Row, sync.Faloop.IsOffline(r.World),
                 sync.Faloop.CurrentInstances(r.Row.Mark.TerritoryId, new[] { r.Row.Mark.Instance }).Contains(r.Row.Mark.Instance)))
-          .Where(r => ActiveMarkRows.MatchesTab(r.Row.Mark.Rank,tab) && ActiveMarkRows.Matches(r.Row,config.VisibleMarkFilters,sync.ClientId,now,r.Dc.Id,r.Expansion))
+          .Where(r => ActiveMarkRows.MatchesTab(r.Row.Mark.Rank,tab) && ActiveMarkRows.Matches(r.Row,config.VisibleMarkFilters,sync.ClientId,now,r.Dc.Id,r.Expansion,currentWorld,currentDc))
           .Where(r => string.IsNullOrEmpty(view.Search) || (r.Row.Mark.Name+" "+r.World+" "+r.Zone+" "+r.Dc.Name+" "+string.Join(" ",r.Row.Visible?.Observers??new List<string>())).Contains(view.Search,StringComparison.OrdinalIgnoreCase))
           .OrderBy(r => r.Row.HealthKnown && r.Row.Mark.HpPercent==0).ThenByDescending(r => r.Row.Mark.InCombat==true)
           .ThenBy(r => r.World).ThenBy(r => r.Zone).ThenBy(r => r.Row.Mark.Name).ThenBy(r => r.Row.Mark.Instance).ToList();
@@ -214,6 +222,7 @@ public sealed class ActiveMarksWindow(Configuration config, SyncCoordinator sync
             if (rows.Count == 0)
             {
                 ImGui.TextDisabled("No matching marks.");
+                if (view.RankTab != "All" && ImGui.SmallButton("Show all ranks")) view.RankTab="All";
                 if (!string.IsNullOrEmpty(view.Search) && ImGui.SmallButton("Clear search")) view.Search=string.Empty;
                 if (ActiveMarkPresentation.FilterSummary(config.VisibleMarkFilters).Length > 0
                     && ImGui.SmallButton("Review filters")) view.OpenFilters=true;
@@ -392,77 +401,4 @@ public sealed class ActiveMarksWindow(Configuration config, SyncCoordinator sync
         mark.MapId==0 ? detector.GetMapId(mark.TerritoryId) : mark.MapId,mark.Instance,mark.X,mark.Y);
     private void Option(string label,bool value,Action<bool> save)
     { if (HuntUi.WrappedCheckbox(label,ref value)) { save(value); config.Save(); } }
-    private void Select<T>(string label,T value,List<T> selected)
-    {
-        var enabled=selected.Contains(value);
-        if (ImGui.Checkbox(label,ref enabled)) { if(enabled) selected.Add(value); else selected.Remove(value); config.Save(); }
-    }
-    public void DrawSettings()
-    {
-        if (!ImGui.CollapsingHeader("Active Marks window filters",ImGuiTreeNodeFlags.DefaultOpen)) return;
-        DrawFilterOptions();
-    }
-
-    private void DrawFilterOptions()
-    {
-        ImGui.PushID("visibleSettings");
-        var o=config.VisibleMarkFilters;
-        ImGui.TextUnformatted("Reports");
-        Option("Include community S-rank reports",o.IncludeCommunity,v=>o.IncludeCommunity=v);
-        Option("Include marks seen only by me",o.IncludeOwn,v=>o.IncludeOwn=v);
-        ImGui.Separator();
-        ImGui.TextUnformatted("Status");
-        Option("Alive",o.Alive,v=>o.Alive=v);
-        SameLineIfFits(ImGui.GetFrameHeight()+ImGui.CalcTextSize("Dead (visible corpses)").X+ImGui.GetStyle().ItemInnerSpacing.X);
-        Option("Dead (visible corpses)",o.Dead,v=>o.Dead=v);
-        Option("Pulled",o.Pulled,v=>o.Pulled=v);
-        SameLineIfFits(ImGui.GetFrameHeight()+ImGui.CalcTextSize("Not pulled").X+ImGui.GetStyle().ItemInnerSpacing.X);
-        Option("Not pulled",o.NotPulled,v=>o.NotPulled=v);
-        Option("Unknown combat status",o.UnknownCombat,v=>o.UnknownCombat=v);
-        ImGui.Separator();
-        ImGui.TextUnformatted("Ranks");
-        foreach (var rank in new[] {"B","A","S","SS"})
-        {
-            if (rank != "B") SameLineIfFits(ImGui.GetFrameHeight()+ImGui.CalcTextSize(rank).X+ImGui.GetStyle().ItemInnerSpacing.X);
-            Select(rank,rank,o.Ranks);
-        }
-        ImGui.Separator();
-        ImGui.TextUnformatted("Scope");
-        if (ImGui.TreeNode("Expansions"))
-        {
-            foreach(var expansion in SRankTimerData.Expansions.Append("Unknown")) Select(expansion,expansion,o.Expansions);
-            if(ImGui.SmallButton("All expansions")) { o.Expansions.Clear(); config.Save(); }
-            ImGui.TreePop();
-        }
-        if (ImGui.TreeNode("Data centres"))
-        {
-            foreach(var dc in worlds.DataCenters) Select(dc.Name,dc.Id,o.DataCenters);
-            if(ImGui.SmallButton("All data centres")) { o.DataCenters.Clear(); config.Save(); }
-            ImGui.TreePop();
-        }
-        if (ImGui.TreeNode("Worlds"))
-        {
-            foreach(var dc in worlds.DataCenters)
-                if(ImGui.TreeNode(dc.Name))
-                {
-                    foreach(var world in worlds.WorldsIn(dc.Id)) Select(world.Name,world.RowId,o.Worlds);
-                    ImGui.TreePop();
-                }
-            if(ImGui.SmallButton("All worlds")) { o.Worlds.Clear(); config.Save(); }
-            ImGui.TreePop();
-        }
-        ImGui.Separator();
-        Option("Show data centre beside world",o.ShowDataCenter,v=>o.ShowDataCenter=v);
-        if (ImGui.TreeNode("Status colours"))
-        {
-            ImGui.TextColored(HuntTheme.Success,"Alive / not pulled");
-            ImGui.TextColored(HuntTheme.Warning,"Alive / pulled");
-            ImGui.TextColored(HuntTheme.Danger,"Dead");
-            ImGui.TextColored(HuntTheme.Accent,"Community report / health unknown");
-            ImGui.TextColored(HuntTheme.Muted,"Live report / combat unknown");
-            ImGui.TreePop();
-        }
-        if(ImGui.SmallButton("Reset window filters")) { config.VisibleMarkFilters=new(); config.Save(); }
-        ImGui.PopID();
-    }
 }
