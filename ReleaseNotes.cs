@@ -34,43 +34,17 @@ public static class ReleaseNotes
 
     public static readonly Release[] All =
     {
-        new("0.6.0.10", "2026-10-01", "Create and manage your own named hunt presets.",
+        new("0.7.0.0", "2026-10-01", "A redesigned hunt workspace, Bear S-rank reports and named filter presets.",
         [
-            new("Named presets", "Save as, Load, Update saved, Rename and Delete are available in /hhv filters and S-rank chat relay settings. Each preset stores world, DC, rank and expansion rules. The fixed NA hunt mix button has been removed; your current rules stay in place.", Kihtli),
-            new("Saved libraries", "Window and chat presets have separate libraries. Active rules continue saving as you edit; saved presets change only when explicitly updated. Loading makes an independent copy. Deleting a saved preset keeps the active rules, and preference resets preserve saved presets.", Kihtli),
-        ]),
-        new("0.6.0.9", "2026-10-01", "Choose chat relays with world, DC and expansion rules.",
-        [
-            new("S-rank relay presets", "Settings > Notifications now uses the same rule editor as /hhv for S-rank RELAY chat and its sound. Choose worlds, DCs and expansions, including Current world, Current DC and ShB+. Existing relay DC preferences are preserved.", Kihtli),
-            new("Independent chat rules", "NA hunt mix relays all S ranks on Crystal and ShB/EW/DT S ranks on Aether, Primal and Dynamis. Copy /hhv S-rank rules takes a separate copy; later display and chat edits remain independent. A-rank and SS relays are not added.", Kihtli),
-            new("Test chat format", "The local TEST example ignores relay rules and the chat-alert switch so you can check formatting. It does not consume a real spawn's notification.", Kihtli),
-        ]),
-        new("0.6.0.8", "2026-10-01", "Choose Active Marks by world, DC, rank and expansion.",
-        [
-            new("Active Marks filters", "The /hhv filter editor combines independent rules: choose a world or DC, ranks and expansions for each. Current world and Current DC follow you when travelling. Existing saved filters are preserved.", Kihtli),
-            new("North American hunt mix", "The NA hunt mix preset shows all S/SS ranks on Crystal, A-ranks on Mateus, and Shadowbringers, Endwalker and Dawntrail S/SS ranks on Aether, Primal and Dynamis. Each rule can be edited, duplicated or disabled.", Kihtli),
-            new("Filter layout", "A wider editor separates world/rank rules from shared status and display settings, with a stacked layout in narrow windows. The rank tabs and search still narrow the resulting list. Notification preferences are unchanged.", Kihtli),
-        ]),
-        new("0.6.0.7", "2026-10-01", "Show reported HP in RELAY and notify once per spawn.",
-        [
-            new("Relay health", "RELAY chat briefly waits for accompanying reports, then shows current plugin HP or Bear HP. Older Bear health keeps a grey ~ prefix; unknown is used only when no usable health is available.", Kihtli),
-            new("Spawn notifications", "Plugin detections, Bear reports and Faloop spawn/release reports share one notification per S-rank spawn, world and instance. Later sources no longer repeat the chat alert or sound, and a new spawn cycle can notify again.", Kihtli),
-        ]),
-        new("0.6.0.6", "2026-10-01", "Use grey for stale Bear HP.",
-        [
-            new("Bear health", "Stale Bear HP stays grey and keeps the ~ prefix. The status legend uses the same grey, leaving yellow for pulled marks.", Kihtli),
-        ]),
-        new("0.6.0.5", "2026-10-01", "Bear S-rank preview: keep last reported HP clearly marked when stale.",
-        [
-            new("Bear health", "After 15 seconds without a new HP report, Active Marks keeps the Bear source and shows the last reported positive HP with ~. Hover for its age. The value is marked stale and does not imply current health or combat; it clears when the sighting expires or the feed disconnects.", Kihtli),
-            new("S-ranks only", "The Bear feed now contains S-rank reports only. A-ranks keep their existing sources. Live plugin observations still take priority and pull-time clocks always use Faloop.", Kihtli),
-        ]),
-        new("0.6.0.4", "2026-09-30", "Local preview: reimagined UI and opt-in Bear Toolkit reports.",
-        [
-            new("Interface", "Includes the reimagined hunt workspace, compact train view, settings and connection controls from the UI testing branch.", Kihtli),
-            new("Bear Toolkit preview", "An optional server feed supplies community sightings, health and death reports. Enable the Bear preview in Sharing settings on a compatible server. Reports remain separate from shared scouting, trains and lifetime kill credit.", Kihtli),
-            new("Source priority", "Live reports use plugin, then Bear, then Faloop. Pull-time clocks stay anchored to Faloop even when another source supplies health; Bear does not change the existing timer boards.", Kihtli),
-            new("Compatibility", "Protocol 4 is retained. Existing servers remain usable, and clients that do not opt in keep their existing feeds. Bear health expires when observations become stale or the feed disconnects.", Kihtli),
+            new("Hunt workspace", "The main /hh window brings Train, Active Marks, A-rank Timers and S-ranks together with clearer connection controls. Settings opens separately with category search and Graphite, Daylight or Dalamud themes. Compact windows keep their own navigation while sharing hunt data.", Kihtli),
+            new("Train controls", "The compact /hht and main Train views keep route navigation, Plan and Reports within reach, with layouts that adapt to narrow windows. Train-preset editing protects unsaved drafts and asks before deleting a preset.", Kihtli),
+            new("S-rank details", "Select a mark to bring its overview, spawn mapping, world/instance counters and eligible train watches into one workspace. Browse stored counters separately when needed.", Kihtli),
+            new("Bear Toolkit", "Opt in under Sharing to receive Bear S-rank sightings and HP from a compatible, configured server. Live plugin reports take priority, then Bear, then Faloop. Pull-time clocks always use Faloop. Older positive Bear HP stays grey with a ~ prefix and its age in the tooltip until the sighting expires or disconnects.", Kihtli),
+            new("Shared S-rank kills", "Confirmed Bear kills update shared S-rank respawn timers and spawn-mapping cycles on compatible servers, including when neither a plugin nor Faloop saw the mark. Reports from multiple sources reconcile into one kill cycle. Bear sightings do not add train entries or lifetime tally credit; A-rank sources stay unchanged.", Kihtli),
+            new("World and expansion rules", "Choose worlds or DCs, ranks and expansions independently in /hhv filters. Marks matching any enabled rule appear once. Current world and Current DC follow you when travelling; All, None and ShB+ make expansion selection quicker. Existing filter choices carry over.", Kihtli),
+            new("Named presets", "Save, load, update, rename and delete your own rule presets. Active Marks and S-rank RELAY chat have separate libraries; chat rules also control relay sounds. Copy /hhv S-rank rules takes an independent copy. Active edits save immediately, saved presets change only when updated, and preference resets preserve both libraries.", Kihtli),
+            new("Relay notifications", "RELAY chat uses available plugin or Bear HP, including grey ~ values for older Bear reports. Plugin detections, Bear reports and Faloop spawn/release reports share one alert per spawn, world and instance. Test chat format previews a local example without consuming a real spawn's notification.", Kihtli),
+            new("Tally export", "Export the filtered per-mark lifetime kill list as CSV from the tally window.", Kihtli),
         ]),
         new("0.6.0.3", "2026-09-28", "Shared A-rank locations, Ctrl-click travel and more compact timer boards.",
         [

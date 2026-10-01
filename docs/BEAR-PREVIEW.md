@@ -1,8 +1,8 @@
-# Local Bear Toolkit preview
+# Local 0.7.0.0 testing build
 
-Branch `codex/bear-integration-ui` combines the current reimagined UI with Bear
-Toolkit S-rank integration. Plugin version `0.6.0.10` is a local preview; `repo.json`
-continues to point to the existing public build.
+Plugin version `0.7.0.0` combines the redesigned UI with Bear Toolkit S-rank
+integration and named filter presets. It is staged in local `main` for final
+testing; `repo.json` continues to point to the public `0.6.0.3` build.
 
 Build with the .NET 10 SDK and Dalamud development references installed:
 
@@ -72,8 +72,7 @@ not the common status/display settings or temporary rank tabs and search.
 
 For example, add an S-rank rule for Crystal with all expansions, an A-rank rule
 for Mateus (or **Current world**), and S-rank **ShB+** rules for Aether, Primal and
-Dynamis; then save that combination with a name of your choice. There is no
-predefined NA hunt mix. Existing active rules stay intact on upgrade.
+Dynamis; then save that combination with a name of your choice. Existing active rules stay intact on upgrade.
 
 S-rank RELAY chat has its own rule editor and separate saved-preset library in
 **Settings > Notifications > Community S-rank alerts**. These rules control both
