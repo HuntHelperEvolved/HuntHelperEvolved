@@ -1,7 +1,7 @@
 # Local Bear Toolkit preview
 
 Branch `codex/bear-integration-ui` combines the current reimagined UI with Bear
-Toolkit S-rank integration. Plugin version `0.6.0.6` is a local preview; `repo.json`
+Toolkit S-rank integration. Plugin version `0.6.0.7` is a local preview; `repo.json`
 continues to point to the existing public build.
 
 Build with the .NET 10 SDK and Dalamud development references installed:
@@ -45,6 +45,14 @@ five minutes without a new qualifying report. Zero HP lasts only 15 seconds
 unless a separate death report confirms the kill.
 Disconnecting clears live Bear evidence; it does not create a kill.
 
+RELAY chat alerts briefly wait one second for accompanying health reports.
+They use current plugin HP first, then Bear HP; older positive Bear health is
+grey with a `~` prefix, and HP is unknown only when neither source has usable
+health. Reports from different sources, releases and local detections share
+one notification per mark, world, instance and spawn cycle. Confirmed deaths,
+maintenance resets or the mark's minimum respawn interval allow a later spawn
+to notify again.
+
 The pull-time clock always uses the Faloop report time, even when a plugin or
 Bear supplies the displayed health. If Faloop has not supplied a timer, the
 clock is unknown. Bear updates never restart this pull-time clock. Confirmed
@@ -64,6 +72,9 @@ For in-game verification, compare the same S-rank, world and instance in Bear an
    kill times and mapping remain available.
 6. Confirm plugin sightings win over Bear, Bear wins over Faloop, and the
    Faloop pull-time clock stays the same through HP updates and source changes.
+7. Check RELAY chat HP against the latest plugin/Bear report. The same spawn
+   arriving from another source or being released should not notify again;
+   a different world or instance should still notify independently.
 
 Automated tests exercise parsing, freshness and compatibility. Account access,
 token renewal and actual in-game rendering still require this live check.

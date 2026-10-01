@@ -48,6 +48,7 @@ public sealed class MarkNotifier : IDisposable
     private const ushort FullHealthColour = 67;
     private const ushort HurtColour = 573;
     private const ushort BadlyHurtColour = 531;
+    private const ushort StaleHealthColour = 3; // grey, independent of reported HP
 
     /// <summary>
     /// Set when the speech engine could not be started, which is the normal
@@ -119,7 +120,7 @@ public sealed class MarkNotifier : IDisposable
         }
     }
 
-    public void SendRelay(OtherRankSighting sighting, bool hasLocation, bool test, bool released)
+    public void SendRelay(OtherRankSighting sighting, bool hasLocation, bool test, bool released, bool healthStale = false)
     {
         var template=_config.DetectionChatMessageS;
         if(string.IsNullOrWhiteSpace(template)) template="FOUND: <name> @ <flag> --- <rank> -- <hpp>";
@@ -128,7 +129,7 @@ public sealed class MarkNotifier : IDisposable
         if(!template.Contains("<flag>",StringComparison.OrdinalIgnoreCase)) template+=" @ <flag>";
         if(test) template="TEST — "+template;
         if(released) template+=" [released]";
-        _chatGui.Print(BuildChatMessage(template,sighting,hasLocation));
+        _chatGui.Print(BuildChatMessage(template,sighting,hasLocation,healthStale));
     }
 
     /// <summary>
@@ -144,7 +145,7 @@ public sealed class MarkNotifier : IDisposable
         + @"|<exclamationrectangle>|<notoriousmonster>"
         + @"|<alarm>|<fanfestival>)";
 
-    private SeString BuildChatMessage(string template, OtherRankSighting sighting, bool hasLocation = true)
+    private SeString BuildChatMessage(string template, OtherRankSighting sighting, bool hasLocation = true, bool healthStale = false)
     {
         var rankColour = sighting.Rank switch
         {
@@ -189,6 +190,7 @@ public sealed class MarkNotifier : IDisposable
                 case "<hpp>":
                     var hp = sighting.HealthPercent;
                     if (!float.IsFinite(hp)) { sb.AddText("HP unknown"); break; }
+                    if (healthStale) { sb.AddUiForeground($"~{hp:0}%", StaleHealthColour); break; }
                     var hpColour = hp >= 99.5f ? FullHealthColour
                         : hp >= 70f ? HurtColour
                         : BadlyHurtColour;

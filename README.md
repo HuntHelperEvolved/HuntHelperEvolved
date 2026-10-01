@@ -1,6 +1,6 @@
 # Hunt Helper Evolved
 
-> **Local preview 0.6.0.6:** This branch combines the reimagined UI with an
+> **Local preview 0.6.0.7:** This branch combines the reimagined UI with an
 > opt-in Bear Toolkit S-rank feed. Confirmed Bear S-rank kills on an updated server
 > also update shared timers and spawn mapping for all connected clients.
 > See [Bear preview testing](docs/BEAR-PREVIEW.md). The public installation feed

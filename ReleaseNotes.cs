@@ -34,6 +34,11 @@ public static class ReleaseNotes
 
     public static readonly Release[] All =
     {
+        new("0.6.0.7", "2026-10-01", "Show reported HP in RELAY and notify once per spawn.",
+        [
+            new("Relay health", "RELAY chat briefly waits for accompanying reports, then shows current plugin HP or Bear HP. Older Bear health keeps a grey ~ prefix; unknown is used only when no usable health is available.", Kihtli),
+            new("Spawn notifications", "Plugin detections, Bear reports and Faloop spawn/release reports share one notification per S-rank spawn, world and instance. Later sources no longer repeat the chat alert or sound, and a new spawn cycle can notify again.", Kihtli),
+        ]),
         new("0.6.0.6", "2026-10-01", "Use grey for stale Bear HP.",
         [
             new("Bear health", "Stale Bear HP stays grey and keeps the ~ prefix. The status legend uses the same grey, leaving yellow for pulled marks.", Kihtli),

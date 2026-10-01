@@ -797,9 +797,11 @@ public sealed partial class Plugin : IDalamudPlugin
 
     private void OnSightingDetected(OtherRankSighting sighting)
     {
-        if (sighting.Rank == HuntRank.S && !sighting.IsRemote)
-            _spawnAlertFilter.RecordLocal(sighting.NameId,sighting.WorldId,sighting.Instance,DateTime.UtcNow);
-        if (_detector.ShouldAnnounce(sighting)) _notifier.Announce(sighting);
+        if (!_detector.ShouldAnnounce(sighting)) return;
+        if (sighting.Rank == HuntRank.S && !sighting.IsRemote && Sync.SRankTimerData.IsTimerSRank(sighting.NameId)
+            && !_spawnAlertFilter.AcceptLocal(sighting.NameId, sighting.WorldId, sighting.Instance,
+                _sync.ServerTimeFor(DateTime.UtcNow), RelayDeathAt(sighting.NameId, sighting.WorldId, sighting.Instance, true))) return;
+        _notifier.Announce(sighting);
     }
 
     /// <summary>Compact "how long ago was this last seen" label, e.g. 5m / 1h 12m.</summary>
@@ -3075,25 +3077,29 @@ public sealed partial class Plugin : IDalamudPlugin
     private readonly Sync.SpawnAlertFilter _spawnAlertFilter = new();
     private string _lastCommunityAlert = "No community spawn/release received this session.";
 
-    private readonly Queue<Sync.SRankSpawnBroadcast> _pendingSpawnAlerts = new();
+    private readonly Sync.SpawnAlertQueue _pendingSpawnAlerts = new();
     private void OnRemoteSRankSpawn(Sync.SRankSpawnBroadcast spawn)
     {
-        if (_objectTable.LocalPlayer is null || _detector.CurrentWorldId() == 0)
+        var localNow = DateTime.UtcNow;
+        var serverNow = _sync.ServerTimeFor(localNow);
+        if (spawn.Event is not ("spawn" or "release") || spawn.NameId == 0 || spawn.WorldId is 0 or > 65535
+            || spawn.Instance > 9 || spawn.SpawnedAt <= DateTime.UnixEpoch
+            || spawn.SpawnedAt > serverNow.AddSeconds(10) || serverNow - spawn.SpawnedAt > TimeSpan.FromMinutes(2))
         {
-            if (_pendingSpawnAlerts.Count >= 100) _pendingSpawnAlerts.Dequeue();
-            _pendingSpawnAlerts.Enqueue(spawn);
-            _lastCommunityAlert = "S-rank alert queued until loading finishes (up to two minutes).";
+            _lastCommunityAlert = "S-rank alert ignored: invalid or expired event.";
             return;
         }
-        ShowSpawnAlert(spawn);
+        // Group spawn notices can precede their sighting batch. Resolve health
+        // after the batch arrives and coalesce simultaneous community sources.
+        _pendingSpawnAlerts.Enqueue(spawn, localNow);
+        _lastCommunityAlert = "S-rank alert queued briefly for current health (up to two minutes while loading).";
     }
     private void DrainPendingSpawnAlerts()
     {
         if (!_config.SyncEnabled) { _pendingSpawnAlerts.Clear(); return; }
-        while (_pendingSpawnAlerts.TryPeek(out var pending) && DateTime.UtcNow - pending.SpawnedAt > TimeSpan.FromMinutes(2))
-        { _pendingSpawnAlerts.Dequeue(); _lastCommunityAlert = "Queued S-rank alert expired during loading."; }
         if (_objectTable.LocalPlayer is null || _detector.CurrentWorldId() == 0) return;
-        while (_pendingSpawnAlerts.TryDequeue(out var spawn)) ShowSpawnAlert(spawn);
+        var now = DateTime.UtcNow;
+        while (_pendingSpawnAlerts.TryDequeue(now, out var spawn)) ShowSpawnAlert(spawn);
     }
     private void ShowSpawnAlert(Sync.SRankSpawnBroadcast spawn, bool test = false)
     {
@@ -3110,18 +3116,34 @@ public sealed partial class Plugin : IDalamudPlugin
             ? destination.Value.DcIndex == current.Value.DcIndex
             : _config.SyncSpawnDataCenters.Contains(dc.Id);
         if (!allowed) { _lastCommunityAlert += " Excluded by DC filter."; return; }
-        if (!(test ? new Sync.SpawnAlertFilter() : _spawnAlertFilter).Accept(spawn, true, DateTime.UtcNow)) { _lastCommunityAlert += " Duplicate or invalid event time."; return; }
-        if (!test && _detector.OtherRanks.TryGetValue((spawn.NameId,spawn.Instance,spawn.WorldId,0,0),out var local)
-            && !local.IsRemote && DateTime.UtcNow-local.LastSeenUtc < TimeSpan.FromSeconds(2))
-        { _lastCommunityAlert += " Already detected locally; relay suppressed."; return; }
+        var localNow = DateTime.UtcNow;
+        var serverNow = _sync.ServerTimeFor(localNow);
+        var key = (spawn.NameId, spawn.Instance, spawn.WorldId);
+        _sync.BearMarks.TryGetValue(key, out var bear);
+        var status = _sync.StatusFor(spawn.NameId, spawn.WorldId, spawn.Instance);
+        DateTime? pluginDeath = _sync.BearPluginDeaths.TryGetValue(key, out var death) ? death : null;
+        var health = test ? Sync.RelayHealth.Unknown
+            : Sync.RelayHealth.Resolve(spawn, RelaySightings(), bear, status, serverNow, pluginDeath);
+        if (health.IsDead) { _lastCommunityAlert += " Mark already seen dead; relay suppressed."; return; }
+        var confirmedDeath = test ? null : RelayDeathAt(spawn.NameId, spawn.WorldId, spawn.Instance, health.HpPercent > 0);
+        if (!test && _detector.VisibleMarks.Any(local => local.Key == key && !local.IsRemote
+            && float.IsFinite(local.HealthPercent) && local.HealthPercent is > 0 and <= 100
+            && local.LastSeenUtc <= localNow.AddSeconds(10) && localNow - local.LastSeenUtc < TimeSpan.FromSeconds(3)))
+        {
+            _spawnAlertFilter.AcceptLocal(spawn.NameId, spawn.WorldId, spawn.Instance, serverNow, confirmedDeath);
+            _lastCommunityAlert += " Already detected locally; relay suppressed.";
+            return;
+        }
+        if (!(test ? new Sync.SpawnAlertFilter() : _spawnAlertFilter).Accept(spawn, true, test ? localNow : serverNow, confirmedDeath))
+        { _lastCommunityAlert += " Duplicate, killed or invalid event time."; return; }
         var position = SpawnPosition(spawn.X, spawn.Y);
         _notifier.SendRelay(new OtherRankSighting
         {
             NameId=spawn.NameId, Name=mark.Name, Rank=HuntRank.S, Instance=spawn.Instance,
             WorldId=spawn.WorldId, WorldName=_worldData.NameOf(spawn.WorldId), TerritoryId=mark.TerritoryId,
             MapId=_detector.GetMapId(mark.TerritoryId), MapPosition=position ?? Vector2.Zero,
-            HealthPercent=float.NaN,
-        },position is not null,test,spawn.Event=="release");
+            HealthPercent=health.HpPercent,
+        },position is not null,test,spawn.Event=="release",health.Stale);
         _lastCommunityAlert += test ? " Test shown in chat." : " Shown in chat.";
         _log.Information(_lastCommunityAlert);
         if (_config.SyncSpawnSound)
@@ -3130,6 +3152,41 @@ public sealed partial class Plugin : IDalamudPlugin
             catch (Exception ex) { _log.Debug(ex, "Could not play S-rank alert sound."); }
         }
     }
+
+    private DateTime? RelayDeathAt(uint nameId, uint worldId, uint instance, bool livingHigherPriority = false)
+    {
+        var status = _sync.StatusFor(nameId, worldId, instance);
+        // Confirmed kills and maintenance start a new spawn cycle. A source
+        // reconciliation receipt does not. Maintenance never vetoes HP itself.
+        DateTime? death = status is { Uncertain: false }
+            && (status.Maintenance || !(livingHigherPriority && string.Equals(status.KillSource, "Faloop", StringComparison.OrdinalIgnoreCase)))
+            ? status.KilledAt : null;
+        if (_sync.BearPluginDeaths.TryGetValue((nameId, instance, worldId), out var observed)
+            && (death is null || observed > death)) death = observed;
+        return death;
+    }
+
+    private IEnumerable<Sync.SyncSighting> RelaySightings()
+    {
+        foreach (var local in _detector.VisibleMarks)
+            if (!local.IsRemote) yield return RelaySighting(local, _sync.ServerTimeFor(local.LastSeenUtc));
+        if (!_sync.IsConnected) yield break;
+        if (_sync.SupportsVisibleMarks)
+        {
+            foreach (var visible in _sync.VisibleMarks) yield return visible.Mark;
+        }
+        else
+        {
+            // Legacy remote sightings already carry the server clock.
+            foreach (var remote in _sync.RemoteSightings.Values) yield return RelaySighting(remote, remote.LastSeenUtc);
+        }
+    }
+
+    private static Sync.SyncSighting RelaySighting(OtherRankSighting mark, DateTime serverSeenAt) => new()
+    {
+        NameId = mark.NameId, WorldId = mark.WorldId, Instance = mark.Instance,
+        Rank = mark.Rank.ToString(), HpPercent = mark.HealthPercent, SeenAt = serverSeenAt,
+    };
 
     private static Vector2? SpawnPosition(float? x, float? y) => x is { } px && y is { } py
         && float.IsFinite(px) && float.IsFinite(py) && px >= 1 && px <= 100 && py >= 1 && py <= 100 ? new Vector2(px,py) : null;
