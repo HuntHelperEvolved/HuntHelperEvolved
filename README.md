@@ -1,18 +1,15 @@
 # Hunt Helper Evolved
 
-> **Local 0.7.0.0 testing build:** Redesigned hunt workspace, optional Bear
-> S-rank reports, named world/DC/expansion presets and improved RELAY alerts.
-> The public feed remains at **0.6.0.3** while final testing is in progress.
-> Local loading and Bear setup are described in [Testing setup](docs/BEAR-PREVIEW.md).
-
 A hunting plugin for FFXIV, built from two that came before it. It scouts and
 records a train with exact kill times, posts a Discord report with respawn
 summaries and sniped/missing-mark details, draws spawn points, your detection range and SS
 event locations on the **in-game map**, counts S-rank trigger mobs, and keeps a
 lifetime per-mark kill tally for every character you play.
 
-> **0.6.0.3:** Shared A-rank locations, Ctrl-click travel and compact timer boards.
-> Connection status and Faloop feed details are under `/hh` > Server.
+> **0.7.0.0:** Redesigned hunt workspace with matching popout controls, individual
+> setting search, native window controls, named world/DC/expansion presets and improved RELAY alerts.
+> Bear S-rank reports are enabled by default on compatible configured servers;
+> turn them off under Sharing.
 > Available through the existing testing feed.
 >
 > See [Where this came from](#where-this-came-from) if you are arriving from
@@ -293,6 +290,8 @@ and click-through. **Settings > Appearance > Window opacity** sets a shared
 20–100% default, including Tally. A saved per-window opacity takes precedence;
 use **Reset** beside **Opacity** in that window's title-bar menu to follow the
 shared setting again. The attached map control bar also follows the shared opacity.
+
+Bear feed setup and filter presets are covered in the [Bear integration guide](docs/BEAR-PREVIEW.md).
 
 ## The train
 

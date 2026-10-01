@@ -1,20 +1,12 @@
-# Local 0.7.0.0 testing build
+# Bear integration and filter presets
 
 Plugin version `0.7.0.0` combines the redesigned UI with Bear Toolkit S-rank
-integration and named filter presets. It is staged in local `main` for final
-testing; `repo.json` continues to point to the public `0.6.0.3` build.
+integration and named filter presets. Install or update through the existing
+HHE testing feed with **Get plugin testing builds** enabled in Dalamud.
 
-Build with the .NET 10 SDK and Dalamud development references installed:
-
-```sh
-dotnet build HuntHelperEvolved.csproj -c Release
-python3 scripts/package-testing.py bin/Release/HuntHelperEvolved/latest.zip HuntHelperEvolved-testing.zip
-```
-
-Extract the testing ZIP into a dedicated local directory. Disable the installed
-HHE copy before loading this build through Dalamud's developer plugin loading
-controls. Keep the internal name `HuntHelperEvolved` so the existing settings
-can be used. Do not load both copies simultaneously.
+If you tested a local development copy, unload it before enabling the installed
+plugin. Keep the existing HHE configuration to retain your settings and tallies;
+do not load both copies simultaneously.
 
 Enable sync to a compatible server. Bear S-rank reports are enabled by default;
 turn off **Receive Bear Toolkit S-rank reports** in Sharing settings to opt out.
@@ -126,8 +118,7 @@ For in-game verification, compare the same S-rank, world and instance in Bear an
     UI scales in both compact `/hhv` and workspace Active Marks settings.
 
 Automated tests exercise parsing, freshness and compatibility. Account access,
-token renewal and actual in-game rendering still require this live check.
-Return to the installed build by unloading the development copy and re-enabling
-the installed plugin. Live Bear sightings and HP are not persisted into shared
+token renewal and actual in-game rendering can be checked in-game.
+Live Bear sightings and HP are not persisted into shared
 hunt state. Accepted Bear S-rank kills and their mapping cycle are shared server
-state and remain after the preview is disabled or the plugin is unloaded.
+state and remain after Bear reports are disabled or the plugin is unloaded.
