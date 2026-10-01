@@ -16,15 +16,20 @@ HHE copy before loading this build through Dalamud's developer plugin loading
 controls. Keep the internal name `HuntHelperEvolved` so the existing settings
 can be used. Do not load both copies simultaneously.
 
-Enable sync to the preview server and enable the Bear preview option in
-Sharing settings. The option defaults off. The connection details show whether
-the server supports Bear and whether its feed is connected. An older server
+Enable sync to a compatible server. Bear S-rank reports are enabled by default;
+turn off **Receive Bear Toolkit S-rank reports** in Sharing settings to opt out.
+New configurations and upgrades without a saved Bear preference use the new
+default. An explicitly saved off setting remains off, including in earlier
+preview configurations. Resetting Sharing preferences restores the enabled
+default but leaves sync disconnected. The connection details show whether the
+server supports Bear and whether its feed is connected. An older server
 continues to provide the normal group and Faloop data.
 
 The server must also have Bear enabled, selected data centres and a private
-Bear credential file. Bear credentials stay on the server. Each plugin opts
-in independently; the server never sends Bear snapshots to existing clients
-that omit the opt-in field.
+Bear credential file. Bear credentials stay on the server. Version 0.7.0.0
+requests the feed by default and stops requesting it when the user opts out.
+The server never sends Bear snapshots to older clients that omit the request
+field.
 
 The Bear feed contains S-rank reports only; A-rank scouting and existing sources remain unchanged.
 Bear live sightings and HP remain a separate read model. They do not become
@@ -33,8 +38,8 @@ kill reports are also accepted by an updated server into the shared S-rank
 timers and spawn mapping, even when neither a plugin nor Faloop saw the spawn.
 The kill starts a new mapping cycle; a previous spawn point is recorded when
 reported coordinates can be matched reliably. These shared updates reach all
-connected compatible clients, including clients that have not opted in to the
-live Bear preview. The server resolves conflicting sources with
+connected compatible clients, including clients that have opted out of the
+live Bear feed. The server resolves conflicting sources with
 **plugin > Bear > Faloop** priority.
 
 Live evidence uses the same source priority. HP is fresh for
@@ -101,8 +106,9 @@ For in-game verification, compare the same S-rank, world and instance in Bear an
 3. Wait 15 seconds without HP changes: Bear should remain the source and HP should show `~` with its age. Disconnect/reconnect and check that old HP is not displayed as fresh.
 4. Have an existing plugin connected simultaneously: it should receive the
    shared S-rank kill and mapping update without receiving live Bear snapshots.
-5. Disable the preview: live Bear rows should disappear, while accepted shared
-   kill times and mapping remain available.
+5. Turn off Bear reports in Sharing: live Bear rows should disappear, while
+   accepted shared kill times and mapping remain available. Reload the plugin
+   and confirm that the off setting is preserved; re-enable it to resume reports.
 6. Confirm plugin sightings win over Bear, Bear wins over Faloop, and the
    Faloop pull-time clock stays the same through HP updates and source changes.
 7. Check RELAY chat HP against the latest plugin/Bear report. The same spawn

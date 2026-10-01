@@ -658,8 +658,8 @@ public class Configuration : IPluginConfiguration
     /// <summary>Share what you can see: each mark's position and health while it is in range.</summary>
     public bool SyncShareSightings { get; set; } = true;
 
-    /// <summary>Opt in to the server's read-only Bear preview feed. Older servers safely ignore it.</summary>
-    public bool SyncReceiveBearFeed { get; set; } = false;
+    /// <summary>Receive the server's Bear S-rank feed by default; a saved opt-out is preserved. Older servers safely ignore it.</summary>
+    public bool SyncReceiveBearFeed { get; set; } = true;
 
     /// <summary>Tell the server when an S rank dies in front of you.</summary>
     public bool SyncReportSRankKills { get; set; } = true;

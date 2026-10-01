@@ -95,9 +95,9 @@ internal static class ConnectionUi
         if (config.SyncReceiveBearFeed)
         {
             ImGui.Separator();
-            ImGui.TextUnformatted("Bear Toolkit S-rank preview");
+            ImGui.TextUnformatted("Bear Toolkit S-rank feed");
             if (!sync.IsConnected) ImGui.TextDisabled("Waiting for the group server.");
-            else if (!sync.SupportsBearFeed) ImGui.TextDisabled("This server does not support the Bear preview.");
+            else if (!sync.SupportsBearFeed) ImGui.TextDisabled("This server does not support Bear reports.");
             else
             {
                 var bear = sync.BearStatus;
