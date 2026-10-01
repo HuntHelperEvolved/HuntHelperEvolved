@@ -41,7 +41,7 @@ public sealed partial class Plugin
         SettingsPage.Train => "AutoMarkDeadEnabled Hunt Tally observed defeat EchoOnMarkClick MarkDeadOnObservedDefeat TeleportAlsoFlags ShowMarkAge HideZonesInPopout SwapMarkAndZoneInPopout ShowSpicing AutoAdvance EchoOnAdvance TrainRowHeight row height pixels PollIntervalSeconds detection interval SRankZoneReminderEnabled SRankZoneReminderSound ShowSRankWatchesInTrainList follow scouting scan zone reminder watches bongo",
         SettingsPage.Counters => "CountOnlyMyKills personal kill credit reset spawn S rank watches",
         SettingsPage.Map => "spawn points live marks occupied dim found ranks A B S SS minions names health label font size map control bar alt click flag dots colours colors dark outlines dot size player guides range radius scale circle heading projected path facing bearing position remote sightings S candidates outline width mapping SpawnDotColour MarkLabelFontSize HideOccupiedSpawnPoints DimFoundARankSpawnPoints",
-        SettingsPage.Notifications => "chat flytext speech spoken voice volume text to speech TTS templates message test notification rank A B S SS detection bongo sound community Faloop spawn release alerts data centre DC DetectionTtsEnabled DetectionTtsVoice DetectionTtsVolume DetectionFlyTextEnabled EchoOnDetection SyncSpawnSound SyncSpawnAlerts SyncSpawnCurrentDc SyncSpawnDataCenters",
+        SettingsPage.Notifications => "chat flytext speech spoken voice volume text to speech TTS templates message test notification rank A B S SS detection bongo sound community Faloop spawn release alerts data centre DC DetectionTtsEnabled DetectionTtsVoice DetectionTtsVolume DetectionFlyTextEnabled EchoOnDetection SyncSpawnSound SyncSpawnAlerts SyncSpawnCurrentDc SyncSpawnDataCenters SyncRelayRules relay rules preset NA hunt mix current world expansions Shadowbringers copy hhv",
         SettingsPage.Travel => "aetheryte blacklist excluded teleport Lifestream expansion zone destinations",
         SettingsPage.Sharing => "SyncEnabled server URL password alias display name encrypted development plaintext wss ws connect reconnect backup upload status presence Faloop Bear SyncReceiveBearFeed group train sightings witnessed kills SyncShareTrain SyncShareSightings SyncReportSRankKills SyncAllowPlaintext SyncServerUrl SyncPassword SyncDisplayName",
         SettingsPage.ActiveMarks => "live rank A B S SS local own community remote server data centre DC current world combat engaged alive dead life pulled health distance age coordinates search auto open auto close inactive linger",
@@ -672,29 +672,44 @@ public sealed partial class Plugin
         ImGui.TextWrapped("Turn off either sound to keep its notification without the bongo.");
     }
 
+    private Sync.MarkScopeRuleEditor? _relayRuleEditor;
+
     private void DrawCommunityAlertPreferences()
     {
         var alerts = _config.SyncSpawnAlerts;
-        if (HuntUi.WrappedCheckbox("Chat alerts for group S sightings and Faloop spawns/releases", ref alerts)) { _config.SyncSpawnAlerts = alerts; _config.Save(); }
-        var currentDc = _config.SyncSpawnCurrentDc;
-        if (HuntUi.WrappedCheckbox("Only my current data centre", ref currentDc)) { _config.SyncSpawnCurrentDc = currentDc; _config.Save(); }
-        if (!currentDc)
-            foreach (var dc in _worldData.DataCenters)
-            {
-                var selected = _config.SyncSpawnDataCenters.Contains(dc.Id);
-                if (HuntUi.WrappedCheckbox(dc.Name + "##spawnDc", ref selected))
-                {
-                    if (selected) _config.SyncSpawnDataCenters.Add(dc.Id); else _config.SyncSpawnDataCenters.Remove(dc.Id);
-                    _config.Save();
-                }
-            }
+        if (HuntUi.WrappedCheckbox("Chat alerts for group S sightings and Faloop spawns/releases", ref alerts))
+        { _config.SyncSpawnAlerts = alerts; _config.Save(); }
+        if (_config.SyncRelayRules is null)
+        {
+            _config.SyncRelayRules = Sync.RelayScopeFilter.MigrateLegacy(_config.SyncSpawnCurrentDc, _config.SyncSpawnDataCenters);
+            _config.Save();
+        }
+        _relayRuleEditor ??= new(_worldData, _detector.CurrentWorldId, _config.Save, relayOnly: true);
+        ImGui.TextWrapped("S-rank relays matching any enabled rule appear in chat. These rules also control the relay sound.");
+        if (ImGui.Button("Copy /hhv S-rank rules"))
+        {
+            _config.SyncRelayRules = Sync.RelayScopeFilter.FromActiveMarks(_config.VisibleMarkFilters);
+            _relayRuleEditor.Reset(); _config.Save();
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Replace chat rules with a separate copy of the S-rank world/DC and expansion rules in /hhv. Later edits remain independent.");
+        HuntUi.SameLineIfFits(HuntUi.ButtonWidth("Reset relay rules"));
+        if (ImGui.Button("Reset relay rules"))
+        {
+            _config.SyncRelayRules = Sync.RelayScopeFilter.MigrateLegacy(true, null);
+            _relayRuleEditor.Reset(); _config.Save();
+        }
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip("Restore all S-rank relays in your current DC, across every expansion.");
+        ImGui.Spacing();
+        _relayRuleEditor.Draw(_config.SyncRelayRules);
+        ImGui.Separator();
         ImGui.TextWrapped("Server coverage: " + string.Join(", ", _sync.Faloop.DataCenters));
-        if (ImGui.Button("Test S-rank chat alert"))
+        if (ImGui.Button("Test chat format"))
             ShowSpawnAlert(new Sync.SRankSpawnBroadcast { NameId = Sync.SRankTimerData.All[0].NameId,
                 WorldId = _detector.CurrentWorldId(), SpawnedAt = DateTime.UtcNow, X = 21.5f, Y = 21.5f, Source = "Local test" }, test: true);
-
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Show a local TEST example, ignoring relay rules and the chat-alert switch. Sends no report and does not consume a real spawn's notification.");
         ImGui.TextWrapped(_lastCommunityAlert);
         ImGui.TextDisabled($"Last server feed message: {_sync.Faloop.LastLiveMessageAt?.ToLocalTime().ToString("HH:mm:ss") ?? "none"}; last broadcast alert: {_sync.Faloop.LastAlertAt?.ToLocalTime().ToString("HH:mm:ss") ?? "none"}");
-        }
-
+    }
 }

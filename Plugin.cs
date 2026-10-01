@@ -3105,17 +3105,18 @@ public sealed partial class Plugin : IDalamudPlugin
     {
         _lastCommunityAlert = $"{DateTime.Now:HH:mm:ss}: {spawn.Event} received for mark {spawn.NameId}, world {spawn.WorldId}.";
         _log.Information(_lastCommunityAlert);
-        if (!_config.SyncSpawnAlerts) { _lastCommunityAlert += " Alerts disabled."; return; }
+        if (!_config.SyncSpawnAlerts && !test) { _lastCommunityAlert += " Alerts disabled."; return; }
         if (_objectTable.LocalPlayer == null) { _lastCommunityAlert += " No local player."; return; }
         if (!Sync.SRankTimerData.ByNameId.TryGetValue(spawn.NameId, out var mark)) { _lastCommunityAlert += " Unknown timed S rank."; return; }
         var destination = _worldData.LocateWorld(spawn.WorldId);
-        var current = _worldData.LocateWorld(_detector.CurrentWorldId());
+        var currentWorld = _detector.CurrentWorldId();
+        var current = _worldData.LocateWorld(currentWorld);
         if (destination is null || current is null) { _lastCommunityAlert += " Could not resolve world/DC."; return; }
         var dc = _worldData.DataCenters[destination.Value.DcIndex];
-        var allowed = _config.SyncSpawnCurrentDc
-            ? destination.Value.DcIndex == current.Value.DcIndex
-            : _config.SyncSpawnDataCenters.Contains(dc.Id);
-        if (!allowed) { _lastCommunityAlert += " Excluded by DC filter."; return; }
+        var allowed = test || Sync.RelayScopeFilter.Matches(_config.SyncRelayRules,
+            _config.SyncSpawnCurrentDc, _config.SyncSpawnDataCenters, "S", spawn.WorldId, dc.Id, mark.Expansion,
+            currentWorld, _worldData.DataCenters[current.Value.DcIndex].Id);
+        if (!allowed) { _lastCommunityAlert += " Excluded by relay rules."; return; }
         var localNow = DateTime.UtcNow;
         var serverNow = _sync.ServerTimeFor(localNow);
         var key = (spawn.NameId, spawn.Instance, spawn.WorldId);

@@ -34,6 +34,12 @@ public static class ReleaseNotes
 
     public static readonly Release[] All =
     {
+        new("0.6.0.9", "2026-10-01", "Choose chat relays with world, DC and expansion rules.",
+        [
+            new("S-rank relay presets", "Settings > Notifications now uses the same rule editor as /hhv for S-rank RELAY chat and its sound. Choose worlds, DCs and expansions, including Current world, Current DC and ShB+. Existing relay DC preferences are preserved.", Kihtli),
+            new("Independent chat rules", "NA hunt mix relays all S ranks on Crystal and ShB/EW/DT S ranks on Aether, Primal and Dynamis. Copy /hhv S-rank rules takes a separate copy; later display and chat edits remain independent. A-rank and SS relays are not added.", Kihtli),
+            new("Test chat format", "The local TEST example ignores relay rules and the chat-alert switch so you can check formatting. It does not consume a real spawn's notification.", Kihtli),
+        ]),
         new("0.6.0.8", "2026-10-01", "Choose Active Marks by world, DC, rank and expansion.",
         [
             new("Active Marks filters", "The /hhv filter editor combines independent rules: choose a world or DC, ranks and expansions for each. Current world and Current DC follow you when travelling. Existing saved filters are preserved.", Kihtli),

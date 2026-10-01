@@ -624,6 +624,8 @@ public class Configuration : IPluginConfiguration
     public bool SyncSpawnSound { get; set; } = true;
     public bool SyncSpawnCurrentDc { get; set; } = true;
     public List<uint> SyncSpawnDataCenters { get; set; } = new();
+    // Null retains legacy relay DC preferences; an empty rule list allows no relays.
+    public List<Sync.VisibleMarkRule>? SyncRelayRules { get; set; }
 
     /// <summary>
     /// The server's WebSocket URL, e.g. wss://hunts.example.com/ws. A

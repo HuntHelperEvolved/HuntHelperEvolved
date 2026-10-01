@@ -50,7 +50,7 @@ public sealed partial class Plugin
         SettingsResetCategory.DetectionNotifications => "Restore detection chat, fly text and speech, including rank selections, "
             + "message templates, voice and volume. All three notification channels return to off.",
         SettingsResetCategory.CommunityNotifications => "Restore zone-entry reminders, community spawn alerts, "
-            + "their bongo sounds and data-centre selections. Sounds return to on; spawn alerts follow your current data centre.",
+            + "their bongo sounds and relay rules. Sounds return to on; spawn alerts follow your current data centre across every expansion.",
         SettingsResetCategory.Sharing => "Turn sync off and restore sharing preferences. Your server address, password "
             + "and display name are kept. The group's train is not changed.",
         SettingsResetCategory.HuntWindows => "Restore Active Marks filters and A/S-rank world, expansion, availability "
@@ -207,6 +207,8 @@ public sealed partial class Plugin
             _arankWindow.OnSettingsReset();
             _srankWindow.OnSettingsReset();
         }
+        if (category is SettingsResetCategory.CommunityNotifications or SettingsResetCategory.AllPreferences)
+            _relayRuleEditor?.Reset();
         _config.Save();
         if (category is SettingsResetCategory.Sharing or SettingsResetCategory.SyncConnection or SettingsResetCategory.AllPreferences)
             _sync.ApplySettings();

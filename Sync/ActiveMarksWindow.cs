@@ -26,7 +26,7 @@ public sealed partial class ActiveMarksWindow(Configuration config, SyncCoordina
     private ViewState _workspaceView = new();
     private bool _focusWindow;
     public void Toggle() { config.ActiveSRankWindowOpen = !config.ActiveSRankWindowOpen; config.DeferWindowStateSave(); }
-    public void OnSettingsReset() { _compactView = new(); _workspaceView = new(); _selectedFilterRule = 0; _filterTargetSearch = string.Empty; }
+    public void OnSettingsReset() { _compactView = new(); _workspaceView = new(); _ruleEditor?.Reset(); }
     public void Draw()
     {
         if (!config.ActiveSRankWindowOpen) return;

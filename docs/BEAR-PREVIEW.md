@@ -1,7 +1,7 @@
 # Local Bear Toolkit preview
 
 Branch `codex/bear-integration-ui` combines the current reimagined UI with Bear
-Toolkit S-rank integration. Plugin version `0.6.0.8` is a local preview; `repo.json`
+Toolkit S-rank integration. Plugin version `0.6.0.9` is a local preview; `repo.json`
 continues to point to the existing public build.
 
 Build with the .NET 10 SDK and Dalamud development references installed:
@@ -68,6 +68,17 @@ A-rank rule follow you, select Mateus in the rule list and change **Where** to
 opened in the new editor. These are local display rules; chat notification
 preferences and the server's feed coverage stay separate.
 
+S-rank RELAY chat has its own rule editor in **Settings > Notifications >
+Community S-rank alerts**. These rules control both the chat line and relay
+sound. The chat **NA hunt mix** preset selects all S ranks on Crystal and
+ShB/EW/DT S ranks on Aether, Primal and Dynamis. **Copy /hhv S-rank rules** copies
+only S-rank location and expansion selections; later edits remain independent.
+No A-rank or SS relays are added. Existing relay DC preferences migrate with
+their previous meaning, including an empty selected-DC list allowing nothing.
+**Reset relay rules** returns to all S ranks in the current DC. **Test chat
+format** displays a local TEST example regardless of the chat-alert switch or
+rules, without consuming notification suppression for a real spawn.
+
 The pull-time clock always uses the Faloop report time, even when a plugin or
 Bear supplies the displayed health. If Faloop has not supplied a timer, the
 clock is unknown. Bear updates never restart this pull-time clock. Confirmed
@@ -95,6 +106,9 @@ For in-game verification, compare the same S-rank, world and instance in Bear an
    **Current world** and travel to another world; the A-rank selection should
    follow. Check overlapping rules, all/none expansions, saving/reloading and
    the filter editor at narrow window widths and larger UI scales.
+9. In Notifications, apply the chat preset or copy the `/hhv` S rules. Check
+   chat and sound exclusions, per-expansion matching, current-world/DC travel,
+   saving/reloading, and that later `/hhv` edits do not alter chat rules.
 
 Automated tests exercise parsing, freshness and compatibility. Account access,
 token renewal and actual in-game rendering still require this live check.

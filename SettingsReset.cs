@@ -144,6 +144,7 @@ public static class SettingsReset
                 config.SyncSpawnSound = defaults.SyncSpawnSound;
                 config.SyncSpawnCurrentDc = defaults.SyncSpawnCurrentDc;
                 config.SyncSpawnDataCenters = defaults.SyncSpawnDataCenters;
+                config.SyncRelayRules = defaults.SyncRelayRules;
                 break;
             case SettingsResetCategory.Travel:
                 config.BlacklistedAetherytes = Configuration.CreateDefaultAetheryteBlacklist();
