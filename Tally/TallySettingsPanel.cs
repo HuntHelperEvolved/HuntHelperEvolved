@@ -39,28 +39,41 @@ public sealed class TallySettingsPanel
         this.tracker = tracker;
     }
 
-    public void Draw()
+    private Func<string, string, bool>? _matches;
+    private bool SettingMatches(string label, string aliases = "") => _matches?.Invoke(label, aliases) ?? true;
+
+    public void Draw(Func<string, string, bool>? matches = null)
+    {
+        _matches = matches;
+        try { DrawContents(); }
+        finally { _matches = null; }
+    }
+
+    private void DrawContents()
     {
         ImGui.PushTextWrapPos(0);
         DrawDetectionSection();
 
-        ImGui.Separator();
+        if (_matches is null) ImGui.Separator();
         DrawRankSection();
 
-        ImGui.Separator();
+        if (_matches is null) ImGui.Separator();
         DrawSeedingSection();
 
-        ImGui.Separator();
-        var limit = config.HistoryLimit;
-        ImGui.TextUnformatted("Detail log entries kept");
-        ImGui.SetNextItemWidth(-1);
-        if (ImGui.InputInt("##Detail log entries kept", ref limit, 500))
+        if (_matches is null) ImGui.Separator();
+        if (SettingMatches("Detail log entries kept", "HistoryLimit history retention"))
         {
-            config.HistoryLimit = Math.Clamp(limit, 100, 100000);
-            config.MarkChanged();
+            var limit = config.HistoryLimit;
+            ImGui.TextUnformatted("Detail log entries kept");
+            ImGui.SetNextItemWidth(-1);
+            if (ImGui.InputInt("##Detail log entries kept", ref limit, 500))
+            {
+                config.HistoryLimit = Math.Clamp(limit, 100, 100000);
+                config.MarkChanged();
+            }
         }
 
-        ImGui.Separator();
+        if (_matches is null) ImGui.Separator();
         DrawResetSection();
         ImGui.PopTextWrapPos();
     }
@@ -69,55 +82,70 @@ public sealed class TallySettingsPanel
     {
         var damageInUse = DrawCreditStatus();
 
-        var requireCombat = config.RequireCombat;
-        var label = damageInUse
-            ? "Only count marks I hit"
-            : "Only count marks I was in combat for";
-
-        if (HuntUi.WrappedCheckbox(label, ref requireCombat))
+        if (SettingMatches("Only count marks I hit / was in combat for", "RequireCombat"))
         {
-            config.RequireCombat = requireCombat;
-            config.MarkChanged();
+            var requireCombat = config.RequireCombat;
+            var label = damageInUse
+                ? "Only count marks I hit"
+                : "Only count marks I was in combat for";
+
+            if (HuntUi.WrappedCheckbox(label, ref requireCombat))
+            {
+                config.RequireCombat = requireCombat;
+                config.MarkChanged();
+            }
         }
 
         // Strict credit exists only to tighten the combat proxy. Reading the
         // player's own actions is already stricter and more accurate than
         // anything it can add, so it does nothing while that is live.
-        using (ImRaii.Disabled(damageInUse))
+        if (SettingMatches("Strict credit", "StrictCredit combat fallback"))
         {
-            var strict = config.StrictCredit;
-            if (HuntUi.WrappedCheckbox("Strict credit", ref strict))
+            using (ImRaii.Disabled(damageInUse))
             {
-                config.StrictCredit = strict;
-                config.MarkChanged();
+                var strict = config.StrictCredit;
+                if (HuntUi.WrappedCheckbox("Strict credit", ref strict))
+                {
+                    config.StrictCredit = strict;
+                    config.MarkChanged();
+                }
             }
+            if (damageInUse && ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+                ImGui.SetTooltip("Damage detection already uses your own actions. Strict credit only applies to the combat fallback.");
         }
-        if (damageInUse && ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
-            ImGui.SetTooltip("Damage detection already uses your own actions. Strict credit only applies to the combat fallback.");
 
         DrawRewardConfirmation();
 
-        var distance = config.MaxDistance;
-        ImGui.TextUnformatted("Detection radius (yalms)");
-        ImGui.SetNextItemWidth(-1);
-        if (ImGui.SliderFloat("##Detection radius (yalms)", ref distance, 20f, 200f, "%.0f"))
+        if (SettingMatches("Detection radius (yalms)", "MaxDistance"))
         {
-            config.MaxDistance = distance;
-            config.MarkChanged();
+            var distance = config.MaxDistance;
+            ImGui.TextUnformatted("Detection radius (yalms)");
+            ImGui.SetNextItemWidth(-1);
+            if (ImGui.SliderFloat("##Detection radius (yalms)", ref distance, 20f, 200f, "%.0f"))
+            {
+                config.MaxDistance = distance;
+                config.MarkChanged();
+            }
         }
 
-        var chat = config.ChatOnKill;
-        if (HuntUi.WrappedCheckbox("Print a chat message on each kill", ref chat))
+        if (SettingMatches("Print a chat message on each kill", "ChatOnKill"))
         {
-            config.ChatOnKill = chat;
-            config.MarkChanged();
+            var chat = config.ChatOnKill;
+            if (HuntUi.WrappedCheckbox("Print a chat message on each kill", ref chat))
+            {
+                config.ChatOnKill = chat;
+                config.MarkChanged();
+            }
         }
 
-        var allDeaths = config.PublishAllMarkDeaths;
-        if (HuntUi.WrappedCheckbox("Send every mark death over IPC", ref allDeaths))
+        if (SettingMatches("Send every mark death over IPC", "PublishAllMarkDeaths integration"))
         {
-            config.PublishAllMarkDeaths = allDeaths;
-            config.MarkChanged();
+            var allDeaths = config.PublishAllMarkDeaths;
+            if (HuntUi.WrappedCheckbox("Send every mark death over IPC", ref allDeaths))
+            {
+                config.PublishAllMarkDeaths = allDeaths;
+                config.MarkChanged();
+            }
         }
 
     }
@@ -134,6 +162,7 @@ public sealed class TallySettingsPanel
     /// </summary>
     private void DrawRewardConfirmation()
     {
+        if (!SettingMatches("Only count A and S ranks the game says it rewarded", "RequireRewardMessage confirmation")) return;
         var require = config.RequireRewardMessage;
         if (HuntUi.WrappedCheckbox("Only count A and S ranks the game says it rewarded", ref require))
         {
@@ -143,14 +172,14 @@ public sealed class TallySettingsPanel
 
         if (!config.RequireRewardMessage)
         {
-            HuntUi.SameLineIfFits(ImGui.CalcTextSize("(off)").X);
+            if (_matches is null) HuntUi.SameLineIfFits(ImGui.CalcTextSize("(off)").X);
             ImGui.TextDisabled("(off)");
             return;
         }
 
         var dropped = tracker.DroppedUnconfirmed;
         var status = dropped == 0 ? $"({reward.Seen} confirmed)" : $"({reward.Seen} confirmed, {dropped} dropped)";
-        HuntUi.SameLineIfFits(ImGui.CalcTextSize(status).X);
+        if (_matches is null) HuntUi.SameLineIfFits(ImGui.CalcTextSize(status).X);
         if (dropped == 0)
             ImGui.TextDisabled(status);
         else
@@ -159,12 +188,13 @@ public sealed class TallySettingsPanel
 
     private bool DrawCreditStatus()
     {
+        if (!SettingMatches("Use damage detection", "UseDamageDetection credit hit")) return damage.IsActive && config.UseDamageDetection;
         if (!damage.IsActive)
         {
             ImGui.TextColored(HuntTheme.Warning, "Damage detection: unavailable");
             ImGui.TextDisabled(damage.Status);
 
-            ImGui.Spacing();
+            if (_matches is null) ImGui.Spacing();
             return false;
         }
 
@@ -176,53 +206,68 @@ public sealed class TallySettingsPanel
         }
 
         var status = config.UseDamageDetection ? $"({damage.EventsSeen} of your actions seen)" : "(off - using combat fallback)";
-        HuntUi.SameLineIfFits(ImGui.CalcTextSize(status).X);
+        if (_matches is null) HuntUi.SameLineIfFits(ImGui.CalcTextSize(status).X);
         if (config.UseDamageDetection)
             ImGui.TextDisabled(status);
         else
             ImGui.TextColored(HuntTheme.Warning, status);
 
-        ImGui.Spacing();
+        if (_matches is null) ImGui.Spacing();
         return config.UseDamageDetection;
     }
 
     private void DrawRankSection()
     {
-        ImGui.Text("Ranks to track");
+        if (_matches is null) ImGui.Text("Ranks to track");
 
-        var b = config.TrackB;
-        if (HuntUi.WrappedCheckbox("B ranks", ref b)) { config.TrackB = b; config.MarkChanged(); }
-        var a = config.TrackA;
-        if (HuntUi.WrappedCheckbox("A ranks", ref a)) { config.TrackA = a; config.MarkChanged(); }
-        var s = config.TrackS;
-        if (HuntUi.WrappedCheckbox("S and SS ranks", ref s)) { config.TrackS = s; config.MarkChanged(); }
+        if (SettingMatches("B ranks to track", "TrackB"))
+        {
+            var b = config.TrackB;
+            if (HuntUi.WrappedCheckbox("B ranks", ref b)) { config.TrackB = b; config.MarkChanged(); }
+        }
+
+        if (SettingMatches("A ranks to track", "TrackA"))
+        {
+            var a = config.TrackA;
+            if (HuntUi.WrappedCheckbox("A ranks", ref a)) { config.TrackA = a; config.MarkChanged(); }
+        }
+
+        if (SettingMatches("S and SS ranks to track", "TrackS"))
+        {
+            var s = config.TrackS;
+            if (HuntUi.WrappedCheckbox("S and SS ranks", ref s)) { config.TrackS = s; config.MarkChanged(); }
+        }
 
     }
 
     private void DrawSeedingSection()
     {
-        ImGui.Text("Seed from achievements");
-        var auto = config.AutoSeedOnLogin;
-        if (HuntUi.WrappedCheckbox("Check on login", ref auto))
+        if (_matches is null) ImGui.Text("Seed from achievements");
+        if (SettingMatches("Check achievements on login", "AutoSeedOnLogin seeding"))
         {
-            config.AutoSeedOnLogin = auto;
-            config.MarkChanged();
+            var auto = config.AutoSeedOnLogin;
+            if (HuntUi.WrappedCheckbox("Check on login", ref auto))
+            {
+                config.AutoSeedOnLogin = auto;
+                config.MarkChanged();
+            }
         }
 
         ImGui.BeginDisabled(seeder.IsRunning);
-        if (ImGui.Button("Seed now"))
+        if (SettingMatches("Seed now", "achievements tally baseline") && ImGui.Button("Seed now"))
             seeder.Start();
-        HuntUi.SameLineIfFits(ImGui.CalcTextSize("Re-resolve names").X + ImGui.GetStyle().FramePadding.X * 2);
-        if (ImGui.Button("Re-resolve names"))
+        if (_matches is null) HuntUi.SameLineIfFits(ImGui.CalcTextSize("Re-resolve names").X + ImGui.GetStyle().FramePadding.X * 2);
+        if (SettingMatches("Re-resolve names", "achievements seeding") && ImGui.Button("Re-resolve names"))
             seeder.ResolveAll();
         ImGui.EndDisabled();
 
-        if (!string.IsNullOrEmpty(seeder.Status))
+        if (_matches is null && !string.IsNullOrEmpty(seeder.Status))
             ImGui.TextDisabled(seeder.Status);
 
-        if (config.LastSeeded != default)
+        if (_matches is null && config.LastSeeded != default)
             ImGui.TextDisabled($"Last seeded {config.LastSeeded:yyyy-MM-dd HH:mm}");
 
+        if (!SettingMatches("Achievement baselines", "seeded total counter achievement drift edit")) return;
         var profile = characters.Current;
         if (profile is null)
         {
@@ -299,7 +344,7 @@ public sealed class TallySettingsPanel
     /// </summary>
     private void DrawDrift(CharacterProfile profile)
     {
-        ImGui.Spacing();
+        if (_matches is null) ImGui.Spacing();
 
         if (!profile.HasAchievementReads)
         {
@@ -346,7 +391,7 @@ public sealed class TallySettingsPanel
         if (seeder.Outcomes.Count == 0)
             return;
 
-        ImGui.Spacing();
+        if (_matches is null) ImGui.Spacing();
         ImGui.Text("Last run");
 
         foreach (var def in SeedDefinitions.All)
@@ -365,6 +410,7 @@ public sealed class TallySettingsPanel
 
     private void DrawResetSection()
     {
+        if (!SettingMatches("Reset all characters", "delete tally totals confirmation") && !confirmReset) return;
         if (!confirmReset)
         {
             if (ImGui.Button("Reset all characters"))
@@ -388,7 +434,7 @@ public sealed class TallySettingsPanel
             config.Flush(force: true);
             confirmReset = false;
         }
-        HuntUi.SameLineIfFits(ImGui.CalcTextSize("Cancel").X + ImGui.GetStyle().FramePadding.X * 2);
+        if (_matches is null) HuntUi.SameLineIfFits(ImGui.CalcTextSize("Cancel").X + ImGui.GetStyle().FramePadding.X * 2);
         if (ImGui.Button("Cancel"))
             confirmReset = false;
     }

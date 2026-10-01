@@ -92,10 +92,12 @@ internal static class ConnectionUi
             ImGui.TextDisabled($"Server feed: {(faloop.DataCenters.Count > 0 ? string.Join(", ", faloop.DataCenters) : "none reported")}");
         }
         else if (sync.IsConnected) ImGui.TextDisabled("Faloop: off");
-        if (config.SyncReceiveBearFeed)
+        ImGui.Separator();
+        ImGui.TextUnformatted("Bear Toolkit S-rank feed");
+        if (!config.SyncReceiveBearFeed)
+            ImGui.TextDisabled("Off on this client. Enable reception in Settings > Sharing.");
+        else
         {
-            ImGui.Separator();
-            ImGui.TextUnformatted("Bear Toolkit S-rank feed");
             if (!sync.IsConnected) ImGui.TextDisabled("Waiting for the group server.");
             else if (!sync.SupportsBearFeed) ImGui.TextDisabled("This server does not support Bear reports.");
             else

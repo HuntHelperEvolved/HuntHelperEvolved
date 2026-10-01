@@ -192,11 +192,9 @@ public sealed partial class Plugin
             var status = mark.Dead ? mark.IsCustom ? " (done)"
                 : mark.SnipedAtUtc is not null ? " (gone)"
                 : mark.DeathObservedAtUtc is not null ? " (killed)" : " (dead)" : string.Empty;
-            var zoneWidth = !showZones ? 0 : satellite
-                ? TrainRowLayout.SecondaryTextWidth(layout.TextWidth, ImGui.CalcTextSize(name + instance + status).X,
-                    ImGui.CalcTextSize(secondaryLabel ?? string.Empty).X, layout.Gap)
-                : Math.Min(130 * ImGuiHelpers.GlobalScale, layout.TextWidth * .34f);
-            if (!satellite && layout.TextWidth < 210 * ImGuiHelpers.GlobalScale) zoneWidth = 0;
+            var zoneWidth = !showZones ? 0 : TrainRowLayout.SecondaryTextWidth(layout.TextWidth,
+                ImGui.CalcTextSize(name + instance + status).X,
+                ImGui.CalcTextSize(secondaryLabel ?? string.Empty).X, layout.Gap);
             var nameWidth = Math.Max(1, layout.TextWidth - zoneWidth - (zoneWidth > 0 ? layout.Gap : 0));
             var displayedName = TrainRowPresentation.FitText(name, nameWidth,
                 static text => ImGui.CalcTextSize(text).X, instance + status);

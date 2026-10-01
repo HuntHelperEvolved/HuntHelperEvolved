@@ -16,7 +16,7 @@ public sealed partial class Plugin
         var toolbarStart = ImGui.GetCursorPos();
         var padding = 4 * ImGuiHelpers.GlobalScale;
         var toolbarWidth = Math.Max(1, ImGui.GetContentRegionAvail().X - padding * 2);
-        var navigationRows = TrainNavigationControlsWidth(compact: true) <= toolbarWidth ? 1 : 2;
+        var navigationRows = TrainNavigationControlsWidth() <= toolbarWidth ? 1 : 2;
         var modeRows = TrainOperatingControlsWidth(compact: true) <= toolbarWidth ? 0 : 1;
         var toolbarRows = navigationRows + modeRows + 1;
         var toolbarHeight = ImGui.GetFrameHeight() * toolbarRows
@@ -66,13 +66,10 @@ public sealed partial class Plugin
         ImGui.TextUnformatted("Train view");
         ImGui.Separator();
         CompactTrainOption("Hide dead",_config.HideDeadMarks,value=>_config.HideDeadMarks=value);
-        if (compact)
-        {
-            CompactTrainOption("Show zones",!_config.HideZonesInPopout,value=>_config.HideZonesInPopout=!value);
-            ImGui.BeginDisabled(_config.HideZonesInPopout);
-            CompactTrainOption("Show zone first",_config.SwapMarkAndZoneInPopout,value=>_config.SwapMarkAndZoneInPopout=value);
-            ImGui.EndDisabled();
-        }
+        CompactTrainOption("Show zones",!_config.HideZonesInPopout,value=>_config.HideZonesInPopout=!value);
+        ImGui.BeginDisabled(_config.HideZonesInPopout);
+        CompactTrainOption("Show zone first",_config.SwapMarkAndZoneInPopout,value=>_config.SwapMarkAndZoneInPopout=value);
+        ImGui.EndDisabled();
         CompactTrainOption("Show time since seen",_config.ShowMarkAge,value=>_config.ShowMarkAge=value);
         CompactTrainOption("Show spicing markers",_config.ShowSpicing,value=>_config.ShowSpicing=value);
         ImGui.BeginDisabled(TrainMutationBusy);

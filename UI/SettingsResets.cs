@@ -67,6 +67,12 @@ public sealed partial class Plugin
 
     private void DrawSettingsResets()
     {
+        if (_drawingSettingsSearch)
+        {
+            foreach (var category in Enum.GetValues<SettingsResetCategory>()) DrawSettingsResetRow(category);
+            DrawSettingsResetConfirmation();
+            return;
+        }
         ImGui.TextWrapped("Restore defaults by category. Your train, presets, counters and tally totals are kept.");
         ImGui.Spacing();
         if (!string.IsNullOrEmpty(_settingsResetStatus))
@@ -112,6 +118,7 @@ public sealed partial class Plugin
 
     private void DrawSettingsResetRow(SettingsResetCategory category)
     {
+        if (!SettingMatches("Reset " + SettingsResetLabel(category), SettingsResetDescription(category))) return;
         ImGui.PushID(category.ToString());
         ImGui.Spacing();
         var scale = ImGui.GetFontSize() / 17f;

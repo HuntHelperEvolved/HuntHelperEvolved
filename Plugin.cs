@@ -638,107 +638,60 @@ public sealed partial class Plugin : IDalamudPlugin
     private void DrawDetectionNotificationSettings()
     {
         DrawSettingsHeading("Local detection");
-        ImGui.Spacing();
-
-        // ---- Chat ----
-        var chat = _config.EchoOnDetection;
-        if (HuntUi.WrappedCheckbox("Announce in chat", ref chat))
+        if (SettingMatches("Announce in chat", "EchoOnDetection local detection alerts"))
         {
-            _config.EchoOnDetection = chat;
-            _config.Save();
+            var chat = _config.EchoOnDetection;
+            if (HuntUi.WrappedCheckbox("Announce in chat", ref chat)) { _config.EchoOnDetection = chat; _config.Save(); }
         }
-
-        if (_config.EchoOnDetection)
+        if (_config.EchoOnDetection || _drawingSettingsSearch)
         {
-            ImGui.Indent();
-
-            var cB = _config.EchoBRanks;
-            if (HuntUi.WrappedCheckbox("B##chatrank", ref cB)) { _config.EchoBRanks = cB; _config.Save(); }
-            ImGui.SameLine();
-            var cA = _config.EchoARanks;
-            if (HuntUi.WrappedCheckbox("A##chatrank", ref cA)) { _config.EchoARanks = cA; _config.Save(); }
-            ImGui.SameLine();
-            var cS = _config.EchoSRanks;
-            if (HuntUi.WrappedCheckbox("S##chatrank", ref cS)) { _config.EchoSRanks = cS; _config.Save(); }
-            HuntUi.SameLineIfFits(ImGui.CalcTextSize("which ranks").X);
-            ImGui.TextDisabled("which ranks");
-
-            RevealPreferenceSection();
-            if (ImGui.TreeNode("Chat message templates"))
+            DrawDetectionRank("B-rank chat alerts", "EchoBRanks", _config.EchoBRanks, v => _config.EchoBRanks = v);
+            DrawDetectionRank("A-rank chat alerts", "EchoARanks", _config.EchoARanks, v => _config.EchoARanks = v);
+            DrawDetectionRank("S-rank chat alerts", "EchoSRanks", _config.EchoSRanks, v => _config.EchoSRanks = v);
+            if (_drawingSettingsSearch || ImGui.TreeNode("Chat message templates"))
             {
-                DrawMessageBox("B message##chat", _config.DetectionChatMessageB, v => _config.DetectionChatMessageB = v);
-                DrawMessageBox("A message##chat", _config.DetectionChatMessageA, v => _config.DetectionChatMessageA = v);
-                DrawMessageBox("S message##chat", _config.DetectionChatMessageS, v => _config.DetectionChatMessageS = v);
-
-                ImGui.TreePop();
+                if (SettingMatches("B-rank chat message", "DetectionChatMessageB template B message")) DrawMessageBox("B message##chat", _config.DetectionChatMessageB, v => _config.DetectionChatMessageB = v);
+                if (SettingMatches("A-rank chat message", "DetectionChatMessageA template A message")) DrawMessageBox("A message##chat", _config.DetectionChatMessageA, v => _config.DetectionChatMessageA = v);
+                if (SettingMatches("S-rank chat message", "DetectionChatMessageS template S message")) DrawMessageBox("S message##chat", _config.DetectionChatMessageS, v => _config.DetectionChatMessageS = v);
+                if (!_drawingSettingsSearch) ImGui.TreePop();
             }
-            ImGui.Unindent();
         }
-
-        ImGui.Spacing();
-
-        // ---- Fly text ----
-        var fly = _config.DetectionFlyTextEnabled;
-        if (HuntUi.WrappedCheckbox("Show fly text", ref fly))
+        if (SettingMatches("Show fly text", "DetectionFlyTextEnabled local detection alerts"))
         {
-            _config.DetectionFlyTextEnabled = fly;
-            _config.Save();
+            var fly = _config.DetectionFlyTextEnabled;
+            if (HuntUi.WrappedCheckbox("Show fly text", ref fly)) { _config.DetectionFlyTextEnabled = fly; _config.Save(); }
         }
-
-        if (_config.DetectionFlyTextEnabled)
+        if (_config.DetectionFlyTextEnabled || _drawingSettingsSearch)
         {
-            ImGui.Indent();
-            var fB = _config.FlyTextBRanks;
-            if (HuntUi.WrappedCheckbox("B##flyrank", ref fB)) { _config.FlyTextBRanks = fB; _config.Save(); }
-            ImGui.SameLine();
-            var fA = _config.FlyTextARanks;
-            if (HuntUi.WrappedCheckbox("A##flyrank", ref fA)) { _config.FlyTextARanks = fA; _config.Save(); }
-            ImGui.SameLine();
-            var fS = _config.FlyTextSRanks;
-            if (HuntUi.WrappedCheckbox("S##flyrank", ref fS)) { _config.FlyTextSRanks = fS; _config.Save(); }
-            ImGui.SameLine();
-            ImGui.TextDisabled("which ranks");
-            ImGui.TextDisabled("The rank and name use fixed chat colours.");
-            ImGui.Unindent();
+            DrawDetectionRank("B-rank fly text", "FlyTextBRanks", _config.FlyTextBRanks, v => _config.FlyTextBRanks = v);
+            DrawDetectionRank("A-rank fly text", "FlyTextARanks", _config.FlyTextARanks, v => _config.FlyTextARanks = v);
+            DrawDetectionRank("S-rank fly text", "FlyTextSRanks", _config.FlyTextSRanks, v => _config.FlyTextSRanks = v);
         }
-
-        ImGui.Spacing();
-
-        // ---- Speech ----
-        var tts = _config.DetectionTtsEnabled;
-        if (HuntUi.WrappedCheckbox("Speak detections", ref tts))
+        if (SettingMatches("Speak detections", "DetectionTtsEnabled text to speech TTS local alerts"))
         {
-            _config.DetectionTtsEnabled = tts;
-            _config.Save();
+            var speech = _config.DetectionTtsEnabled;
+            if (HuntUi.WrappedCheckbox("Speak detections", ref speech)) { _config.DetectionTtsEnabled = speech; _config.Save(); }
         }
-
-        if (_config.DetectionTtsEnabled)
+        if (_config.DetectionTtsEnabled || _drawingSettingsSearch)
         {
-            ImGui.Indent();
-
-            var tB = _config.TtsBRanks;
-            if (HuntUi.WrappedCheckbox("B##ttsrank", ref tB)) { _config.TtsBRanks = tB; _config.Save(); }
-            ImGui.SameLine();
-            var tA = _config.TtsARanks;
-            if (HuntUi.WrappedCheckbox("A##ttsrank", ref tA)) { _config.TtsARanks = tA; _config.Save(); }
-            ImGui.SameLine();
-            var tS = _config.TtsSRanks;
-            if (HuntUi.WrappedCheckbox("S##ttsrank", ref tS)) { _config.TtsSRanks = tS; _config.Save(); }
-            ImGui.SameLine();
-            ImGui.TextDisabled("which ranks");
-
-            RevealPreferenceSection();
-            if (ImGui.TreeNode("Spoken message templates"))
+            DrawDetectionRank("Speak B-rank detections", "TtsBRanks speech", _config.TtsBRanks, v => _config.TtsBRanks = v);
+            DrawDetectionRank("Speak A-rank detections", "TtsARanks speech", _config.TtsARanks, v => _config.TtsARanks = v);
+            DrawDetectionRank("Speak S-rank detections", "TtsSRanks speech", _config.TtsSRanks, v => _config.TtsSRanks = v);
+            if (_drawingSettingsSearch || ImGui.TreeNode("Spoken message templates"))
             {
-                DrawMessageBox("B message##tts", _config.DetectionTtsMessageB, v => _config.DetectionTtsMessageB = v);
-                DrawMessageBox("A message##tts", _config.DetectionTtsMessageA, v => _config.DetectionTtsMessageA = v);
-                DrawMessageBox("S message##tts", _config.DetectionTtsMessageS, v => _config.DetectionTtsMessageS = v);
-
-                ImGui.TreePop();
+                if (SettingMatches("B-rank spoken message", "DetectionTtsMessageB speech template B message")) DrawMessageBox("B message##tts", _config.DetectionTtsMessageB, v => _config.DetectionTtsMessageB = v);
+                if (SettingMatches("A-rank spoken message", "DetectionTtsMessageA speech template A message")) DrawMessageBox("A message##tts", _config.DetectionTtsMessageA, v => _config.DetectionTtsMessageA = v);
+                if (SettingMatches("S-rank spoken message", "DetectionTtsMessageS speech template S message")) DrawMessageBox("S message##tts", _config.DetectionTtsMessageS, v => _config.DetectionTtsMessageS = v);
+                if (!_drawingSettingsSearch) ImGui.TreePop();
             }
             DrawVoicePicker();
-            ImGui.Unindent();
         }
+    }
+
+    private void DrawDetectionRank(string label, string aliases, bool value, Action<bool> save)
+    {
+        if (!SettingMatches(label, aliases)) return;
+        if (HuntUi.WrappedCheckbox(label, ref value)) { save(value); _config.Save(); }
     }
 
     /// <summary>One message template, saved when the box is left rather than per keystroke.</summary>
@@ -755,34 +708,24 @@ public sealed partial class Plugin : IDalamudPlugin
 
     private void DrawVoicePicker()
     {
-        _voices ??= _notifier.InstalledVoices();
-
-        if (_voices.Length == 0)
+        if (SettingMatches("Voice", "TtsVoiceName DetectionTtsVoice text to speech spoken"))
         {
-            ImGui.TextDisabled(_notifier.SpeechStatus);
-            ImGui.TextDisabled("Chat and fly text are unaffected.");
-            return;
+            _voices ??= _notifier.InstalledVoices();
+            if (_voices.Length == 0) ImGui.TextDisabled(_notifier.SpeechStatus);
+            else
+            {
+                var index = Math.Max(0, Array.IndexOf(_voices, _config.TtsVoiceName));
+                if (ImGui.Combo(HuntUi.FieldLabel("Voice", 220), ref index, _voices, _voices.Length))
+                { _config.TtsVoiceName = _voices[index]; _config.Save(); }
+            }
         }
-
-        var index = Array.IndexOf(_voices, _config.TtsVoiceName);
-        if (index < 0) index = 0;
-
-        ImGui.SetNextItemWidth(220);
-        if (ImGui.Combo(HuntUi.FieldLabel("Voice"), ref index, _voices, _voices.Length))
+        if (SettingMatches("Volume", "TtsVolume DetectionTtsVolume text to speech spoken"))
         {
-            _config.TtsVoiceName = _voices[index];
-            _config.Save();
+            var volume = _config.TtsVolume;
+            if (ImGui.SliderInt(HuntUi.FieldLabel("Volume", 220), ref volume, 0, 100))
+            { _config.TtsVolume = Math.Clamp(volume, 0, 100); _config.Save(); }
         }
-
-        var volume = _config.TtsVolume;
-        ImGui.SetNextItemWidth(220);
-        if (ImGui.SliderInt(HuntUi.FieldLabel("Volume"), ref volume, 0, 100))
-        {
-            _config.TtsVolume = Math.Clamp(volume, 0, 100);
-            _config.Save();
-        }
-
-        if (ImGui.Button("Test"))
+        if (SettingMatches("Test speech", "voice text to speech TTS spoken") && ImGui.Button("Test speech"))
             _notifier.Speak("A-Rank Nearby");
     }
 
@@ -1119,7 +1062,7 @@ public sealed partial class Plugin : IDalamudPlugin
     /// </summary>
     private void DrawTallyTab()
     {
-        if (_standaloneTallyPresent)
+        if (_standaloneTallyPresent && !_drawingSettingsSearch)
         {
             ImGui.Spacing();
             ImGui.PushStyleColor(ImGuiCol.Text, HuntTheme.Danger);
@@ -1132,7 +1075,7 @@ public sealed partial class Plugin : IDalamudPlugin
             ImGui.Separator();
         }
 
-        _tallySettings.Draw();
+        _tallySettings.Draw(_drawingSettingsSearch ? SettingMatches : null);
     }
 
     /// <summary>
@@ -1467,132 +1410,174 @@ public sealed partial class Plugin : IDalamudPlugin
     /// </summary>
     private void DrawPlayerGuideSettings()
     {
-        ImGui.TextWrapped("Around your character");
+        if (!_drawingSettingsSearch) ImGui.TextWrapped("Around your character");
 
         const ImGuiColorEditFlags flags =
             ImGuiColorEditFlags.AlphaBar | ImGuiColorEditFlags.AlphaPreviewHalf;
 
-        var guides = _config.ShowPlayerGuides;
-        if (HuntUi.WrappedCheckbox("Show these at all", ref guides))
+        if (SettingMatches("Show player guides", "ShowPlayerGuides range circle heading position path"))
         {
-            _config.ShowPlayerGuides = guides;
-            _config.Save();
-        }
-        ImGui.TextDisabled("One switch for the four below. They keep their own settings while it's off.");
-
-        ImGui.Spacing();
-        using var guideGroup = ImRaii.Disabled(!_config.ShowPlayerGuides);
-
-        var circle = _config.ShowPlayerCircleOnMap;
-        if (HuntUi.WrappedCheckbox("Range circle", ref circle))
-        {
-            _config.ShowPlayerCircleOnMap = circle;
-            _config.Save();
-        }
-
-        if (_config.ShowPlayerCircleOnMap)
-        {
-            var circleColour = _config.PlayerCircleColour;
-            if (ImGui.ColorEdit4(HuntUi.FieldLabel("Circle colour"), ref circleColour, flags))
+            var guides = _config.ShowPlayerGuides;
+            if (HuntUi.WrappedCheckbox("Show these at all", ref guides))
             {
-                _config.PlayerCircleColour = circleColour;
+                _config.ShowPlayerGuides = guides;
                 _config.Save();
             }
+            ImGui.TextDisabled("One switch for the four below. They keep their own settings while it's off.");
+        }
 
-            var scale = _config.PlayerCircleRadiusScale;
-            ImGui.SetNextItemWidth(140);
-            if (ImGui.SliderFloat(HuntUi.FieldLabel("Circle radius scale"), ref scale, 0.25f, 4f, "%.2f"))
+        if (!_drawingSettingsSearch) ImGui.Spacing();
+        using var guideGroup = ImRaii.Disabled(!_config.ShowPlayerGuides && !_drawingSettingsSearch);
+
+        if (SettingMatches("Range circle", "ShowPlayerCircleOnMap player guides"))
+        {
+            var circle = _config.ShowPlayerCircleOnMap;
+            if (HuntUi.WrappedCheckbox("Range circle", ref circle))
             {
-                _config.PlayerCircleRadiusScale = Math.Clamp(scale, 0.25f, 4f);
+                _config.ShowPlayerCircleOnMap = circle;
                 _config.Save();
             }
+        }
 
-            var thickness = _config.PlayerCircleThickness;
-            ImGui.SetNextItemWidth(140);
-            if (ImGui.SliderFloat(HuntUi.FieldLabel("Circle line width"), ref thickness, 1f, 40f, "%.0f"))
+        if (_drawingSettingsSearch || _config.ShowPlayerCircleOnMap)
+        {
+            if (SettingMatches("Circle colour", "PlayerCircleColour color range player guides"))
             {
-                _config.PlayerCircleThickness = Math.Clamp(thickness, 1f, 40f);
-                _config.Save();
+                var circleColour = _config.PlayerCircleColour;
+                if (ImGui.ColorEdit4(HuntUi.FieldLabel("Circle colour"), ref circleColour, flags))
+                {
+                    _config.PlayerCircleColour = circleColour;
+                    _config.Save();
+                }
+            }
+
+            if (SettingMatches("Circle radius scale", "PlayerCircleRadiusScale range player guides"))
+            {
+                var scale = _config.PlayerCircleRadiusScale;
+                ImGui.SetNextItemWidth(140);
+                if (ImGui.SliderFloat(HuntUi.FieldLabel("Circle radius scale"), ref scale, 0.25f, 4f, "%.2f"))
+                {
+                    _config.PlayerCircleRadiusScale = Math.Clamp(scale, 0.25f, 4f);
+                    _config.Save();
+                }
+            }
+
+            if (SettingMatches("Circle line width", "PlayerCircleThickness range player guides"))
+            {
+                var thickness = _config.PlayerCircleThickness;
+                ImGui.SetNextItemWidth(140);
+                if (ImGui.SliderFloat(HuntUi.FieldLabel("Circle line width"), ref thickness, 1f, 40f, "%.0f"))
+                {
+                    _config.PlayerCircleThickness = Math.Clamp(thickness, 1f, 40f);
+                    _config.Save();
+                }
             }
 
         }
 
-        ImGui.Spacing();
+        if (!_drawingSettingsSearch) ImGui.Spacing();
 
-        var dirLine = _config.ShowPlayerDirectionLine;
-        if (HuntUi.WrappedCheckbox("Heading line", ref dirLine))
+        if (SettingMatches("Heading line", "ShowPlayerDirectionLine player guides"))
         {
-            _config.ShowPlayerDirectionLine = dirLine;
-            _config.Save();
-        }
-        ImGui.TextDisabled("A short line from you to the edge of the circle. Always the circle's radius long.");
-
-        if (_config.ShowPlayerDirectionLine)
-        {
-            var dirColour = _config.PlayerDirectionLineColour;
-            if (ImGui.ColorEdit4(HuntUi.FieldLabel("Heading line colour"), ref dirColour, flags))
+            var dirLine = _config.ShowPlayerDirectionLine;
+            if (HuntUi.WrappedCheckbox("Heading line", ref dirLine))
             {
-                _config.PlayerDirectionLineColour = dirColour;
+                _config.ShowPlayerDirectionLine = dirLine;
                 _config.Save();
+            }
+            ImGui.TextDisabled("A short line from you to the edge of the circle. Always the circle's radius long.");
+        }
+
+        if (_drawingSettingsSearch || _config.ShowPlayerDirectionLine)
+        {
+            if (SettingMatches("Heading line colour", "PlayerDirectionLineColour color player guides"))
+            {
+                var dirColour = _config.PlayerDirectionLineColour;
+                if (ImGui.ColorEdit4(HuntUi.FieldLabel("Heading line colour"), ref dirColour, flags))
+                {
+                    _config.PlayerDirectionLineColour = dirColour;
+                    _config.Save();
+                }
             }
 
             // Shown as a percentage of the circle's radius, which is what it
             // is — a proportion, so it holds at any zoom.
-            var dirThickness = _config.PlayerDirectionLineThickness * 100f;
-            ImGui.SetNextItemWidth(140);
-            if (ImGui.SliderFloat(HuntUi.FieldLabel("Heading line thickness"), ref dirThickness, 1f, 40f, "%.0f%%"))
+            if (SettingMatches("Heading line thickness", "PlayerDirectionLineThickness player guides"))
             {
-                _config.PlayerDirectionLineThickness = Math.Clamp(dirThickness / 100f, 0.01f, 0.4f);
+                var dirThickness = _config.PlayerDirectionLineThickness * 100f;
+                ImGui.SetNextItemWidth(140);
+                if (ImGui.SliderFloat(HuntUi.FieldLabel("Heading line thickness"), ref dirThickness, 1f, 40f, "%.0f%%"))
+                {
+                    _config.PlayerDirectionLineThickness = Math.Clamp(dirThickness / 100f, 0.01f, 0.4f);
+                    _config.Save();
+                }
+            }
+
+        }
+
+        if (!_drawingSettingsSearch) ImGui.Spacing();
+
+        if (SettingMatches("Position dot", "ShowPlayerPositionDot player guides"))
+        {
+            var posDot = _config.ShowPlayerPositionDot;
+            if (HuntUi.WrappedCheckbox("Position dot", ref posDot))
+            {
+                _config.ShowPlayerPositionDot = posDot;
+                _config.Save();
+            }
+            ImGui.TextDisabled("A dot on exactly where you are, inside the circle.");
+        }
+
+        if (_drawingSettingsSearch || _config.ShowPlayerPositionDot)
+        {
+            if (SettingMatches("Position dot colour", "PlayerPositionDotColour color player guides"))
+            {
+                var dotColour = _config.PlayerPositionDotColour;
+                if (ImGui.ColorEdit4(HuntUi.FieldLabel("Position dot colour"), ref dotColour, flags))
+                {
+                    _config.PlayerPositionDotColour = dotColour;
+                    _config.Save();
+                }
+            }
+
+            if (SettingMatches("Position dot size", "PlayerPositionDotSize player guides"))
+            {
+                var dotSize = _config.PlayerPositionDotSize * 100f;
+                ImGui.SetNextItemWidth(140);
+                if (ImGui.SliderFloat(HuntUi.FieldLabel("Position dot size"), ref dotSize, 1f, 50f, "%.0f%%"))
+                {
+                    _config.PlayerPositionDotSize = Math.Clamp(dotSize / 100f, 0.01f, 0.5f);
+                    _config.Save();
+                }
+                ImGui.TextDisabled("Both are a percentage of the circle's radius, so they keep their proportions at any zoom.");
+            }
+
+        }
+
+        if (!_drawingSettingsSearch) ImGui.Spacing();
+
+        if (SettingMatches("Projected path", "ShowPlayerFacingOnMap player guides"))
+        {
+            var facing = _config.ShowPlayerFacingOnMap;
+            if (HuntUi.WrappedCheckbox("Projected path", ref facing))
+            {
+                _config.ShowPlayerFacingOnMap = facing;
                 _config.Save();
             }
         }
 
-        ImGui.Spacing();
-
-        var posDot = _config.ShowPlayerPositionDot;
-        if (HuntUi.WrappedCheckbox("Position dot", ref posDot))
+        if (_drawingSettingsSearch || _config.ShowPlayerFacingOnMap)
         {
-            _config.ShowPlayerPositionDot = posDot;
-            _config.Save();
-        }
-        ImGui.TextDisabled("A dot on exactly where you are, inside the circle.");
-
-        if (_config.ShowPlayerPositionDot)
-        {
-            var dotColour = _config.PlayerPositionDotColour;
-            if (ImGui.ColorEdit4(HuntUi.FieldLabel("Position dot colour"), ref dotColour, flags))
+            if (SettingMatches("Path colour", "PlayerFacingColour color projected player guides"))
             {
-                _config.PlayerPositionDotColour = dotColour;
-                _config.Save();
+                var facingColour = _config.PlayerFacingColour;
+                if (ImGui.ColorEdit4(HuntUi.FieldLabel("Path colour"), ref facingColour, flags))
+                {
+                    _config.PlayerFacingColour = facingColour;
+                    _config.Save();
+                }
             }
 
-            var dotSize = _config.PlayerPositionDotSize * 100f;
-            ImGui.SetNextItemWidth(140);
-            if (ImGui.SliderFloat(HuntUi.FieldLabel("Position dot size"), ref dotSize, 1f, 50f, "%.0f%%"))
-            {
-                _config.PlayerPositionDotSize = Math.Clamp(dotSize / 100f, 0.01f, 0.5f);
-                _config.Save();
-            }
-            ImGui.TextDisabled("Both are a percentage of the circle's radius, so they keep their proportions at any zoom.");
-        }
-
-        ImGui.Spacing();
-
-        var facing = _config.ShowPlayerFacingOnMap;
-        if (HuntUi.WrappedCheckbox("Projected path", ref facing))
-        {
-            _config.ShowPlayerFacingOnMap = facing;
-            _config.Save();
-        }
-
-        if (_config.ShowPlayerFacingOnMap)
-        {
-            var facingColour = _config.PlayerFacingColour;
-            if (ImGui.ColorEdit4(HuntUi.FieldLabel("Path colour"), ref facingColour, flags))
-            {
-                _config.PlayerFacingColour = facingColour;
-                _config.Save();
-            }
         }
 
     }
@@ -1606,79 +1591,107 @@ public sealed partial class Plugin : IDalamudPlugin
     /// </summary>
     private void DrawDotColours()
     {
-        ImGui.TextWrapped("Dot colours");
-        ImGui.TextWrapped("Default live marks use stronger versions of the FOUND chat colours: B cyan, A coral and S yellow. "
+        if (!_drawingSettingsSearch) ImGui.TextWrapped("Dot colours");
+        if (!_drawingSettingsSearch) ImGui.TextWrapped("Default live marks use stronger versions of the FOUND chat colours: B cyan, A coral and S yellow. "
             + "Recorded train spots are violet; empty points are slate so gold S-rank rings stand out. Optional dark outlines add contrast on pale maps.");
 
         const ImGuiColorEditFlags flags =
             ImGuiColorEditFlags.AlphaBar | ImGuiColorEditFlags.AlphaPreviewHalf;
 
-        var empty = _config.SpawnDotColourEmpty;
-        if (ImGui.ColorEdit4(HuntUi.FieldLabel("Empty point"), ref empty, flags))
+        if (SettingMatches("Empty point colour", "SpawnDotColourEmpty color dot"))
         {
-            _config.SpawnDotColourEmpty = empty;
-            _config.Save();
+            var empty = _config.SpawnDotColourEmpty;
+            if (ImGui.ColorEdit4(HuntUi.FieldLabel("Empty point"), ref empty, flags))
+            {
+                _config.SpawnDotColourEmpty = empty;
+                _config.Save();
+            }
         }
 
-        var inTrain = _config.SpawnDotColourInTrain;
-        if (ImGui.ColorEdit4(HuntUi.FieldLabel("Spawn point in train"), ref inTrain, flags))
+        if (SettingMatches("Spawn point in train colour", "SpawnDotColourInTrain color dot"))
         {
-            _config.SpawnDotColourInTrain = inTrain;
-            _config.Save();
-        }
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("Visible spawn points matched to living marks in the current world's train. Returns to the normal colour when dead, sniped or removed. S-rank candidate outlines are preserved.");
-
-        var b = _config.SpawnDotColourB;
-        if (ImGui.ColorEdit4(HuntUi.FieldLabel("Live B rank"), ref b, flags))
-        {
-            _config.SpawnDotColourB = b;
-            _config.Save();
+            var inTrain = _config.SpawnDotColourInTrain;
+            if (ImGui.ColorEdit4(HuntUi.FieldLabel("Spawn point in train"), ref inTrain, flags))
+            {
+                _config.SpawnDotColourInTrain = inTrain;
+                _config.Save();
+            }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Visible spawn points matched to living marks in the current world's train. Returns to the normal colour when dead, sniped or removed. S-rank candidate outlines are preserved.");
         }
 
-        var a = _config.SpawnDotColourA;
-        if (ImGui.ColorEdit4(HuntUi.FieldLabel("Live A rank"), ref a, flags))
+        if (SettingMatches("Live B rank colour", "SpawnDotColourB color dot"))
         {
-            _config.SpawnDotColourA = a;
-            _config.Save();
+            var b = _config.SpawnDotColourB;
+            if (ImGui.ColorEdit4(HuntUi.FieldLabel("Live B rank"), ref b, flags))
+            {
+                _config.SpawnDotColourB = b;
+                _config.Save();
+            }
         }
 
-        var sRank = _config.SpawnDotColourS;
-        if (ImGui.ColorEdit4(HuntUi.FieldLabel("Live S rank"), ref sRank, flags))
+        if (SettingMatches("Live A rank colour", "SpawnDotColourA color dot"))
         {
-            _config.SpawnDotColourS = sRank;
-            _config.Save();
+            var a = _config.SpawnDotColourA;
+            if (ImGui.ColorEdit4(HuntUi.FieldLabel("Live A rank"), ref a, flags))
+            {
+                _config.SpawnDotColourA = a;
+                _config.Save();
+            }
         }
 
-        var minion = _config.SsMinionColour;
-        if (ImGui.ColorEdit4(HuntUi.FieldLabel("SS event minions"), ref minion, flags))
+        if (SettingMatches("Live S rank colour", "SpawnDotColourS color dot"))
         {
-            _config.SsMinionColour = minion;
-            _config.Save();
+            var sRank = _config.SpawnDotColourS;
+            if (ImGui.ColorEdit4(HuntUi.FieldLabel("Live S rank"), ref sRank, flags))
+            {
+                _config.SpawnDotColourS = sRank;
+                _config.Save();
+            }
         }
 
-        var labelColour = _config.MarkLabelColour;
-        if (ImGui.ColorEdit4(HuntUi.FieldLabel("Mark name text"), ref labelColour, flags))
+        if (SettingMatches("SS event minions colour", "SsMinionColour color dot"))
         {
-            _config.MarkLabelColour = labelColour;
-            _config.Save();
+            var minion = _config.SsMinionColour;
+            if (ImGui.ColorEdit4(HuntUi.FieldLabel("SS event minions"), ref minion, flags))
+            {
+                _config.SsMinionColour = minion;
+                _config.Save();
+            }
         }
 
-        var labelOutline = _config.MarkLabelOutlineColour;
-        if (ImGui.ColorEdit4(HuntUi.FieldLabel("Mark name outline"), ref labelOutline, flags))
+        if (SettingMatches("Mark name text colour", "MarkLabelColour color map label"))
         {
-            _config.MarkLabelOutlineColour = labelOutline;
-            _config.Save();
+            var labelColour = _config.MarkLabelColour;
+            if (ImGui.ColorEdit4(HuntUi.FieldLabel("Mark name text"), ref labelColour, flags))
+            {
+                _config.MarkLabelColour = labelColour;
+                _config.Save();
+            }
         }
-        ImGui.TextDisabled("The outline is what keeps the text readable over a pale map. Dropping its alpha to nothing removes it.");
 
-        if (ImGui.Button("Reset map colours"))
+        if (SettingMatches("Mark name outline colour", "MarkLabelOutlineColour color"))
         {
-            SettingsReset.Apply(_config, _tallyConfig, SettingsResetCategory.MapColours);
-            _config.Save();
+            var labelOutline = _config.MarkLabelOutlineColour;
+            if (ImGui.ColorEdit4(HuntUi.FieldLabel("Mark name outline"), ref labelOutline, flags))
+            {
+                _config.MarkLabelOutlineColour = labelOutline;
+                _config.Save();
+            }
+            ImGui.TextDisabled("The outline is what keeps the text readable over a pale map. Dropping its alpha to nothing removes it.");
         }
-        HuntUi.SameLineIfFits(ImGui.CalcTextSize("Includes labels and S-rank mapping colours.").X);
-        ImGui.TextDisabled("Includes labels and S-rank mapping colours.");
+
+        if (SettingMatches("Reset map colours", "restore defaults labels mapping"))
+        {
+            if (ImGui.Button("Reset map colours"))
+            {
+                SettingsReset.Apply(_config, _tallyConfig, SettingsResetCategory.MapColours);
+                _config.Save();
+            }
+            if (!_drawingSettingsSearch) HuntUi.SameLineIfFits(ImGui.CalcTextSize("Includes labels and S-rank mapping colours.").X);
+            ImGui.TextDisabled("Includes labels and S-rank mapping colours.");
+        }
+
     }
 
     /// <summary>
@@ -2259,7 +2272,7 @@ public sealed partial class Plugin : IDalamudPlugin
         }
     }
 
-    private void DrawTrainTab() => DrawTrainWorkspace(popout: false);
+    private void DrawTrainTab() => DrawTrainWorkspace();
 
     private List<string> CombinedTrainScouts() => (_sync.IsConnected && _config.SyncShareTrain ? _sync.TrainScouts : Array.Empty<string>())
         .Concat(_config.AdditionalScouts)

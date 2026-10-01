@@ -44,11 +44,11 @@ public sealed partial class Plugin
         _nextTrainPreviewUpdate = DateTime.MinValue;
     }
 
-    private void DrawTrainWorkspace(bool popout)
+    private void DrawTrainWorkspace()
     {
         DrawTrainToolbar();
         DrawTrainContext();
-        DrawTrainWorkspaceBody(popout);
+        DrawTrainWorkspaceBody();
     }
 
     private float TrainSecondaryWidth(bool compact)
@@ -56,7 +56,7 @@ public sealed partial class Plugin
         var gap = ImGui.GetStyle().ItemSpacing.X;
         return HuntUi.ButtonWidth("Plan", compact ? null : FontAwesomeIcon.Route)
             + HuntUi.ButtonWidth("Reports", compact ? null : FontAwesomeIcon.PaperPlane)
-            + (compact ? HuntUi.ButtonWidth("Import", FontAwesomeIcon.Clipboard) : ImGui.GetFrameHeight())
+            + HuntUi.ButtonWidth("Import", FontAwesomeIcon.Clipboard)
             + ImGui.GetFrameHeight() + gap * 3;
     }
 
@@ -71,11 +71,11 @@ public sealed partial class Plugin
         + ImGui.GetStyle().ItemSpacing.X + ImGui.GetFrameHeight() + ImGui.GetStyle().ItemInnerSpacing.X
         + ImGui.CalcTextSize("Follow").X;
 
-    private static float TrainNavigationControlsWidth(bool compact) =>
-        HuntUi.ButtonWidth("Next mark", compact ? FontAwesomeIcon.ChevronRight : FontAwesomeIcon.StepForward)
-        + ImGui.GetStyle().ItemSpacing.X + (compact ? HuntUi.ButtonWidth("Next Aetheryte") : ImGui.GetFrameHeight());
+    private static float TrainNavigationControlsWidth() =>
+        HuntUi.ButtonWidth("Next mark", FontAwesomeIcon.ChevronRight)
+        + ImGui.GetStyle().ItemSpacing.X + HuntUi.ButtonWidth("Next Aetheryte");
 
-    private static float TrainOperatingControlsWidth(bool compact) => TrainNavigationControlsWidth(compact)
+    private static float TrainOperatingControlsWidth(bool compact) => TrainNavigationControlsWidth()
         + (compact ? 16 : 24) * ImGuiHelpers.GlobalScale + TrainModeControlsWidth(compact);
 
     private void DrawTrainToolbar()
@@ -89,7 +89,7 @@ public sealed partial class Plugin
         var rows = inline ? 1 : primaryWidth + padding * 2 > width ? 3 : 2;
         var height = ImGui.GetFrameHeight() * rows + padding * 2
             + ImGui.GetStyle().ItemSpacing.Y * (rows - 1);
-        HuntUi.FillBand(height, HuntTheme.Surface);
+        HuntUi.FillBand(height, HuntTheme.Panel);
         ImGui.SetCursorPos(start + new Vector2(padding));
         DrawTrainOperatingControls(compact: false, width - padding * 2 - (inline ? secondaryWidth + padding : 0));
         if (inline)
@@ -106,13 +106,11 @@ public sealed partial class Plugin
     {
         var start = ImGui.GetCursorPos();
         var inline = TrainOperatingControlsWidth(compact) <= width;
-        if (HuntUi.Button("next-mark", "Next mark", compact ? FontAwesomeIcon.ChevronRight : FontAwesomeIcon.StepForward,
+        if (HuntUi.Button("next-mark", "Next mark", FontAwesomeIcon.ChevronRight,
             primary: true, tooltip: "Move to the next live mark and flag it")) SetCurrentMark(NextLiveMark(), announce: true);
-        TrainControlSameLine(compact ? HuntUi.ButtonWidth("Next Aetheryte") : ImGui.GetFrameHeight());
+        TrainControlSameLine(HuntUi.ButtonWidth("Next Aetheryte"));
         const string aetheryteTip = "Announce the next aetheryte without teleporting or changing the current map flag";
-        var nextAetheryte = compact
-            ? HuntUi.Button("next-aetheryte", "Next Aetheryte", tooltip: aetheryteTip)
-            : DrawAetheryteButton("next-aetheryte", aetheryteTip);
+        var nextAetheryte = HuntUi.Button("next-aetheryte", "Next Aetheryte", tooltip: aetheryteTip);
         if (nextAetheryte)
             OnNextAetheryteCommand(NextAetheryteCommand, string.Empty);
         if (inline)
@@ -129,11 +127,8 @@ public sealed partial class Plugin
 
     private void DrawTrainModeControls(bool compact)
     {
-        if (compact)
-        {
-            DrawTrainFollowControl();
-            ImGui.SameLine();
-        }
+        DrawTrainFollowControl();
+        ImGui.SameLine();
         ImGui.BeginDisabled(TrainMutationBusy);
         var scoutIcon = _config.ScanningPaused ? FontAwesomeIcon.Play : FontAwesomeIcon.Pause;
         var scoutTip = (_config.ScanningPaused ? "Scouting paused - resume" : "Scouting - pause")
@@ -147,11 +142,6 @@ public sealed partial class Plugin
             _config.Save();
         }
         ImGui.EndDisabled();
-        if (!compact)
-        {
-            ImGui.SameLine();
-            DrawTrainFollowControl();
-        }
     }
 
     private void DrawTrainFollowControl()
@@ -190,24 +180,14 @@ public sealed partial class Plugin
 
     private void DrawTrainSecondaryControls(bool compact)
     {
-        if (compact)
-        {
-            ImGui.BeginDisabled(TrainMutationBusy);
-            if (HuntUi.Button("import", "Import", FontAwesomeIcon.Clipboard, quiet: true,
-                tooltip: "Import train from clipboard")) ImportFromClipboard();
-            ImGui.EndDisabled();
-            TrainControlSameLine(HuntUi.ButtonWidth("Plan"));
-        }
+        ImGui.BeginDisabled(TrainMutationBusy);
+        if (HuntUi.Button("import", "Import", FontAwesomeIcon.Clipboard, quiet: true,
+            tooltip: "Import train from clipboard")) ImportFromClipboard();
+        ImGui.EndDisabled();
+        TrainControlSameLine(HuntUi.ButtonWidth("Plan", compact ? null : FontAwesomeIcon.Route));
         DrawTrainPanelChoice("Plan", TrainWorkspacePage.Setup, compact);
         TrainControlSameLine(HuntUi.ButtonWidth("Reports", compact ? null : FontAwesomeIcon.PaperPlane));
         DrawTrainPanelChoice("Reports", TrainWorkspacePage.Reports, compact);
-        if (!compact)
-        {
-            CompactTrainControlSameLine();
-            ImGui.BeginDisabled(TrainMutationBusy);
-            if (HuntUi.IconButton("import", FontAwesomeIcon.Clipboard, "Import train from clipboard")) ImportFromClipboard();
-            ImGui.EndDisabled();
-        }
         CompactTrainControlSameLine();
         if (compact) ImGui.SetCursorPosX(Math.Max(ImGui.GetCursorPosX(), ImGui.GetWindowContentRegionMax().X - ImGui.GetFrameHeight()));
         if (HuntUi.IconButton("train-view", FontAwesomeIcon.SlidersH, "Train view and export")) ImGui.OpenPopup("TrainViewOptions");
@@ -222,7 +202,7 @@ public sealed partial class Plugin
             selected: selected, quiet: true)) SelectTrainPanel(selected ? TrainWorkspacePage.Route : panel, compact);
     }
 
-    private void DrawTrainWorkspaceBody(bool popout)
+    private void DrawTrainWorkspaceBody()
     {
         var available = ImGui.GetContentRegionAvail();
         var spacing = ImGui.GetStyle().ItemSpacing;
@@ -232,7 +212,7 @@ public sealed partial class Plugin
         {
             var panelWidth = Math.Min(available.X * .42f, 306 * ImGuiHelpers.GlobalScale);
             if (ImGui.BeginChild("Train route", new Vector2(available.X - panelWidth - spacing.X, 0), false))
-                DrawTrainRouteRegion(popout);
+                DrawTrainRouteRegion();
             ImGui.EndChild();
             ImGui.SameLine();
             ImGui.PushStyleColor(ImGuiCol.ChildBg, HuntTheme.Panel);
@@ -244,7 +224,7 @@ public sealed partial class Plugin
             return;
         }
         if (hasPanel) DrawInlineTrainPanel(compact: false);
-        if (ImGui.BeginChild("Train route", Vector2.Zero, false)) DrawTrainRouteRegion(popout);
+        if (ImGui.BeginChild("Train route", Vector2.Zero, false)) DrawTrainRouteRegion();
         ImGui.EndChild();
     }
 
@@ -290,15 +270,15 @@ public sealed partial class Plugin
         if (!scrollFooter) DrawTrainReportFooter();
     }
 
-    private void DrawTrainRouteRegion(bool popout)
+    private void DrawTrainRouteRegion()
     {
         var footerHeight = TrainRouteFooterHeight(compact: false);
         var available = ImGui.GetContentRegionAvail().Y;
         if (available < ImGui.GetTextLineHeightWithSpacing() * 2)
         {
             DrawTrainUndoNotice();
-            DrawTrainList(showZones: !popout || !_config.HideZonesInPopout,
-                swapMarkAndZone: popout && _config.SwapMarkAndZoneInPopout, compact: true);
+            DrawTrainList(showZones: !_config.HideZonesInPopout,
+                swapMarkAndZone: _config.SwapMarkAndZoneInPopout, compact: true);
             DrawTrainWorkspaceFooter();
             return;
         }
@@ -306,8 +286,8 @@ public sealed partial class Plugin
         if (ImGui.BeginChild("Train route rows", new Vector2(0, Math.Max(1, scrollFooter ? available : available - footerHeight)), false))
         {
             DrawTrainUndoNotice();
-            DrawTrainList(showZones: !popout || !_config.HideZonesInPopout,
-                swapMarkAndZone: popout && _config.SwapMarkAndZoneInPopout, compact: true);
+            DrawTrainList(showZones: !_config.HideZonesInPopout,
+                swapMarkAndZone: _config.SwapMarkAndZoneInPopout, compact: true);
             if (scrollFooter) DrawTrainWorkspaceFooter();
         }
         ImGui.EndChild();

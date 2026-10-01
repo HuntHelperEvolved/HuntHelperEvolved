@@ -64,7 +64,7 @@ public sealed partial class Plugin
         {
             switch (_workspacePage)
             {
-                case WorkspacePage.Train: DrawTrainWorkspace(popout: false); break;
+                case WorkspacePage.Train: DrawTrainWorkspace(); break;
                 case WorkspacePage.ActiveMarks: _activeMarksWindow.DrawContents(); break;
                 case WorkspacePage.ARanks: _arankWindow.DrawContents(); break;
                 case WorkspacePage.SRanks:
@@ -81,7 +81,11 @@ public sealed partial class Plugin
         var scale = ImGuiHelpers.GlobalScale;
         var height = ImGui.GetFrameHeight();
         var gap = ImGui.GetStyle().ItemSpacing.X;
-        var utilityWidth = HuntUi.ButtonWidth("Tally", FontAwesomeIcon.ChartBar) + height * 4 + gap * 5;
+        var fixedUtilityWidth = HuntUi.ButtonWidth("Tally", FontAwesomeIcon.ChartBar) + height * 3 + gap * 5;
+        var connectionWidth = ImGui.GetContentRegionAvail().X >= fixedUtilityWidth + ConnectionUi.Width()
+            + ImGui.CalcTextSize("Hunt Helper Evolved").X + 20 * scale
+            ? ConnectionUi.Width() : ConnectionUi.Width(compact: true);
+        var utilityWidth = fixedUtilityWidth + connectionWidth;
         HuntUi.FillBand(height + ImGui.GetStyle().ItemSpacing.Y);
         var start = ImGui.GetCursorScreenPos();
         var dragWidth = Math.Max(height, ImGui.GetContentRegionAvail().X - utilityWidth);
@@ -105,7 +109,7 @@ public sealed partial class Plugin
         }
         ImGui.SameLine();
         ConnectionUi.Draw("workspace-connection", _config, _sync, () => OpenPreferences(SettingsPage.Sharing),
-            ConnectionUi.Width(compact: true));
+            connectionWidth);
         ImGui.SameLine();
         if (HuntUi.IconButton("Settings", FontAwesomeIcon.SlidersH, "Settings")) OpenPreferences(_settingsPage);
         ImGui.SameLine();
@@ -150,12 +154,12 @@ public sealed partial class Plugin
     private void DrawWindowMenu()
     {
         if (!ImGui.BeginPopup("Workspace tools")) return;
-        ImGui.TextDisabled("Windows");
+        ImGui.TextDisabled("Popout windows");
         if (ImGui.MenuItem("Train", "/hht", _trainPopoutVisible)) _trainPopoutVisible = !_trainPopoutVisible;
+        if (ImGui.MenuItem("Active Marks", "/hhv", _config.ActiveSRankWindowOpen)) _activeMarksWindow.Toggle();
         if (ImGui.MenuItem("A-rank timers", "/hha", _config.ARankWindowOpen)) _arankWindow.Toggle();
         if (ImGui.MenuItem("S-rank timers", "/hhs", _srankWindow.Visible)) _srankWindow.Toggle();
         if (ImGui.MenuItem("S-rank counters", "/hhc", _counterPopoutVisible)) _counterPopoutVisible = !_counterPopoutVisible;
-        if (ImGui.MenuItem("Active Marks", "/hhv", _config.ActiveSRankWindowOpen)) _activeMarksWindow.Toggle();
         if (ImGui.MenuItem("Lifetime tally", "/hhtally", _tallyWindow.IsOpen)) ToggleTallyWindow();
         ImGui.Separator();
         if (ImGui.MenuItem("Help")) _workspaceHelpVisible = !_workspaceHelpVisible;

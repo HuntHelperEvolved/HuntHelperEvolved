@@ -87,8 +87,8 @@ copy registers the widget. Keep the main Hunt Helper Evolved plugin enabled.
 
 | Command | Action |
 |---|---|
-| `/hh` or `/htr` | the main window: Train, S Ranks, Settings and Help |
-| `/hht` or `/htrt` | the train workspace as a popout: Route, Reports and Setup |
+| `/hh` or `/htr` | the main workspace: Train, Active Marks, A-rank Timers and S-ranks; Settings and Help open separately |
+| `/hht` or `/htrt` | the compact train, with inline Plan and Reports panels |
 | `/hht on` / `/hht off` | turn automatic train following on or off; `/htrt on/off` also works |
 | `/hhc` or `/htrc` | the trigger-mob counter popout, including Narrow-rift's Wee Ea headcount and Nunyunuwi's no-FATE-failed clock |
 | `/hhn` or `/htrn` | move to the next live mark and flag it |
@@ -96,9 +96,19 @@ copy registers the widget. Keep the main Hunt Helper Evolved plugin enabled.
 | `/hhm` or `/htrm` | show or hide the control bar above the map |
 | `/hhs` or `/htrs` | the S-rank board: windows, kill times and spawn points, shared through sync |
 | `/hha` or `/htraw` | A-rank timers by world and instance; Ctrl-click a name to travel with Lifestream |
+| `/hhv` or `/htrv` | Active Marks with source, HP, Faloop pull timer and named world/DC/expansion filter presets |
 | `/hhtally` or `/hunttally` | the kill tally. `/hhtally config` (or `/hunttally config`) for its settings |
 
 A shortcut already held by another plugin is left alone.
+
+Settings search shows matching controls across categories, including controls
+inside collapsed sections and options for currently disabled features. Search
+by the visible name or keywords such as **Bear**, **bongo**, **volume** or
+**circle radius**. Clear the search to return to your previous category.
+
+The main S-rank board shares the popout's world, expansion, availability and
+condition filters. Right-click a column heading to show **Last kill**, **Points**,
+**Opens** or **Ready by**, while retaining the selected-mark details below.
 
 In `/hha`, **Last known location** flags the latest coordinates reported by anyone
 in the sync group, including the current position when the mark is seen up.
@@ -280,14 +290,13 @@ pasted across from it produces the same line.
 
 ## The train
 
-The main **Train** tab and `/hht` popout share three pages: **Route**, **Reports**
-and **Setup**, with a pause/resume icon at the right of the page tabs. **Next
-Mark** and **Next Aetheryte** appear below the tabs only on **Route**, alongside
-local/shared and preset context above compact, single-line mark rows.
-Last-seen ages use concise brackets, such as `(5m)` or `(1h 12m)`.
-Switching pages does not change the train or recording state.
+The main **Train** page and `/hht` popout share **Next mark**, **Next Aetheryte**,
+**Follow**, scouting play/pause, **Import**, **Plan**, **Reports** and view options.
+The main workspace retains a larger route with Plan or Reports alongside it;
+these panels appear above the route in narrow windows and in `/hht`. Main and
+popout navigation remain independent.
 
-**Follow train: On/Off**, beside the page tabs, controls automatic next-mark
+**Follow**, beside the scouting play/pause control, controls automatic next-mark
 flags and their local chat echoes. `/hht off` stops following and `/hht on`
 resumes it; `/htrt on/off` also works. The choice is saved across reloads and
 reconnects, and existing users start with following on. Scanning and sharing
@@ -296,9 +305,9 @@ still work while following is off. The **Auto-advance to the next mark when the 
 in Settings > Train also applies when following is on. Turning following back on resumes from the
 current route without replaying missed marks.
 
-**Swap mark and zone names in the train popout**, under **Setup > Route tools
-and view** or **Settings > Train**, shows the zone first and the mark name
-second. It is off by default and applies only to the popout. **Hide zone names**
+**Show zone first**, in the train view-options menu, or **Show zone before mark
+in train rows** in **Settings > Train**, shows the zone first and the mark name
+second in both `/hh` and `/hht`. It is off by default. **Hide zone names**
 takes priority; rows without a known zone keep their mark name first. Hover a
 row to read its full names when the window is narrow.
 

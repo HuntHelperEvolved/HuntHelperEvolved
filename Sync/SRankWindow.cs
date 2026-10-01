@@ -40,7 +40,6 @@ public sealed class SRankWindow
         public string Search = string.Empty;
         public int KilledMinutesAgo;
         public int MappingSource;
-        public bool OpenFilters;
     }
     private int _killedMinutesAgo;
     private int _standaloneMappingSource;
@@ -142,7 +141,7 @@ public sealed class SRankWindow
                 return;
             }
 
-            var worlds = DrawWorkspaceToolbar(view);
+            var worlds = DrawBoardToolbar(view, _workspaceBoard, persist: false, workspace: true);
             if (!_config.SyncEnabled)
                 ImGui.TextDisabled("Sync off. Shared timers and mapping are not updating.");
             if (!string.IsNullOrEmpty(_travel.Status)) ImGui.TextWrapped(_travel.Status);
@@ -156,8 +155,6 @@ public sealed class SRankWindow
                 ImGui.TextDisabled(worlds.Count == 0 ? "No worlds selected." : "No marks match these filters.");
                 if (view.Search.Length > 0 && HuntUi.Button("clearSSearch", "Clear search", FontAwesomeIcon.Times, quiet: true))
                 { view.Search = string.Empty; _workspaceBoard.Invalidate(); }
-                if (WorkspaceFilterSummary(view).Length > 0 && HuntUi.Button("reviewSFilters", "Review filters", FontAwesomeIcon.Filter, quiet: true))
-                    view.OpenFilters = true;
             }
             var availableHeight = Math.Max(0, ImGui.GetContentRegionAvail().Y - TimerTableUi.FooterHeight);
             var contentHeight = ImGui.GetFrameHeightWithSpacing() + rows.Count *
@@ -165,7 +162,7 @@ public sealed class SRankWindow
             var boardHeight = Math.Min(contentHeight, _hasSelection
                 ? Math.Clamp(availableHeight * 0.43f, 110, ImGui.GetFontSize() * 18)
                 : Math.Max(110, availableHeight - ImGui.GetFrameHeightWithSpacing()));
-            if (ImGui.BeginTable("workspaceSRanksFocused", 5, TimerTableUi.Flags,
+            if (ImGui.BeginTable("workspaceSRanksFocused", 9, TimerTableUi.Flags,
                 new Vector2(0, Math.Max(ImGui.GetFrameHeightWithSpacing(), boardHeight))))
             {
                 ImGui.TableSetupScrollFreeze(1, 1);
@@ -174,9 +171,13 @@ public sealed class SRankWindow
                 ImGui.TableSetupColumn("Status", ImGuiTableColumnFlags.WidthStretch, 1.5f);
                 ImGui.TableSetupColumn("Condition", ImGuiTableColumnFlags.WidthStretch, 1.3f);
                 ImGui.TableSetupColumn("Actions", ImGuiTableColumnFlags.WidthStretch | ImGuiTableColumnFlags.NoSort, 0.8f);
+                ImGui.TableSetupColumn("Last kill", ImGuiTableColumnFlags.WidthStretch | ImGuiTableColumnFlags.DefaultHide, 1.2f);
+                ImGui.TableSetupColumn("Points", ImGuiTableColumnFlags.WidthStretch | ImGuiTableColumnFlags.DefaultHide, 0.7f);
+                ImGui.TableSetupColumn("Opens", ImGuiTableColumnFlags.WidthStretch | ImGuiTableColumnFlags.DefaultHide, 0.9f);
+                ImGui.TableSetupColumn("Ready by", ImGuiTableColumnFlags.WidthStretch | ImGuiTableColumnFlags.DefaultHide, 0.9f);
                 ImGui.TableHeadersRow();
                 rows = TimerTableUi.Sort(rows, (entry, column) => SortValue(entry.Row, entry.World,
-                    column switch { 2 => 3, 3 => 4, _ => column }, now));
+                    column switch { 2 => 3, 3 => 4, 5 => 7, 6 => 8, 7 => 5, 8 => 6, _ => column }, now));
                 var clipper = ImGui.ImGuiListClipper();
                 try
                 {
@@ -204,54 +205,44 @@ public sealed class SRankWindow
         _showAllCounters = false;
     }
 
-    private List<uint> DrawWorkspaceToolbar(ViewState view)
+    // Both timer views expose the same filters; each keeps its own selection/search.
+    private List<uint> DrawBoardToolbar(ViewState view, BoardSnapshot<List<(Row Row, uint World)>> board,
+        bool persist, bool workspace = false)
     {
-        HuntUi.FillBand(ImGui.GetFrameHeightWithSpacing(), HuntTheme.Panel);
-        var worlds = DrawWorldPicker(view, persist: false);
-        SameLineIfFits(ImGui.CalcTextSize("Available only").X + ImGui.GetFrameHeight());
+        var worlds = DrawWorldPicker(view, persist);
+        SameLineIfFits(150);
+        DrawExpansionFilter(view, persist);
+        SameLineIfFits(ImGui.CalcTextSize("Available only").X + ImGui.GetFrameHeight() + ImGui.GetStyle().ItemInnerSpacing.X);
         ImGui.BeginDisabled(!_config.SyncEnabled);
-        if (ImGui.Checkbox("Available only", ref view.AvailableOnly)) _workspaceBoard.Invalidate();
+        if (ImGui.Checkbox("Available only", ref view.AvailableOnly)) SaveView(view, persist);
         ImGui.EndDisabled();
         if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled)) ImGui.SetTooltip(!_config.SyncEnabled
             ? "Enable sync to filter shared timers." : "Open respawn windows and marks reported up.");
-        var toolsWidth = ImGui.GetFrameHeight() * 3 + ImGui.GetStyle().ItemSpacing.X * 4;
-        SameLineIfFits(80 + toolsWidth);
-        ImGui.SetNextItemWidth(Math.Max(80, ImGui.GetContentRegionAvail().X - toolsWidth));
-        if (ImGui.InputTextWithHint("##workspaceSRankSearch", "Search marks", ref view.Search, 100))
-            _workspaceBoard.Invalidate();
-        ImGui.SameLine();
-        var filterSummary = WorkspaceFilterSummary(view);
-        if (HuntUi.IconButton("sFilters", FontAwesomeIcon.Filter,
-            filterSummary.Length > 0 ? "Active filters: " + filterSummary : "S-rank filters", selected: filterSummary.Length > 0))
-            ImGui.OpenPopup("sRankFilters");
-        if (view.OpenFilters) { ImGui.OpenPopup("sRankFilters"); view.OpenFilters = false; }
-        if (ImGui.BeginPopup("sRankFilters"))
+        SameLineIfFits(ImGui.CalcTextSize("Hide unmet conditions").X + ImGui.GetFrameHeight() + ImGui.GetStyle().ItemInnerSpacing.X);
+        ImGui.BeginDisabled(!_config.SyncEnabled);
+        if (ImGui.Checkbox("Hide unmet conditions", ref view.HideUnmetConditions))
         {
-            DrawExpansionFilter(view, false);
-            ImGui.BeginDisabled(!_config.SyncEnabled);
-            if (ImGui.Checkbox("Hide unmet conditions", ref view.HideUnmetConditions)) _workspaceBoard.Invalidate();
-            ImGui.EndDisabled();
-            ImGui.EndPopup();
+            board.Invalidate();
+            SaveView(view, persist);
         }
-        ImGui.SameLine();
-        if (HuntUi.IconButton("sCounters", FontAwesomeIcon.Calculator, "All stored counters")) _showAllCounters = true;
-        ImGui.SameLine();
-        if (HuntUi.IconButton("sPopout", FontAwesomeIcon.ExternalLinkAlt, "Open S-rank timers /hhs"))
+        ImGui.EndDisabled();
+        var toolsWidth = workspace ? (ImGui.GetFrameHeight() + ImGui.GetStyle().ItemSpacing.X) * 2 : 0;
+        SameLineIfFits(120 + toolsWidth);
+        ImGui.SetNextItemWidth(Math.Min(220, Math.Max(1, ImGui.GetContentRegionAvail().X - toolsWidth)));
+        if (ImGui.InputTextWithHint("##srankSearch", "Search mark or zone", ref view.Search, 100)) SaveView(view, persist);
+        if (workspace)
         {
-            Visible = true;
-            _focusWindow = true;
+            ImGui.SameLine();
+            ImGui.SetCursorPosX(Math.Max(ImGui.GetCursorPosX(), ImGui.GetWindowContentRegionMax().X - toolsWidth + ImGui.GetStyle().ItemSpacing.X));
+            if (HuntUi.IconButton("sCounters", FontAwesomeIcon.Calculator, "All stored counters (/hhc shows the current zone)")) _showAllCounters = true;
+            ImGui.SameLine();
+            if (HuntUi.IconButton("sPopout", FontAwesomeIcon.ExternalLinkAlt, "Open S-rank timers (/hhs)"))
+            {
+                Visible = true;
+                _focusWindow = true;
+            }
         }
-        ImGui.Separator();
         return worlds;
-    }
-
-    private static string WorkspaceFilterSummary(ViewState view)
-    {
-        var restrictions = new List<string>();
-        if (view.Expansions.Count != SRankTimerData.Expansions.Length || !SRankTimerData.Expansions.All(view.Expansions.Contains))
-            restrictions.Add("expansions");
-        if (view.HideUnmetConditions) restrictions.Add("unmet conditions");
-        return string.Join(", ", restrictions);
     }
 
     private void DrawWorkspaceRow(Row row, uint world, DateTime now)
@@ -323,6 +314,17 @@ public sealed class SRankWindow
                 Select(row, world, DetailPage.Mapping);
             ImGui.EndDisabled();
         }
+        if (NextTextColumn()) DrawKilledCell(row);
+        if (NextTextColumn())
+        {
+            var count = SpawnPointData.For(row.Timer.TerritoryId).Count(p => p.Ranks.HasFlag(SpawnRanks.S));
+            if (count == 0) ImGui.TextDisabled("—");
+            else if (ImGui.SmallButton($"{RemainingPoints(row, world) ?? count}/{count}##points"))
+                Select(row, world, DetailPage.Mapping);
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip("Open mapping for this mark, world and instance.");
+        }
+        if (NextTextColumn()) ImGui.TextUnformatted(row.Window.OpensAtUtc is { } opens ? Local(opens) : "—");
+        if (NextTextColumn()) ImGui.TextUnformatted(row.Window.ForcedAtUtc is { } ready ? Local(ready) : "—");
         ImGui.PopID();
     }
 
@@ -592,26 +594,7 @@ public sealed class SRankWindow
             return;
         }
 
-        var worlds = DrawWorldPicker(view, persist);
-        SameLineIfFits(180);
-        DrawExpansionFilter(view, persist);
-
-        SameLineIfFits(ImGui.CalcTextSize("Available only").X + ImGui.GetFrameHeight() + ImGui.GetStyle().ItemInnerSpacing.X);
-        if (ImGui.Checkbox("Available only", ref view.AvailableOnly)) SaveView(view, persist);
-        if (ImGui.IsItemHovered()) ImGui.SetTooltip("Open respawn windows and marks reported up.");
-
-        ImGui.SameLine();
-        if (ImGui.GetContentRegionAvail().X < ImGui.CalcTextSize("Hide unmet conditions").X
-            + ImGui.GetFrameHeight() + ImGui.GetStyle().ItemInnerSpacing.X) ImGui.NewLine();
-        if (ImGui.Checkbox("Hide unmet conditions", ref view.HideUnmetConditions))
-        {
-            board.Invalidate();
-            SaveView(view, persist);
-        }
-        ImGui.SameLine();
-        if (ImGui.GetContentRegionAvail().X < 220) ImGui.NewLine();
-        ImGui.SetNextItemWidth(Math.Min(220, ImGui.GetContentRegionAvail().X));
-        if (ImGui.InputTextWithHint("##srankSearch", "Search mark or zone", ref view.Search, 100)) SaveView(view, persist);
+        var worlds = DrawBoardToolbar(view, board, persist);
         var now = DateTime.UtcNow;
         var rows = board.Get(worlds, view.Expansions, view.Search, view.AvailableOnly, _sync.IsConnected,
             System.Diagnostics.Stopwatch.GetTimestamp(), () => BuildBoardRows(worlds, now, view));
