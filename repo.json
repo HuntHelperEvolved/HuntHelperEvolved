@@ -6,16 +6,16 @@
     "Punchline": "Standalone hunt scouting, private-group sync, spawn windows and live mark tracking.",
     "IconUrl": "https://raw.githubusercontent.com/HuntHelperEvolved/HuntHelperEvolved/main/icon.png",
     "InternalName": "HuntHelperEvolved",
-    "AssemblyVersion": "0.7.0.0",
-    "TestingAssemblyVersion": "0.7.0.0",
+    "AssemblyVersion": "0.7.0.1",
+    "TestingAssemblyVersion": "0.7.0.1",
     "RepoUrl": "https://github.com/HuntHelperEvolved/HuntHelperEvolved",
     "ApplicableVersion": "any",
     "DalamudApiLevel": 15,
     "TestingDalamudApiLevel": 15,
     "IsHide": false,
     "IsTestingExclusive": true,
-    "DownloadLinkInstall": "https://github.com/HuntHelperEvolved/HuntHelperEvolved/releases/download/0.7.0.0/HuntHelperEvolved.zip",
-    "DownloadLinkUpdate": "https://github.com/HuntHelperEvolved/HuntHelperEvolved/releases/download/0.7.0.0/HuntHelperEvolved.zip",
-    "DownloadLinkTesting": "https://github.com/HuntHelperEvolved/HuntHelperEvolved/releases/download/0.7.0.0/HuntHelperEvolved.zip"
+    "DownloadLinkInstall": "https://github.com/HuntHelperEvolved/HuntHelperEvolved/releases/download/0.7.0.1/HuntHelperEvolved.zip",
+    "DownloadLinkUpdate": "https://github.com/HuntHelperEvolved/HuntHelperEvolved/releases/download/0.7.0.1/HuntHelperEvolved.zip",
+    "DownloadLinkTesting": "https://github.com/HuntHelperEvolved/HuntHelperEvolved/releases/download/0.7.0.1/HuntHelperEvolved.zip"
   }
 ]

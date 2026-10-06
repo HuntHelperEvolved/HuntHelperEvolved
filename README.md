@@ -6,9 +6,8 @@ summaries and sniped/missing-mark details, draws spawn points, your detection ra
 event locations on the **in-game map**, counts S-rank trigger mobs, and keeps a
 lifetime per-mark kill tally for every character you play.
 
-> **0.7.0.1 prepared:** Manual A-rank snipe timers, including unseen marks, and
-> quieter scouting while following a train. Publication is pending; the testing
-> feed still serves 0.7.0.0.
+> **0.7.0.1:** Manual A-rank snipe timers, including unseen marks, and
+> quieter scouting while following a train.
 > Bear S-rank reports are enabled by default on compatible configured servers;
 > turn them off under Sharing.
 > Published builds use the existing testing feed.
@@ -164,7 +163,7 @@ destinations have separate clearing actions and are excluded from reset-all.
 
 ## Release notes
 
-### 0.7.0.1 — prepared changes since 0.7.0.0
+### 0.7.0.1 — changes since 0.7.0.0
 
 - **A-rank snipes:** The crosshairs action in `/hha` and the main A-rank table accepts a known kill time in minutes ago or **Unknown time — found missing now**. It resets the selected world and instance's local timer, even without a train row or connection. Corrections survive reloads and older sync history. Existing train rows remain sniped under your sharing settings; exact manual times stay local.
 - **Unknown snipe times:** Use the last live sighting or, for an unseen mark, the previous spawn window's opening as the earliest possible kill. The report time supplies the latest possible kill. Without an earliest bound, **Ready by** gives the latest respawn and the timer becomes ready at that deadline. Train previews and Discord reports handle missing live evidence without inventing an earliest time.
