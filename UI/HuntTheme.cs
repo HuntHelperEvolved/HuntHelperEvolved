@@ -15,7 +15,8 @@ internal static class HuntTheme
     public static Vector4 ReportedUpRow => Rgb(_light ? 0xc3e6cf : 0x244c37);
     public static Vector4 Warning => Rgb(_light ? 0x805313 : 0xebc46f);
     public static Vector4 Danger => Rgb(_light ? 0xa93b2f : 0xf29e93);
-    public static Vector4 Spice => new(1f, 0.35f, 0.35f, 1f);
+    public static Vector4 Spice => Rgb(_light ? 0xF44336 : 0xF44336);
+    public static Vector4 Rally => Rgb(_light ? 0x4CAF50 : 0x4CAF50);
     public static Vector4 Telemetry => Rgb(_light ? 0x076c7e : 0x68d4dc);
     public static Vector4 Surface => ImGui.GetStyle().Colors[(int)ImGuiCol.WindowBg];
     public static Vector4 Panel => ImGui.GetStyle().Colors[(int)ImGuiCol.FrameBg];

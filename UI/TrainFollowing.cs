@@ -80,25 +80,24 @@ public sealed partial class Plugin
     }
 
     /// <summary>
-    /// Advances automatically after a local or shared death/removal. Following
-    /// is local state; syncing, replacing or resetting a train never enables it.
+    /// Announces the next mark after the current mark dies. Finding a starting
+    /// point after scouting, removal or reset is silent, even while following.
     /// </summary>
     private void UpdateAutoAdvance()
     {
         if (!_config.FollowTrain || !_config.AutoAdvance) return;
 
         var current = CurrentMark();
-        if (current != null && !current.Dead) return;
-        if (current == null && _currentMark != null)
+        if (current == null)
         {
-            // The pointed-at mark was removed from the list entirely.
-            _currentMark = null;
+            SetCurrentMark(NextLiveMark(), announce: false);
+            return;
         }
+        if (!current.Dead) return;
 
-        var next = NextLiveMark();
-        if (next == null) return;
-
-        SetCurrentMark(next, announce: _config.EchoOnAdvance);
+        // Consume this death even at the end of the route. A mark scouted later
+        // must not be announced as a delayed advance from an earlier kill.
+        SetCurrentMark(NextLiveMark(), announce: _config.EchoOnAdvance && current.SnipedAtUtc is null);
     }
 
     /// <summary>

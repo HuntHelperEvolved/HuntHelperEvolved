@@ -51,7 +51,8 @@ public static class TimerTableUi
                 SRankPhase.Forced => ("READY", Up),
                 SRankPhase.Cooldown => ("opens in " + Duration((opens ?? now) - now), Cooldown),
                 SRankPhase.Uncertain => (opens is { } earliest && earliest > now
-                    ? "sniped; not before " + Duration(earliest - now) : "sniped; timing unknown", Window),
+                    ? "sniped; not before " + Duration(earliest - now)
+                    : ready is { } latest ? "sniped; ready by " + Local(latest) : "sniped; timing unknown", Window),
                 _ => (unknownLabel ?? "no kill recorded", Unknown)
             };
             ImGui.TextColored(colour, label);

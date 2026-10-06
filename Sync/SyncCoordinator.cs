@@ -568,6 +568,7 @@ public sealed partial class SyncCoordinator : IDisposable
             {
                 var key = m.Key;
                 if (key.NameId == 0) continue;
+                var locationSeenAt = ARankLocations.LocalSeenAt(m.LastSeen, _sightingClock.ToLocal, DateTime.UtcNow);
 
                 if (!_detector.Marks.TryGetValue(key, out var local))
                 {
@@ -584,7 +585,7 @@ public sealed partial class SyncCoordinator : IDisposable
                         Dead = m.Dead,
                         FirstSeenUtc = m.FirstSeen,
                         LastSeenUtc = m.LastSeen,
-                        LocationSeenAtUtc = ARankLocations.LocalSeenAt(m.LastSeen, _sightingClock.ToLocal, DateTime.UtcNow),
+                        LocationSeenAtUtc = locationSeenAt,
                         DeathObservedAtUtc = m.DeathAt, SnipedAtUtc = m.SnipedAt,
                         IsCustom = m.IsCustom,
                         ZoneName = m.ZoneName,
@@ -602,11 +603,17 @@ public sealed partial class SyncCoordinator : IDisposable
                     // a higher revision is somebody else's edit and wins.
                     var untouched = !hasKnown || TrainMarkSignature.Create(local) == known.Signature;
 
+                    // A manual snipe can intentionally have no live lower bound;
+                    // position freshness still follows its own observation time.
+                    var previousLocationSeenAt = local.LocationSeenAtUtc ?? local.LastSeenUtc;
                     if (m.LastSeen >= local.LastSeenUtc)
                     {
                         local.LastSeenUtc = m.LastSeen;
+                    }
+                    if (locationSeenAt >= previousLocationSeenAt)
+                    {
                         local.MapPosition = new Vector2(m.X, m.Y);
-                        local.LocationSeenAtUtc = ARankLocations.LocalSeenAt(m.LastSeen, _sightingClock.ToLocal, DateTime.UtcNow);
+                        local.LocationSeenAtUtc = locationSeenAt;
                     }
 
                     if (m.FirstSeen != default && m.FirstSeen < local.FirstSeenUtc)
@@ -632,7 +639,9 @@ public sealed partial class SyncCoordinator : IDisposable
                 // Remember the canonical signature, not any unsent local edit.
                 var canonical = new DetectedMark { Dead = m.Dead, DeathObservedAtUtc = m.DeathAt, SnipedAtUtc = m.SnipedAt,
                     Spiced = m.Spiced, Name = m.Name, ZoneName = m.ZoneName, IsCustom = m.IsCustom,
-                    TerritoryId = m.TerritoryId, MapId = m.MapId, MapPosition = new Vector2(m.X, m.Y), LastSeenUtc = m.LastSeen };
+                    TerritoryId = m.TerritoryId, MapId = m.MapId, MapPosition = new Vector2(m.X, m.Y), LastSeenUtc = m.LastSeen,
+                    LocationSeenAtUtc = locationSeenAt };
+                ARankManualReports.RestoreSnipeBound(_config.ARankKills, m, local, canonical);
                 _known[key] = new KnownMark(TrainMarkSignature.Create(canonical), m.Revision, m.Dead);
             }
         }

@@ -34,6 +34,13 @@ public static class ReleaseNotes
 
     public static readonly Release[] All =
     {
+        new("0.7.0.1", "2026-10-06", "Manual A-rank snipe timers and quieter train scouting.",
+        [
+            new("A-rank snipes", "The Sniped crosshairs action in /hha and the main A-rank table accepts a known kill time in minutes ago or an unknown time found missing now. It resets the selected world and instance's local timer, even without a train row or server connection. Corrections survive reloads and older sync history. Existing train rows stay classified as sniped and follow train sharing settings; exact manual times remain local.", Kihtli),
+            new("Unknown snipe times", "Unknown-time reports use the last live sighting, or the previous spawn window's opening when the mark was never seen, as the earliest possible kill. Found missing now supplies the latest possible kill. Without an earliest bound, the timer shows Ready by and becomes ready at that deadline. Train previews and Discord reports also handle missing live evidence without inventing an earliest respawn time.", Kihtli),
+            new("Quiet scouting", "Adding scouted or shared marks no longer triggers train chat callouts or map flags while following. Removing or reordering rows stays quiet, and a later scout addition cannot trigger a delayed callout after the last kill. The current mark's death still advances according to your settings; marking it sniped advances silently. Clicking a mark and manual Next Mark remain available. Separate detection-alert settings are unchanged.", Kihtli),
+            new("Train colours", "Spiced marks use a consistent red and rally stops a consistent green across themes.", Kihtli),
+        ]),
         new("0.7.0.0", "2026-10-01", "A redesigned hunt workspace, Bear S-rank reports and named filter presets.",
         [
             new("Hunt workspace", "The main /hh window brings Train, Active Marks, A-rank Timers and S-ranks together with controls matching their popouts and larger layouts for planning and selected-mark details. Connection controls show feed status, including when Bear is off on this client. Settings opens separately with search that shows matching controls across categories, including options inside collapsed sections, and Graphite, Daylight or Dalamud themes. Compact windows keep their own navigation while sharing hunt data.", Kihtli),

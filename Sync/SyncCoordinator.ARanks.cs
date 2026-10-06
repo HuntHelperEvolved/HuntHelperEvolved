@@ -13,6 +13,17 @@ public sealed partial class SyncCoordinator
     internal void RememberARankSightings(IEnumerable<ARankSighting> sightings) =>
         _arankSightingsDirty |= ARankSightings.Merge(_config.ARankSightings, sightings, DateTime.UtcNow);
 
+    internal void ReportARankSnipe(uint nameId, uint worldId, uint instance, DateTime? killedAt)
+    {
+        _detector.Marks.TryGetValue((nameId, instance, worldId), out var mark);
+        var restart = _sranks.Values.Where(s => s.WorldId == worldId && s.Maintenance)
+            .Select(s => s.KilledAt).DefaultIfEmpty().Max();
+        ARankManualReports.Record(_config.ARankKills, _config.ARankSightings, mark,
+            nameId, worldId, instance, killedAt, DateTime.UtcNow, restart);
+        _detector.RemoveSighting(nameId, instance, worldId);
+        _config.Save();
+    }
+
     private void RememberARankLocations(IEnumerable<ARankLocation> locations) =>
         _arankSightingsDirty |= ARankLocations.Merge(_config.ARankLocations, locations, DateTime.UtcNow);
 

@@ -402,6 +402,8 @@ public sealed partial class Plugin : IDalamudPlugin
             _srankWindow.FlagMappingPoint = (territory, instance, x, y) =>
                 MapFlagHelper.FlagPosition(_gameGui, territory, _detector.GetMapId(territory), instance, x, y);
             _arankWindow = new ARankWindow(_config, _sync, _worldData, _detector, _srankTravel, _gameGui);
+            _arankWindow.TrainMutationBusy = () => TrainMutationBusy;
+            _arankWindow.TrainChanged = PersistTrain;
             _activeMarksWindow.OpenConnectionSettings = () => OpenPreferences(SettingsPage.Sharing);
             _srankWindow.OpenConnectionSettings = () => OpenPreferences(SettingsPage.Sharing);
             _arankWindow.OpenConnectionSettings = () => OpenPreferences(SettingsPage.Sharing);
@@ -2814,10 +2816,12 @@ public sealed partial class Plugin : IDalamudPlugin
                 continue;
             }
 
-            var openLocal = entry.WindowOpensUtc!.Value.ToLocalTime().ToString("t");
             var capLocal = entry.WindowCapsUtc!.Value.ToLocalTime().ToString("t");
             var instanceGlyph = ExpansionData.InstanceGlyph(entry.Instance);
-            ImGui.TextWrapped($"{localTime} — {entry.Location} — {entry.DisplayName}{instanceGlyph} — window {openLocal} → {capLocal}");
+            var timing = entry.WindowOpensUtc is { } opens
+                ? $"window {opens.ToLocalTime():t} → {capLocal}"
+                : $"earliest unknown; ready by {capLocal}";
+            ImGui.TextWrapped($"{localTime} — {entry.Location} — {entry.DisplayName}{instanceGlyph} — {timing}");
         }
     }
 

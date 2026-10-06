@@ -186,7 +186,7 @@ public static class DiscordRelay
         var sniped = entries.Where(e => e.Sniped).ToList();
         if (sniped.Count > 0)
         {
-            sb.Append("\n**Sniped** (found gone — time is when the train got there, window spans last seen alive to then)\n");
+            sb.Append("\n**Sniped** (found gone — time is when the train got there; earliest timing uses the last live sighting, when known)\n");
             AppendEntries(sb, sniped);
         }
 
@@ -234,10 +234,12 @@ public static class DiscordRelay
                 continue;
             }
 
-            var openUnix = new DateTimeOffset(entry.WindowOpensUtc!.Value).ToUnixTimeSeconds();
             var capUnix = new DateTimeOffset(entry.WindowCapsUtc!.Value).ToUnixTimeSeconds();
             var instanceGlyph = ExpansionData.InstanceGlyph(entry.Instance);
-            sb.Append($"<t:{killUnix}:t> — {entry.Location} — {entry.DisplayName}{instanceGlyph} — window <t:{openUnix}:t> → <t:{capUnix}:t>\n");
+            var timing = entry.WindowOpensUtc is { } opens
+                ? $"window <t:{new DateTimeOffset(opens).ToUnixTimeSeconds()}:t> → <t:{capUnix}:t>"
+                : $"earliest unknown; ready by <t:{capUnix}:t>";
+            sb.Append($"<t:{killUnix}:t> — {entry.Location} — {entry.DisplayName}{instanceGlyph} — {timing}\n");
         }
     }
 

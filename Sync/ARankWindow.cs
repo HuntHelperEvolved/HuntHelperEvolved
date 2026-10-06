@@ -11,6 +11,8 @@ namespace HuntHelperEvolved.Sync;
 public sealed class ARankWindow
 {
     public Action? OpenConnectionSettings { get; set; }
+    public Func<bool>? TrainMutationBusy { get; set; }
+    public Action? TrainChanged { get; set; }
     private readonly Configuration _config;
     private readonly SyncCoordinator _sync;
     private readonly WorldData _worldData;
@@ -19,6 +21,7 @@ public sealed class ARankWindow
     private readonly IGameGui _gameGui;
     private DateTime _nextCapture;
     private bool _focusWindow;
+    private int _snipedMinutesAgo;
     private readonly BoardSnapshot<List<Row>> _board = new();
     private readonly BoardSnapshot<List<Row>> _workspaceBoard = new();
     private ViewState? _workspaceView;
@@ -145,7 +148,7 @@ public sealed class ARankWindow
         ImGui.TableSetupColumn("World",ImGuiTableColumnFlags.WidthStretch | (multipleWorlds ? ImGuiTableColumnFlags.None : ImGuiTableColumnFlags.Disabled),1f);
         ImGui.TableSetupColumn("Status",ImGuiTableColumnFlags.WidthStretch,1.6f);
         ImGui.TableSetupColumn("Last kill",ImGuiTableColumnFlags.WidthStretch,1f);
-        ImGui.TableSetupColumn("Actions",ImGuiTableColumnFlags.WidthStretch | ImGuiTableColumnFlags.NoSort,0.8f);
+        ImGui.TableSetupColumn("Actions",ImGuiTableColumnFlags.WidthStretch | ImGuiTableColumnFlags.NoSort,1.05f);
         ImGui.TableSetupColumn("Expansion",ImGuiTableColumnFlags.WidthStretch | ImGuiTableColumnFlags.DefaultHide,1f);
         ImGui.TableSetupColumn("Opens",ImGuiTableColumnFlags.WidthStretch | ImGuiTableColumnFlags.DefaultHide,0.9f);
         ImGui.TableSetupColumn("Ready by",ImGuiTableColumnFlags.WidthStretch | ImGuiTableColumnFlags.DefaultHide,0.9f);
@@ -227,9 +230,10 @@ public sealed class ARankWindow
                 var (opens, end) = ARankHistory.Window(kill, info.MinHours, info.MaxHours, restart);
                 if (up) { opens = null; end = null; }
                 var known = opens is not null;
-                if (available && (_sync.Faloop.IsOffline(_worldData.NameOf(world)) || up || opens is null || now < opens)) continue;
-                var afterMaintenance=restart is not null && (kill is null || kill.At <= restart || kill.LastAliveAt <= restart);
-                var state=up ? 0 : !known ? 5 : now >= end ? 1 : now >= opens ? 2 : 4;
+                if (available && (_sync.Faloop.IsOffline(_worldData.NameOf(world)) || up
+                    || !(now >= opens || now >= end))) continue;
+                var afterMaintenance=restart is not null && opens is null && end is null;
+                var state=up ? 0 : now >= end ? 1 : !known ? 5 : now >= opens ? 2 : 4;
                 var percent = (ARankSpawnProgress.Fraction(up, opens, end, now) ?? 0) * 100;
                 var location = locations.GetValueOrDefault((entry.Key, world, instance));
                 rows.Add(new(entry.Key,world,instance,info,kill,opens,end,up,sighting?.At,afterMaintenance,state,percent,
@@ -250,7 +254,7 @@ public sealed class ARankWindow
             var width=ImGui.GetContentRegionAvail().X;
             var name=TrainRowPresentation.FitText(row.Info.Name,width,static text=>ImGui.CalcTextSize(text).X,
                 ExpansionData.InstanceGlyph(row.Instance));
-            ImGui.TextColored(!offline && (row.Up || row.Opens <= now) ? TimerTableUi.Up : TimerTableUi.Cooldown,name);
+            ImGui.TextColored(!offline && (row.Up || row.Opens <= now || row.Ends <= now) ? TimerTableUi.Up : TimerTableUi.Cooldown,name);
             if (offline) TimerTableUi.StrikeLastItem();
             var hovered=ImGui.IsItemHovered();
             var zone=TrainRowPresentation.FitText(row.Info.Location,
@@ -275,11 +279,11 @@ public sealed class ARankWindow
             ImGui.TextDisabled(_worldData.NameOf(row.World)+(row.Instance==0 ? string.Empty : $" I{row.Instance}"));
         if (ImGui.TableNextColumn())
         {
-            var phase=row.Up ? SRankPhase.Up : row.Opens is null
+            var phase=row.Up ? SRankPhase.Up : now>=row.Ends ? SRankPhase.Forced : row.Opens is null
                 ? !row.AfterMaintenance && row.Kill?.Uncertain==true ? SRankPhase.Uncertain : SRankPhase.Unknown
-                : now<row.Opens ? SRankPhase.Cooldown : now>=row.Ends ? SRankPhase.Forced : SRankPhase.Window;
+                : now<row.Opens ? SRankPhase.Cooldown : SRankPhase.Window;
             var evidence=row.Up || row.Opens is null ? WindowEvidence(row,now)
-                : row.Kill?.Uncertain==true ? $"Sniped: exact kill time unknown. Last seen alive {Time(row.Kill.LastAliveAt)}; found missing {Time(row.Kill.At)}." : null;
+                : row.Kill?.Uncertain==true ? SnipedEvidence(row.Kill) : null;
             TimerTableUi.Status(phase,row.Percent,row.Opens,row.Ends,now,offline,
                 unknownLabel:row.AfterMaintenance ? "maintenance / unknown" : null,evidence:evidence);
         }
@@ -289,7 +293,7 @@ public sealed class ARankWindow
             {
                 ImGui.TextUnformatted(kill.Uncertain ? "Sniped" : Time(kill.At));
                 if(ImGui.IsItemHovered()) ImGui.SetTooltip(kill.Uncertain
-                    ? $"Sniped: last seen alive {Time(kill.LastAliveAt)}; found missing {Time(kill.At)}."
+                    ? SnipedEvidence(kill)
                     : $"Killed {Time(kill.At)} / {TimerTableUi.Duration(now-kill.At)} ago.");
             }
             else ImGui.TextDisabled("—");
@@ -315,18 +319,25 @@ public sealed class ARankWindow
     {
         if (row.Up) return $"Seen alive {Time(row.SeenAliveAt)}. Previous kill timing no longer describes this spawn.";
         if (row.Opens is null) return row.AfterMaintenance ? "Timing is unknown after maintenance."
-            : row.Kill?.Uncertain==true ? $"Kill time is unknown. Last seen alive {Time(row.Kill.LastAliveAt)}; found missing {Time(row.Kill.At)}."
+            : row.Kill?.Uncertain==true ? SnipedEvidence(row.Kill)
+                +(row.Ends is { } end ? $"\nOpening unknown. Ready by: {Time(end)}." : string.Empty)
             : "No kill has been recorded for this world and instance.";
         return $"Opens: {Time(row.Opens)}\nReady by: {Time(row.Ends)}"
-            +(row.Kill?.Uncertain==true ? $"\nSniped: exact kill time unknown. Last seen alive {Time(row.Kill.LastAliveAt)}; found missing {Time(row.Kill.At)}." : string.Empty)
+            +(row.Kill?.Uncertain==true ? "\n"+SnipedEvidence(row.Kill) : string.Empty)
             +(row.Opens<=now && now<row.Ends ? $"\n{row.Percent:F0}% of the respawn window elapsed; not spawn probability." : string.Empty);
     }
+
+    private static string SnipedEvidence(ARankKill kill) => "Sniped: exact kill time unknown. "
+        +(kill.LastAliveAt is { } alive ? $"Last seen alive {Time(alive)}. "
+            : kill.EarliestKilledAt is { } earliest ? $"Earliest possible kill {Time(earliest)}, from the previous spawn window. "
+            : "No live sighting or usable previous spawn window. ")
+        +$"Found missing {Time(kill.At)}.";
 
     private void DrawRowActions(Row row,DateTime now,bool offline)
     {
         var height=ImGui.GetFrameHeight();
         var gap=ImGui.GetStyle().ItemSpacing.X;
-        var naturalWidth=height*3+gap*2;
+        var naturalWidth=height*4+gap*3;
         var scale=Math.Min(1,Math.Max(1,ImGui.GetContentRegionAvail().X)/naturalWidth);
         var buttonSize=new Vector2(height*scale,height);
         gap*=scale;
@@ -345,6 +356,14 @@ public sealed class ARankWindow
             _travel.Start(row.World,row.TerritoryId,position,row.Instance);
         ImGui.EndDisabled();
         ImGui.SameLine(0,gap);
+        if (HuntUi.Button("sniped",string.Empty,FontAwesomeIcon.Crosshairs,quiet:true,size:buttonSize,
+                tooltip:"Sniped — reset this timer with a known or unknown kill time"))
+        {
+            _snipedMinutesAgo=0;
+            ImGui.OpenPopup("Sniped");
+        }
+        DrawSnipedPopup(row,now);
+        ImGui.SameLine(0,gap);
         if (HuntUi.Button("details",string.Empty,FontAwesomeIcon.InfoCircle,quiet:true,size:buttonSize,
                 tooltip:"Timer evidence for "+row.Info.Name)) ImGui.OpenPopup("Timer evidence");
         if (ImGui.BeginPopup("Timer evidence"))
@@ -362,6 +381,47 @@ public sealed class ARankWindow
             else ImGui.TextDisabled("Last location unavailable");
             ImGui.EndPopup();
         }
+    }
+
+    private void DrawSnipedPopup(Row row,DateTime now)
+    {
+        if (!ImGui.BeginPopup("Sniped")) return;
+        ImGui.TextUnformatted($"Sniped: {row.Info.Name}");
+        ImGui.TextDisabled($"{_worldData.NameOf(row.World)} / {row.Info.Location}"
+            +(row.Instance==0 ? " / uninstanced" : $" / instance {row.Instance}"));
+        ImGui.Separator();
+        var busy=TrainMutationBusy?.Invoke()==true;
+        ImGui.BeginDisabled(busy);
+        ImGui.TextUnformatted("Known kill time");
+        ImGui.SetNextItemWidth(100);
+        ImGui.InputInt("Minutes ago",ref _snipedMinutesAgo,0,0);
+        _snipedMinutesAgo=Math.Clamp(_snipedMinutesAgo,0,60*24*7);
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip("Minutes since the kill, up to seven days. Entry alone does not submit.");
+        var killedAt=now.AddMinutes(-_snipedMinutesAgo);
+        ImGui.TextDisabled($"Killed: {Time(killedAt)} (local time)");
+        if (HuntUi.Button("knownSnipe","Record known time",FontAwesomeIcon.Clock,
+                tooltip:"Reset the spawn window from this kill time. Zero minutes means now."))
+            RecordSnipe(row,DateTime.UtcNow.AddMinutes(-_snipedMinutesAgo));
+        ImGui.Separator();
+        if (HuntUi.Button("unknownSnipe","Unknown time — found missing now",FontAwesomeIcon.Crosshairs,
+                tooltip:"Use the last live sighting or previous spawn window's opening through now as the possible kill range. Without either, only Ready by is known."))
+            RecordSnipe(row,null);
+        ImGui.EndDisabled();
+        if (busy) ImGui.TextDisabled("Wait for the current train report to finish.");
+        ImGui.TextDisabled("Saves this world's and instance's timer locally.");
+        if (_detector.Marks.ContainsKey((row.NameId,row.Instance,row.World)))
+            ImGui.TextDisabled("Also marks the train row sniped, following train sharing settings.");
+        ImGui.EndPopup();
+    }
+
+    private void RecordSnipe(Row row,DateTime? killedAt)
+    {
+        if (TrainMutationBusy?.Invoke()==true) return;
+        _sync.ReportARankSnipe(row.NameId,row.World,row.Instance,killedAt);
+        TrainChanged?.Invoke();
+        _board.Invalidate();
+        _workspaceBoard.Invalidate();
+        ImGui.CloseCurrentPopup();
     }
 
     private Vector2 TravelPosition(Row row)

@@ -19,7 +19,7 @@ public record TrainReportEntry(
 {
     public string DisplayName => string.IsNullOrEmpty(WorldName) ? $"{Name} — world {WorldId}" : $"{Name} — {WorldName}";
 
-    /// <summary>Whether a respawn window can be worked out for this mark at all.</summary>
+    /// <summary>Whether this mark has fixed respawn timing, even when its earliest bound is unknown.</summary>
     public bool HasWindow => Location != null && MinHours != null && MaxHours != null;
 
     /// <summary>
@@ -32,7 +32,8 @@ public record TrainReportEntry(
     /// stand there after it had already respawned.
     /// </summary>
     public DateTime? WindowOpensUtc =>
-        MinHours == null ? null : (Sniped ? LastAliveUtc : KillTimeUtc).AddHours(MinHours.Value);
+        MinHours == null || Sniped && (LastAliveUtc <= DateTime.UnixEpoch || LastAliveUtc > KillTimeUtc)
+            ? null : (Sniped ? LastAliveUtc : KillTimeUtc).AddHours(MinHours.Value);
 
     /// <summary>
     /// The latest it can come back: the kill time plus the maximum. For a

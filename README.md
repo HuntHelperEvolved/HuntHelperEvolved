@@ -6,11 +6,12 @@ summaries and sniped/missing-mark details, draws spawn points, your detection ra
 event locations on the **in-game map**, counts S-rank trigger mobs, and keeps a
 lifetime per-mark kill tally for every character you play.
 
-> **0.7.0.0:** Redesigned hunt workspace with matching popout controls, individual
-> setting search, native window controls, named world/DC/expansion presets and improved RELAY alerts.
+> **0.7.0.1 prepared:** Manual A-rank snipe timers, including unseen marks, and
+> quieter scouting while following a train. Publication is pending; the testing
+> feed still serves 0.7.0.0.
 > Bear S-rank reports are enabled by default on compatible configured servers;
 > turn them off under Sharing.
-> Available through the existing testing feed.
+> Published builds use the existing testing feed.
 >
 > See [Where this came from](#where-this-came-from) if you are arriving from
 > Hunt Train Relay or Hunt Tally; your settings and your tally carry over.
@@ -118,6 +119,18 @@ shared trains and sightings received while connected.
 position or the zone centre to choose an eligible aetheryte. Travel includes the
 selected world and instance where supported.
 
+The **Sniped** crosshairs button in `/hha` and the main A-rank table resets the
+selected mark's timer for that world and instance. For a **known kill time**, enter
+the minutes since the kill (zero for now, up to seven days) and choose **Record
+known time**. **Unknown time — found missing now** uses the last recorded live
+sighting or, for an unseen mark, the previous spawn window's opening as the
+earliest possible kill. The current time is the latest possible kill. Without
+either lower bound, the opening stays unknown and **Ready by** uses the report
+time plus the maximum respawn delay. Manual reports save locally, survive reloads
+and stale sync history, and mark an existing train row sniped under your train
+sharing settings. Exact manual times apply to your local timer; the shared train
+retains its sniped classification. Reporting works without a train row or connection.
+
 Manual S-rank mapping: **Shift-click** an S-capable map point to toggle a shared
 exclusion, or click the point count in `/hhs` to compare coordinates and select a
 source (Manual, Faloop, Bear or Other). Requires a server with manual-mapping
@@ -150,6 +163,20 @@ sync off while keeping connection details. Saved sync credentials and Discord
 destinations have separate clearing actions and are excluded from reset-all.
 
 ## Release notes
+
+### 0.7.0.1 — prepared changes since 0.7.0.0
+
+- **A-rank snipes:** The crosshairs action in `/hha` and the main A-rank table accepts a known kill time in minutes ago or **Unknown time — found missing now**. It resets the selected world and instance's local timer, even without a train row or connection. Corrections survive reloads and older sync history. Existing train rows remain sniped under your sharing settings; exact manual times stay local.
+- **Unknown snipe times:** Use the last live sighting or, for an unseen mark, the previous spawn window's opening as the earliest possible kill. The report time supplies the latest possible kill. Without an earliest bound, **Ready by** gives the latest respawn and the timer becomes ready at that deadline. Train previews and Discord reports handle missing live evidence without inventing an earliest time.
+- **Quiet scouting:** Adding scouted or shared marks no longer triggers train chat callouts or map flags while following. Removing or reordering rows stays quiet, and additions after the last kill cannot trigger delayed callouts. The current mark's death still advances according to your settings; sniped marks advance silently. Clicking marks and manual Next Mark still work. Separate detection-alert settings are unchanged.
+- **Train colours:** Spiced marks use a consistent red and rally stops a consistent green across themes.
+
+### 0.7.0.0 — changes since 0.6.0.3
+
+- **Hunt workspace:** Train, Active Marks, A-rank Timers and S-ranks share the main `/hh` workspace, with matching popout controls, searchable settings and Graphite, Daylight or Dalamud themes.
+- **Window controls:** Native title-bar controls provide opacity, pinning and click-through, with a shared opacity preference and per-window overrides.
+- **Bear reports:** Bear S-rank reports default on for compatible configured servers. Confirmed Bear kills update shared S-rank timers and mapping; existing saved off choices are preserved.
+- **Filters and alerts:** Named world/DC/rank/expansion presets, improved RELAY source priority and duplicate suppression, plus CSV tally export.
 
 ### 0.6.0.3 — changes since 0.6.0.2
 
@@ -309,6 +336,10 @@ keep their separate settings. Next Mark, clicking a row and deliberate travel
 still work while following is off. The **Auto-advance to the next mark when the current one dies** preference
 in Settings > Train also applies when following is on. Turning following back on resumes from the
 current route without replaying missed marks.
+Newly scouted or shared marks select a starting point silently: adding, removing
+or reordering rows does not flag the map or echo a train callout. Automatic
+callouts happen after the current mark is killed; marking it sniped advances
+silently. Clicking a mark or using Next Mark still flags it explicitly.
 
 **Show zone first**, in the train view-options menu, or **Show zone before mark
 in train rows** in **Settings > Train**, shows the zone first and the mark name

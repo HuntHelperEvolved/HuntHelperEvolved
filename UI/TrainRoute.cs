@@ -209,7 +209,7 @@ public sealed partial class Plugin
             var rowMax = rowMin + new Vector2(width, height);
             var rowColour = mark.Dead ? HuntTheme.Muted
                 : mark.Spiced && _config.ShowSpicing ? HuntTheme.Spice
-                : mark.IsCustom ? HuntTheme.Success : ImGui.GetStyle().Colors[(int)ImGuiCol.Text];
+                : mark.IsCustom ? HuntTheme.Rally : ImGui.GetStyle().Colors[(int)ImGuiCol.Text];
             if (isCurrent)
             {
                 var accent = HuntTheme.Accent;
