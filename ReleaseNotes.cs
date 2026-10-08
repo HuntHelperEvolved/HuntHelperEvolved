@@ -34,6 +34,12 @@ public static class ReleaseNotes
 
     public static readonly Release[] All =
     {
+        new("0.7.0.2", "2026-10-08", "Share exact A-rank corrections after an unknown snipe report.",
+        [
+            new("Shared A-rank timers", "Known kill times entered after an unknown Sniped report now update the group's timer. The Sniped action in /hha and the main A-rank table shares exact times and unknown-time bounds for the selected world and instance, even without a train row. Existing train rows remain classified as sniped.", Kihtli),
+            new("Correction history", "Accepted timer corrections survive reconnects and server restarts. Older train evidence cannot undo a backdated known time, while newer valid death and live observations can establish the next spawn.", Kihtli),
+            new("Sharing status", "The timer board shows when sharing is awaiting confirmation, accepted or unconfirmed. Sharing requires train sharing enabled, a compatible server and updated receiving plugins. Offline reports, reports on older servers and reports with sharing off stay local. Submit a previously local correction again after connecting or updating; old local edits are not uploaded automatically.", Kihtli),
+        ]),
         new("0.7.0.1", "2026-10-06", "Manual A-rank snipe timers and quieter train scouting.",
         [
             new("A-rank snipes", "The Sniped crosshairs action in /hha and the main A-rank table accepts a known kill time in minutes ago or an unknown time found missing now. It resets the selected world and instance's local timer, even without a train row or server connection. Corrections survive reloads and older sync history. Existing train rows stay classified as sniped and follow train sharing settings; exact manual times remain local.", Kihtli),

@@ -281,6 +281,13 @@ public sealed class TrainClearMessage { public string Type => "train.clear"; }
 public sealed class TrainOrderMessage { public string Type => "train.order"; public List<SyncKey> Keys { get; set; } = new(); }
 public sealed class SightingsMessage { public string Type => "sightings"; public List<SyncSighting> Sightings { get; set; } = new(); }
 public sealed class SightingsRemoveMessage { public string Type => "sightings.remove"; public List<SyncKey> Keys { get; set; } = new(); }
+public sealed class ARankReportMessage
+{
+    public string Type => "arank.report";
+    public string RequestId { get; set; } = string.Empty;
+    public long BaseRevision { get; set; }
+    public ARankKill Report { get; set; } = new();
+}
 public sealed class SRankKillMessage : ISyncTyped
 {
     public string Type => "srank.kill";
@@ -315,6 +322,7 @@ public static class ServerMessageTypes
     public const string Sightings = "sightings";
     public const string SightingsExpired = "sightings.expired";
     public const string ARankLocations = "aranks.locations";
+    public const string ARankUpdates = "aranks.update";
     public const string SRankUpdate = "srank.update";
     public const string SpawnUpdate = "spawn.update";
     public const string Presence = "presence";
@@ -323,6 +331,7 @@ public static class ServerMessageTypes
 
 public sealed class WelcomeMessage
 {
+    public bool SupportsARankReports { get; set; }
     public bool SupportsBearFeed { get; set; }
     public bool SupportsTrainPresets { get; set; }
     public bool SupportsRallyRecalculation { get; set; }
@@ -366,6 +375,12 @@ public sealed class WelcomeMessage
 
 public sealed class ErrorMessage { public string Code { get; set; } = string.Empty; public string Message { get; set; } = string.Empty; }
 public sealed class ARankLocationsBroadcast { public List<ARankLocation> Locations { get; set; } = new(); }
+public sealed class ARankUpdatesBroadcast
+{
+    public List<ARankKill> Kills { get; set; } = new();
+    public string RequestId { get; set; } = string.Empty;
+    public bool Accepted { get; set; } = true;
+}
 public sealed class TrainUpsertBroadcast { public List<SyncMark> Marks { get; set; } = new(); public string By { get; set; } = string.Empty; }
 public sealed class ReportedMark
 {

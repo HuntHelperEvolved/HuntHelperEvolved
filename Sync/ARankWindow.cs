@@ -22,6 +22,7 @@ public sealed class ARankWindow
     private DateTime _nextCapture;
     private bool _focusWindow;
     private int _snipedMinutesAgo;
+    private (uint NameId, uint World, uint Instance)? _lastSnipe;
     private readonly BoardSnapshot<List<Row>> _board = new();
     private readonly BoardSnapshot<List<Row>> _workspaceBoard = new();
     private ViewState? _workspaceView;
@@ -137,6 +138,13 @@ public sealed class ARankWindow
         var rows = board.Get(worlds, view.Expansions, view.Search, view.AvailableOnly, _sync.IsConnected,
             System.Diagnostics.Stopwatch.GetTimestamp(), () => BuildRows(worlds, view.Search, view.AvailableOnly, now, view.Expansions));
         if (!string.IsNullOrEmpty(_travel.Status)) ImGui.TextWrapped(_travel.Status);
+        if (_lastSnipe is { } snipe)
+        {
+            var status = _sync.ARankSnipeStatus(snipe.NameId, snipe.World, snipe.Instance);
+            if (!string.IsNullOrEmpty(status))
+                ImGui.TextWrapped($"{ExpansionData.Lookup(snipe.NameId)?.Name} / {_worldData.NameOf(snipe.World)}"
+                    + (snipe.Instance == 0 ? "" : $" / instance {snipe.Instance}") + $": {status}");
+        }
         if (_travel.Busy && ImGui.SmallButton("Cancel travel")) _travel.Cancel();
         var multipleWorlds=worlds.Count>1;
         if (rows.Count == 0) ImGui.TextDisabled(worlds.Count == 0 ? "No worlds selected." : "No marks match these filters.");
@@ -409,6 +417,10 @@ public sealed class ARankWindow
         ImGui.EndDisabled();
         if (busy) ImGui.TextDisabled("Wait for the current train report to finish.");
         ImGui.TextDisabled("Saves this world's and instance's timer locally.");
+        if (!_config.SyncShareTrain) ImGui.TextDisabled("Enable train sharing to share timer corrections.");
+        else if (!_sync.IsConnected) ImGui.TextDisabled("Connect before submitting to share timer corrections.");
+        else if (!_sync.SupportsARankReports) ImGui.TextDisabled("The server needs an update to share timer corrections.");
+        else ImGui.TextDisabled("Shares known times and unknown-time bounds with the group.");
         if (_detector.Marks.ContainsKey((row.NameId,row.Instance,row.World)))
             ImGui.TextDisabled("Also marks the train row sniped, following train sharing settings.");
         ImGui.EndPopup();
@@ -418,6 +430,7 @@ public sealed class ARankWindow
     {
         if (TrainMutationBusy?.Invoke()==true) return;
         _sync.ReportARankSnipe(row.NameId,row.World,row.Instance,killedAt);
+        _lastSnipe = (row.NameId, row.World, row.Instance);
         TrainChanged?.Invoke();
         _board.Invalidate();
         _workspaceBoard.Invalidate();

@@ -273,6 +273,7 @@ public sealed partial class SyncCoordinator : IDisposable
         {
             CaptureARankLocations();
             SaveARankSightings();
+            _arankReports.Check(IsConnected, DateTime.UtcNow);
             if (!_config.SyncEnabled) return;
             DrainInbox();
             CaptureBearPluginDeaths();
@@ -427,6 +428,10 @@ public sealed partial class SyncCoordinator : IDisposable
                 RememberSharedARankLocations(SyncProtocol.Deserialize<ARankLocationsBroadcast>(payload)!.Locations);
                 break;
 
+            case ServerMessageTypes.ARankUpdates:
+                ApplyARankUpdates(SyncProtocol.Deserialize<ARankUpdatesBroadcast>(payload)!);
+                break;
+
             case ServerMessageTypes.SightingsExpired:
                 foreach (var k in SyncProtocol.Deserialize<SightingsExpiredBroadcast>(payload)!.Keys)
                     _remote.Remove(k.ToLiveKey());
@@ -468,6 +473,10 @@ public sealed partial class SyncCoordinator : IDisposable
 
     private void ApplyWelcome(WelcomeMessage welcome)
     {
+        _arankReports.Reset();
+        _arankReports.Observe(welcome.ARankKills);
+        SupportsARankReports = welcome.SupportsARankReports;
+        _arankHistoryServerId = _config.SyncServerUrl.Trim() + "|" + welcome.CounterServerId;
         _sightingClock.Reset();
         _sightingClock.Update(welcome.ServerTime, DateTime.UtcNow);
         ClearBearFeed();
@@ -497,7 +506,7 @@ public sealed partial class SyncCoordinator : IDisposable
             .Concat(ARankLocations.FromSightings(welcome.VisibleMarks.Select(m => m.Mark))));
         RememberARankSightings(ARankSightings.FromMarks(welcome.Marks).Concat(ARankSightings.FromSightings(
             welcome.SupportsVisibleMarks ? welcome.VisibleMarks.Select(m => m.Mark) : welcome.Sightings)));
-        if (ARankHistory.Merge(_config.ARankKills, welcome.ARankKills.Concat(ARankHistory.FromMarks(welcome.Marks)), DateTime.UtcNow)) _config.Save();
+        RememberSharedARankKills(welcome.ARankKills.Concat(ARankHistory.FromMarks(welcome.Marks)));
         ClientId = welcome.ClientId;
         SupportsVisibleMarks = welcome.SupportsVisibleMarks;
         SupportsManualMapping = welcome.SupportsManualMapping;
@@ -782,6 +791,9 @@ public sealed partial class SyncCoordinator : IDisposable
 
     private void ForgetRemoteState()
     {
+        _arankReports.Reset();
+        SupportsARankReports = false;
+        _arankHistoryServerId = string.Empty;
         ClearBearFeed();
         SupportsBearFeed = false;
         _sightingClock.Reset();

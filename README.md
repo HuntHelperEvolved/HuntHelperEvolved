@@ -6,8 +6,9 @@ summaries and sniped/missing-mark details, draws spawn points, your detection ra
 event locations on the **in-game map**, counts S-rank trigger mobs, and keeps a
 lifetime per-mark kill tally for every character you play.
 
-> **0.7.0.1:** Manual A-rank snipe timers, including unseen marks, and
-> quieter scouting while following a train.
+> **0.7.0.2 prepared:** Shared A-rank snipe times and corrections, with
+> confirmation when the server accepts them. Publication is pending; the testing
+> feed still serves 0.7.0.1.
 > Bear S-rank reports are enabled by default on compatible configured servers;
 > turn them off under Sharing.
 > Published builds use the existing testing feed.
@@ -127,8 +128,13 @@ earliest possible kill. The current time is the latest possible kill. Without
 either lower bound, the opening stays unknown and **Ready by** uses the report
 time plus the maximum respawn delay. Manual reports save locally, survive reloads
 and stale sync history, and mark an existing train row sniped under your train
-sharing settings. Exact manual times apply to your local timer; the shared train
-retains its sniped classification. Reporting works without a train row or connection.
+sharing settings. With train sharing enabled and a compatible server, known kill
+times and unknown-time bounds are shared with the group, including corrections
+to an earlier unknown report. The train retains its sniped classification.
+Live corrections require updated plugins on the receiving clients. The timer
+board confirms when the server accepts a report. Offline reports and
+reports on older servers remain local; reconnect or update the server, then
+submit again to share them. Reporting works without a train row.
 
 Manual S-rank mapping: **Shift-click** an S-capable map point to toggle a shared
 exclusion, or click the point count in `/hhs` to compare coordinates and select a
@@ -162,6 +168,12 @@ sync off while keeping connection details. Saved sync credentials and Discord
 destinations have separate clearing actions and are excluded from reset-all.
 
 ## Release notes
+
+### 0.7.0.2 — prepared changes since 0.7.0.1
+
+- **Shared A-rank timers:** Known kill times and unknown-time bounds now reach the group when train sharing is enabled and the server supports A-rank reports. Correcting an unknown snipe to an earlier exact kill updates the shared timer while the train row remains sniped. Reports also work without a train row.
+- **Correction history:** Shared corrections survive reconnects, server restarts and stale train updates. Newer death evidence can still start the next spawn window.
+- **Sharing confirmation:** The timer board distinguishes server-confirmed reports from local-only saves, conflicts and unconfirmed sends. Live updates require updated receiving plugins. Offline reports and reports on older servers stay local; re-submit an existing known time after updating to share it.
 
 ### 0.7.0.1 — changes since 0.7.0.0
 

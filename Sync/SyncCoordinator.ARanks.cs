@@ -9,6 +9,12 @@ public sealed partial class SyncCoordinator
     private bool _arankSightingsDirty;
     private DateTime _nextARankSightingSave;
     private DateTime _nextARankLocationCapture;
+    private readonly ARankReportSharing _arankReports = new();
+    private string _arankHistoryServerId = string.Empty;
+    public bool SupportsARankReports { get; private set; }
+
+    internal string ARankSnipeStatus(uint nameId, uint worldId, uint instance) =>
+        _arankReports.Status(nameId, worldId, instance);
 
     internal void RememberARankSightings(IEnumerable<ARankSighting> sightings) =>
         _arankSightingsDirty |= ARankSightings.Merge(_config.ARankSightings, sightings, DateTime.UtcNow);
@@ -18,10 +24,41 @@ public sealed partial class SyncCoordinator
         _detector.Marks.TryGetValue((nameId, instance, worldId), out var mark);
         var restart = _sranks.Values.Where(s => s.WorldId == worldId && s.Maintenance)
             .Select(s => s.KilledAt).DefaultIfEmpty().Max();
-        ARankManualReports.Record(_config.ARankKills, _config.ARankSightings, mark,
+        var report = ARankManualReports.Record(_config.ARankKills, _config.ARankSightings, mark,
             nameId, worldId, instance, killedAt, DateTime.UtcNow, restart);
         _detector.RemoveSighting(nameId, instance, worldId);
         _config.Save();
+        var message = _arankReports.Begin(report, _config.SyncEnabled && IsConnected, SupportsARankReports,
+            _config.SyncShareTrain, DateTime.UtcNow);
+        if (message is not null) _client.Send(message);
+    }
+
+    private void ApplyARankUpdates(ARankUpdatesBroadcast update)
+    {
+        _arankReports.Apply(update);
+        RememberSharedARankKills(update.Kills);
+        Bump();
+    }
+
+    private void RememberSharedARankKills(IEnumerable<ARankKill> incoming)
+    {
+        var kills = incoming.ToList();
+        foreach (var kill in kills) kill.ServerId = _arankHistoryServerId;
+        var now = DateTime.UtcNow;
+        var changed = ARankHistory.Merge(_config.ARankKills, kills, now);
+        var keys = kills.Select(k => (k.NameId, k.WorldId, k.Instance)).ToHashSet();
+        // A backdated correction also ends earlier live confirmations. A real
+        // sighting after the report can still establish the following spawn.
+        // Use accepted history and its clock-drift allowance so an acknowledged
+        // report a few seconds ahead is not lost from sighting history forever.
+        _arankSightingsDirty |= ARankSightings.Merge(_config.ARankSightings,
+            _config.ARankKills.Where(k => k.ReportedAt is not null && keys.Contains((k.NameId, k.WorldId, k.Instance)))
+                .Select(k => new ARankSighting
+                {
+                    NameId = k.NameId, WorldId = k.WorldId, Instance = k.Instance,
+                    At = k.ReportedAt!.Value, Alive = false,
+                }), now.AddSeconds(10));
+        if (changed) _config.Save();
     }
 
     private void RememberARankLocations(IEnumerable<ARankLocation> locations) =>
