@@ -6,9 +6,8 @@ summaries and sniped/missing-mark details, draws spawn points, your detection ra
 event locations on the **in-game map**, counts S-rank trigger mobs, and keeps a
 lifetime per-mark kill tally for every character you play.
 
-> **0.7.0.2 prepared:** Shared A-rank snipe times and corrections, with
-> confirmation when the server accepts them. Publication is pending; the testing
-> feed still serves 0.7.0.1.
+> **0.7.0.2:** Shared A-rank snipe times and corrections, with
+> confirmation when the server accepts them.
 > Bear S-rank reports are enabled by default on compatible configured servers;
 > turn them off under Sharing.
 > Published builds use the existing testing feed.
@@ -169,7 +168,7 @@ destinations have separate clearing actions and are excluded from reset-all.
 
 ## Release notes
 
-### 0.7.0.2 — prepared changes since 0.7.0.1
+### 0.7.0.2 — changes since 0.7.0.1
 
 - **Shared A-rank timers:** Known kill times and unknown-time bounds now reach the group when train sharing is enabled and the server supports A-rank reports. Correcting an unknown snipe to an earlier exact kill updates the shared timer while the train row remains sniped. Reports also work without a train row.
 - **Correction history:** Shared corrections survive reconnects, server restarts and stale train updates. Newer death evidence can still start the next spawn window.
