@@ -163,6 +163,14 @@ public class Configuration : IPluginConfiguration
     /// <summary>Echo a mark to chat when its row is clicked in the train list.</summary>
     public bool EchoOnMarkClick { get; set; } = true;
 
+    private string _trainCurrencyTemplate = string.Empty;
+    /// <summary>Saved currency message template. Empty uses the selected mode's default.</summary>
+    public string TrainCurrencyTemplate
+    {
+        get => _trainCurrencyTemplate;
+        set => _trainCurrencyTemplate = value ?? string.Empty;
+    }
+
     /// <summary>Echo to chat each time a new A-rank is picked up while scouting.</summary>
     public bool EchoOnDetection { get; set; } = false;
 

@@ -45,6 +45,7 @@ public static class SettingsReset
                 config.AutoMarkDeadEnabled = defaults.AutoMarkDeadEnabled;
                 config.MarkDeadOnObservedDefeat = defaults.MarkDeadOnObservedDefeat;
                 config.EchoOnMarkClick = defaults.EchoOnMarkClick;
+                config.TrainCurrencyTemplate = defaults.TrainCurrencyTemplate;
                 config.TrainPopoutControlsExpanded = defaults.TrainPopoutControlsExpanded;
                 config.HideZonesInPopout = defaults.HideZonesInPopout;
                 config.SwapMarkAndZoneInPopout = defaults.SwapMarkAndZoneInPopout;

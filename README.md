@@ -6,10 +6,9 @@ summaries and sniped/missing-mark details, draws spawn points, your detection ra
 event locations on the **in-game map**, counts S-rank trigger mobs, and keeps a
 lifetime per-mark kill tally for every character you play.
 
-> **0.7.0.3:** Bear A-rank timers and sightings, train currency messages,
-> exact snipe timing in reports and more reliable map markers.
-> Bear A-rank features require server **0.3.33-bear-preview.7 or later** and
-> receiving plugins on **0.7.0.3**.
+> **0.7.0.4:** Exact A-rank kill timers outside trains, combat spawn-point
+> mapping and saved currency templates with full control over copied wording.
+> These fixes are a plugin-only update for the existing A-rank-capable server.
 > Bear S-rank reports are enabled by default on compatible configured servers;
 > turn them off under Sharing.
 > Published builds use the existing testing feed.
@@ -120,6 +119,12 @@ shared trains and sightings received while connected.
 position or the zone centre to choose an eligible aetheryte. Travel includes the
 selected world and instance where supported.
 
+Killing or witnessing the death of an A-rank starts its `/hha` timer even when
+the mark is outside the train or scouting is paused. The exact time saves locally
+while disconnected too. With sighting sharing enabled, the live-to-dead
+observation also updates the group's timer. Finding an already-dead body alone
+does not establish an exact kill time.
+
 The **Sniped** crosshairs button in `/hha` and the main A-rank table resets the
 selected mark's timer for that world and instance. For a **known kill time**, enter
 the minutes since the kill (zero for now, up to seven days) and choose **Record
@@ -149,6 +154,10 @@ Manual S-rank mapping: **Shift-click** an S-capable map point to toggle a shared
 exclusion, or click the point count in `/hhs` to compare coordinates and select a
 source (Manual, Faloop, Bear or Other). Requires a server with manual-mapping
 support. Entries reset on the next S kill; undo leaves automatic evidence intact.
+A/B marks first discovered in combat or below full health also rule out a
+clearly matched nearby point, using the same distance and ambiguity checks as
+idle sightings. Distant or ambiguous fighting positions remain unassigned,
+and later combat movement does not establish a different spawn point.
 
 In `/hhs`, hover **Conditions** for a mark's spawn requirements and **Ctrl-click**
 its name to travel. Connection status, Faloop freshness and feed coverage are in
@@ -177,6 +186,14 @@ sync off while keeping connection details. Saved sync credentials and Discord
 destinations have separate clearing actions and are excluded from reset-all.
 
 ## Release notes
+
+### 0.7.0.4 — changes since 0.7.0.3
+
+- **A-rank kills:** Killing or witnessing an A-rank death saves its exact `/hha` timer outside the train, while scouting is paused or while disconnected. Fixed sharing order so the server retains the live-to-dead evidence and shares the kill without adding a train row. Duplicate detections keep the original time; finding a corpse alone does not establish an exact kill time.
+- **Combat mapping:** A/B marks first found fighting or below full health use the normal spawn-point matching range and ambiguity checks. This fixes cases such as Sally the Sweeper in Living Memory. Matched origins stay fixed during movement, and distant or ambiguous positions remain unassigned.
+- **Currency templates:** Templates save automatically across reloads and game restarts and remain available between trains. Reset template and Train preference resets restore the default.
+- **Currency wording:** Messages follow the template without automatically appending "Weekly allowance applies." Include the note in the template if wanted; weekly-cap guidance remains in the currency panel.
+- **Updating:** No server update is required for these fixes when using the existing A-rank sighting support.
 
 ### 0.7.0.3 — changes since 0.7.0.2
 
@@ -430,8 +447,11 @@ as the train changes. Choose **Amount gained** for full-credit estimates or
 **Starting balance** for the maximum balance that leaves room below each holding
 cap. Weekly tomestone limits and reward eligibility still apply; this does not
 read your character's balance. **Copy text**, **Party** and **Shout** copy the
-preview, with the appropriate chat prefix where selected. The optional session
-template accepts `$c` for currency amounts and `$n` for living A-rank count.
+preview, with the appropriate chat prefix where selected. The optional template
+accepts `$c` for currency amounts and `$n` for living A-rank count and controls
+the copied wording. Include a weekly allowance note in the template if wanted. It saves
+automatically across plugin reloads and game restarts; **Reset template** restores
+the default.
 This follows the [Hunt Train Currency Macro Generator](https://xiv.wobbuffet.net/hunt-tome-macro/),
 with tomestone rates checked against the [official 7.4 patch notes](https://na.finalfantasyxiv.com/lodestone/topics/detail/06944d892fd98cc00b2a28ff77edbafa4f7eef54/).
 

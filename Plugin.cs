@@ -3340,12 +3340,14 @@ public sealed partial class Plugin : IDalamudPlugin
     }
 
     /// <summary>
-    /// A mark died where this client could see it. Its dot comes off the
-    /// group's maps; an S rank also starts the group's respawn clock.
+    /// A mark died where this client could see it. A-rank timers are recorded
+    /// independently of the train, and the sync coordinator shares the death.
     /// </summary>
     private void OnAnyMarkDeath(KillDetail kill)
     {
-        _detector.ResetAnnouncementOnKill(kill.Mark.NameId, kill.InstanceId, _detector.CurrentWorldId());
+        var world = _worldData.IdOf(kill.World);
+        if (world == 0) world = _detector.CurrentWorldId();
+        _detector.ResetAnnouncementOnKill(kill.Mark.NameId, kill.InstanceId, world);
         try
         {
             _sync.ReportMarkDeath(
@@ -3353,7 +3355,8 @@ public sealed partial class Plugin : IDalamudPlugin
                 kill.InstanceId,
                 kill.TerritoryId,
                 kill.Time.ToUniversalTime(),
-                kill.Mark.Rank == MarkRank.S);
+                kill.Mark.Rank == MarkRank.S,
+                world);
         }
         catch (Exception ex)
         {

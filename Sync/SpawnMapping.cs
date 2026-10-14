@@ -11,11 +11,26 @@ public static class SpawnMapping
 
     // Spawn tables contain rounded positions and idle marks can patrol around their origin.
     // Reject distant or ambiguous matches rather than eliminating a neighbouring point.
-    public static int? Match(SpawnPoint[] points, Vector2 position, SpawnRanks rank)
+    public static int? Match(SpawnPoint[] points, Vector2 position, SpawnRanks rank) => Match(points, position, rank, 2f);
+
+    /// <summary>Match discovery coordinates before any subsequently observed combat movement.</summary>
+    public static int? MatchFirstSighting(SpawnPoint[] points, Vector2 position, SpawnRanks rank,
+        uint currentHp, uint maxHp, bool inCombat)
     {
+        if (maxHp == 0 || currentHp == 0 || currentHp > maxHp) return null;
+        if (!inCombat && currentHp == maxHp) return Match(points, position, rank);
+        // A/B marks can be discovered fighting after patrolling around their
+        // spawn. Apply the same distance and ambiguity checks as idle sightings.
+        // An S rank's original spawn is not inferred from a pulled position.
+        return rank is SpawnRanks.A or SpawnRanks.B ? Match(points, position, rank) : null;
+    }
+
+    private static int? Match(SpawnPoint[] points, Vector2 position, SpawnRanks rank, float maxDistance)
+    {
+        if (rank == SpawnRanks.None || !float.IsFinite(position.X) || !float.IsFinite(position.Y)) return null;
         var candidates = points.Select((p, i) => (Point:p, Index:i, Distance:Vector2.Distance(position,new(p.X,p.Y))))
-            .Where(p => p.Point.Ranks.HasFlag(rank)).OrderBy(p => p.Distance).Take(2).ToArray();
-        if (candidates.Length == 0 || candidates[0].Distance > 2f) return null;
+            .Where(p => p.Point.Ranks.HasFlag(rank) && float.IsFinite(p.Distance)).OrderBy(p => p.Distance).Take(2).ToArray();
+        if (candidates.Length == 0 || candidates[0].Distance > maxDistance) return null;
         if (candidates.Length > 1 && candidates[1].Distance - candidates[0].Distance < 0.35f) return null;
         return candidates[0].Index;
     }

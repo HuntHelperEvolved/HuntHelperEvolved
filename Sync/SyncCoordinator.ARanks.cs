@@ -31,6 +31,25 @@ public sealed partial class SyncCoordinator
 
     public DateTime? LocalTimeForServerEvidence(DateTime? at) => at is { } value ? _sightingClock.ToLocal(value) : null;
 
+    /// <summary>A witnessed death starts the local timer even when no train is being recorded or shared.</summary>
+    internal void RememberObservedARankDeath(uint nameId, uint worldId, uint instance, DateTime killedAtUtc)
+    {
+        var now = DateTime.UtcNow;
+        var kill = new ARankKill
+        {
+            NameId = nameId, WorldId = worldId, Instance = instance, At = killedAtUtc,
+            Source = "observed", EvidenceThrough = killedAtUtc,
+        };
+        var changed = ARankHistory.Merge(_config.ARankKills, new[] { kill }, now,
+            _sightingClock.ToServer(now), _config.ARankSightings);
+        changed |= ARankSightings.Merge(_config.ARankSightings, new[] { new ARankSighting
+        {
+            NameId = nameId, WorldId = worldId, Instance = instance, At = killedAtUtc,
+            Alive = false, Source = "observed",
+        } }, now);
+        if (changed) _config.Save();
+    }
+
     internal void ReportARankSnipe(uint nameId, uint worldId, uint instance, DateTime? killedAt)
     {
         _detector.Marks.TryGetValue((nameId, instance, worldId), out var mark);

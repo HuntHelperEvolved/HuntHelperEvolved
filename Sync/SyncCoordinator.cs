@@ -891,7 +891,7 @@ public sealed partial class SyncCoordinator : IDisposable
     }
 
     private void OnSightingDeath(OtherRankSighting sighting, DateTime at) =>
-        ReportMarkDeath(sighting.NameId, sighting.Instance, sighting.TerritoryId, at, sighting.Rank == HuntRank.S);
+        ReportMarkDeath(sighting.NameId, sighting.Instance, sighting.TerritoryId, at, sighting.Rank == HuntRank.S, sighting.WorldId);
 
     private void OnScanned()
     {
@@ -945,15 +945,27 @@ public sealed partial class SyncCoordinator : IDisposable
     // Kills, from the tally or by hand
 
     /// <summary>
-    /// A mark died in front of this client. Any rank: its sighting comes
-    /// off everyone's map. An S rank also starts the group's clock for it.
+    /// A mark died in front of this client. A ranks start a local timer without
+    /// requiring a train row; their visible corpse snapshot shares the death.
+    /// Other ranks remove their sighting, and S ranks also report a kill time.
     /// </summary>
-    public void ReportMarkDeath(uint nameId, uint instance, uint territoryId, DateTime killedAtUtc, bool isSRank)
+    public void ReportMarkDeath(uint nameId, uint instance, uint territoryId, DateTime killedAtUtc, bool isSRank, uint? worldId = null)
     {
         if (SsEventMobs.Contains(nameId)) return; // Corpse snapshots identify the individual minion.
-        var world = _detector.CurrentWorldId();
+        var world = worldId ?? _detector.CurrentWorldId();
         var key = (nameId, instance, world);
         if (_config.SyncReceiveBearFeed) RememberBearPluginDeath(key,ServerTimeFor(killedAtUtc));
+        if (ExpansionData.Lookup(nameId) is not null)
+        {
+            // The tally and scanner can observe the same death on adjacent ticks.
+            if (_reportedKills.TryGetValue(key, out var observed) && killedAtUtc - observed < KillDedupe) return;
+            _reportedKills[key] = killedAtUtc;
+            RememberObservedARankDeath(nameId, world, instance, killedAtUtc);
+            // Do not send sightings.remove first: it erases the server's prior
+            // living observation, which is needed to recognise the next corpse
+            // snapshot as a witnessed kill. OnScanned sends that complete set.
+            return;
+        }
         if (!IsConnected || (!_config.SyncShareSightings && !_config.SyncReportSRankKills)) return;
 
         _client.Send(new SightingsRemoveMessage { Keys = new() { SyncKey.From(key) } });

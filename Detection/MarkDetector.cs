@@ -316,10 +316,10 @@ public sealed class MarkDetector
             // An A-rank is always recorded as a sighting, so the map and the
             // detection echo work even with train recording paused. Whether it
             // also joins the train is decided below.
-            TrackSighting(mob, territoryId, mapId, instance, worldId, worldName, now, HuntRank.A);
-
             visibleObjects.Add(mob.GameObjectId);
             var witnessedDeath = _deathEvidence.Observe(mob.GameObjectId, mob.CurrentHp, mob.MaxHp);
+            TrackSighting(mob, territoryId, mapId, instance, worldId, worldName, now, HuntRank.A, witnessedDeath);
+
             if (mob.MaxHp == 0) continue;
             var key = (mob.NameId, instance, worldId);
             if (_marks.TryGetValue(key, out var existing))
@@ -413,7 +413,7 @@ public sealed class MarkDetector
     private void TrackSighting(
         Dalamud.Game.ClientState.Objects.Types.IBattleNpc mob,
         uint territoryId, uint mapId, uint instance, uint worldId, string worldName,
-        DateTime now, HuntRank? knownRank)
+        DateTime now, HuntRank? knownRank, bool witnessedDeath = false)
     {
         if (mob.MaxHp == 0) return;
         HuntRank rank;
@@ -438,7 +438,7 @@ public sealed class MarkDetector
         if (IsDead(mob))
         {
             _announcements.Killed(mob.NameId, instance, worldId);
-            if (_otherRanks.TryGetValue(key, out var dying))
+            if ((rank != HuntRank.A || witnessedDeath) && _otherRanks.TryGetValue(key, out var dying))
                 SightingObservedDead?.Invoke(dying, now);
             _otherRanks.Remove(key);
             _visibleCorpses[key] = new OtherRankSighting
@@ -480,8 +480,10 @@ public sealed class MarkDetector
             HealthPercent = HealthPercentOf(mob),
             NearbyPlayers = CountPlayers(mob.Position),
             InCombat = mob.StatusFlags.HasFlag(Dalamud.Game.ClientState.Objects.Enums.StatusFlags.InCombat),
-            SpawnPointIndex = CanMatchSpawnPoint(mob)
-                ? MatchSpawnPoint(territoryId, MapCoordinates.FromWorld(_dataManager, mapId, mob.Position.X, mob.Position.Z), rank) : null,
+            SpawnPointIndex = Sync.SpawnMapping.MatchFirstSighting(SpawnPointData.For(territoryId),
+                MapCoordinates.FromWorld(_dataManager, mapId, mob.Position.X, mob.Position.Z),
+                rank == HuntRank.S ? SpawnRanks.S : rank == HuntRank.A ? SpawnRanks.A : SpawnRanks.B,
+                mob.CurrentHp, mob.MaxHp, mob.StatusFlags.HasFlag(Dalamud.Game.ClientState.Objects.Enums.StatusFlags.InCombat)),
             ZoneName = GetZoneName(territoryId),
         };
 
@@ -489,13 +491,8 @@ public sealed class MarkDetector
         OtherRankDetected?.Invoke(sighting);
     }
 
-    /// <summary>
-    /// A mark's remaining health as a percentage.
-    ///
-    /// MaxHp reads as zero for an object the game has not finished filling in,
-    /// which would divide to infinity; an unknown mark is reported as untouched
-    /// rather than as a mark on the point of dying.
-    /// </summary>
+    // If discovery could not identify a point, only an untouched idle mark can
+    // establish it later. A moving fight must not eliminate points it passes.
     private static bool CanMatchSpawnPoint(Dalamud.Game.ClientState.Objects.Types.IBattleNpc mob) =>
         !mob.StatusFlags.HasFlag(Dalamud.Game.ClientState.Objects.Enums.StatusFlags.InCombat)
         && mob.MaxHp > 0 && mob.CurrentHp == mob.MaxHp;
@@ -504,6 +501,7 @@ public sealed class MarkDetector
         Sync.SpawnMapping.Match(SpawnPointData.For(territory), position,
             rank == HuntRank.S ? SpawnRanks.S : rank == HuntRank.A ? SpawnRanks.A : SpawnRanks.B);
 
+    /// <summary>Unloaded health is unknown, not evidence of a death.</summary>
     private static float HealthPercentOf(Dalamud.Game.ClientState.Objects.Types.IBattleNpc mob)
     {
         if (mob.MaxHp == 0) return 100f;

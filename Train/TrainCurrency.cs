@@ -85,7 +85,6 @@ internal static class TrainCurrency
                 : $"{Number(x.MaximumStartingBalance)} {x.Name}"));
         var message = template.Replace("$c", amounts, StringComparison.Ordinal)
             .Replace("$n", Number(summary.MarkCount), StringComparison.Ordinal);
-        if (summary.Amounts.Any(x => x.Name == "Mnemonics")) message += " Weekly allowance applies.";
         return new(SingleLine(message), hasCurrencies);
     }
 

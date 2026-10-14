@@ -34,6 +34,14 @@ public static class ReleaseNotes
 
     public static readonly Release[] All =
     {
+        new("0.7.0.4", "2026-10-15", "Reliable A-rank kill timers and combat mapping, with saved currency templates.",
+        [
+            new("A-rank kills", "Killing or witnessing an A-rank death now saves its exact /hha timer even outside the train, while scouting is paused or while disconnected. Duplicate detections keep the original time. With sighting sharing enabled, the live-to-dead observation reaches the server before its evidence is removed, allowing the group to receive the kill without adding a train row. Finding an already-dead body alone does not establish an exact kill time.", Kihtli),
+            new("Combat mapping", "A/B marks first discovered fighting or below full health now rule out a clearly matched nearby S-rank spawn point using the same distance and ambiguity checks as idle marks. This fixes cases such as Sally the Sweeper in Living Memory. Previously matched origins stay fixed during movement; distant or ambiguous positions remain unassigned.", Kihtli),
+            new("Currency templates", "Custom train currency message templates save automatically across plugin reloads and game restarts and remain available between trains. Reset template saves the default choice; resetting Train preferences also restores the default template.", Kihtli),
+            new("Currency wording", "Currency previews and copied messages follow the template without automatically appending Weekly allowance applies. Include that sentence in the template if wanted. Weekly-cap guidance remains in the currency panel.", Kihtli),
+            new("Updating", "This is a plugin-only update. No server update is required for these fixes when using the existing A-rank sighting support.", Kihtli),
+        ]),
         new("0.7.0.3", "2026-10-14", "Bear A-rank reports, train currency messages and more reliable map markers.",
         [
             new("Snipe corrections", "Shared exact-time corrections use the server's clock, so clock differences do not leave an older unknown window in place. Train rows and completion reports use the corrected kill time and exact respawn window while retaining the sniped classification.", Kihtli),

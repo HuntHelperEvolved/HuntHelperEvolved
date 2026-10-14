@@ -7,7 +7,6 @@ namespace HuntHelperEvolved;
 public sealed partial class Plugin
 {
     private TrainCurrencyMessageMode _trainCurrencyMode;
-    private string _trainCurrencyTemplate = string.Empty;
     private string _trainCurrencyCopied = string.Empty;
     private string _trainCurrencyPreview = string.Empty;
 
@@ -48,17 +47,24 @@ public sealed partial class Plugin
         DrawTrainCurrencyMode("Amount gained", TrainCurrencyMessageMode.AmountGained);
         if (ImGui.CollapsingHeader("Message template"))
         {
-            ImGui.TextWrapped("$c = currencies, $n = living A ranks. Templates apply to this session.");
+            ImGui.TextWrapped("$c = currencies, $n = living A ranks. Your template saves automatically and controls the copied wording.");
             ImGui.SetNextItemWidth(-1);
+            var template = _config.TrainCurrencyTemplate;
             if (ImGui.InputTextWithHint("##Currency template", TrainCurrency.DefaultTemplate(_trainCurrencyMode),
-                ref _trainCurrencyTemplate, 2000)) _trainCurrencyCopied = string.Empty;
+                ref template, 2000))
+            {
+                _config.TrainCurrencyTemplate = template;
+                _config.Save();
+                _trainCurrencyCopied = string.Empty;
+            }
             if (HuntUi.Button("currency-reset", "Reset template", quiet: true))
             {
-                _trainCurrencyTemplate = string.Empty;
+                _config.TrainCurrencyTemplate = string.Empty;
+                _config.Save();
                 _trainCurrencyCopied = string.Empty;
             }
         }
-        var message = TrainCurrency.CreateMessage(summary, _trainCurrencyMode, _trainCurrencyTemplate);
+        var message = TrainCurrency.CreateMessage(summary, _trainCurrencyMode, _config.TrainCurrencyTemplate);
         if (_trainCurrencyPreview != message.Plain)
         {
             _trainCurrencyPreview = message.Plain;

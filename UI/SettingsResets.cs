@@ -38,7 +38,7 @@ public sealed partial class Plugin
         SettingsResetCategory.AllPreferences => "Restore the preference groups below to this version's defaults. "
             + "Sync is turned off. Saved connection details and Discord destinations are kept.",
         SettingsResetCategory.Train => "Restore polling, death marking, train rows, popout layout, chat echoes, "
-            + "watches and expansion grouping. Saved expansion-order preferences and folded groups are reset; marks and presets are kept.",
+            + "watches, the currency message template and expansion grouping. Saved expansion-order preferences and folded groups are reset; marks and presets are kept.",
         SettingsResetCategory.Counters => "Restore kill-counting and per-mark auto-reset preferences. Current counts are kept.",
         SettingsResetCategory.Travel => "Restore map flagging and the default aetheryte blacklist: "
             + "The Macarenses Angle, Base Omicron and Many Fires.",
