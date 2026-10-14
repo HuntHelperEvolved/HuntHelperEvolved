@@ -1,8 +1,10 @@
 # Bear integration and filter presets
 
-Plugin version `0.7.0.0` combines the redesigned UI with Bear Toolkit S-rank
-integration and named filter presets. Install or update through the existing
-HHE testing feed with **Get plugin testing builds** enabled in Dalamud.
+Plugin version `0.7.0.3` adds Bear Toolkit A-rank timers and sightings alongside
+the existing S-rank integration and named filter presets. A-rank features require
+server `0.3.33-bear-preview.7` or later and receiving plugins on `0.7.0.3`.
+Install or update through the existing HHE testing feed with **Get plugin testing
+builds** enabled in Dalamud.
 
 If you tested a local development copy, unload it before enabling the installed
 plugin. Keep the existing HHE configuration to retain your settings and tallies;
@@ -18,15 +20,14 @@ server supports Bear and whether its feed is connected. An older server
 continues to provide the normal group and Faloop data.
 
 The server must also have Bear enabled, selected data centres and a private
-Bear credential file. Bear credentials stay on the server. Version 0.7.0.0
-requests the feed by default and stops requesting it when the user opts out.
-The server never sends Bear snapshots to older clients that omit the request
-field.
+Bear credential file. Bear credentials stay on the server. Compatible plugins
+request the live S-rank feed by default and stop requesting it when the user opts
+out. The server does not send live S-rank snapshots to clients that omit the
+request field. Shared A-rank history and accepted kill times are independent of
+that live S-rank preference.
 
-The Bear feed contains S-rank reports only; A-rank scouting and existing sources remain unchanged.
-Bear live sightings and HP remain a separate read model. They do not become
-group scout observations, train edits or tally credit. Confirmed Bear S-rank
-kill reports are also accepted by an updated server into the shared S-rank
+Bear live S-rank sightings and HP remain separate from group scout observations.
+They do not become train edits or tally credit. Confirmed Bear S-rank kill reports are also accepted by an updated server into the shared S-rank
 timers and spawn mapping, even when neither a plugin nor Faloop saw the spawn.
 The kill starts a new mapping cycle; a previous spawn point is recorded when
 reported coordinates can be matched reliably. These shared updates reach all
@@ -34,13 +35,37 @@ connected compatible clients, including clients that have opted out of the
 live Bear feed. The server resolves conflicting sources with
 **plugin > Bear > Faloop** priority.
 
-Live evidence uses the same source priority. HP is fresh for
+Live S-rank evidence uses the same source priority. HP is fresh for
 15 seconds. While the Bear sighting remains active, an older positive HP report
 stays visible in grey as `~80%` with its age in the tooltip. This is the last reported
 value, not current health or combat evidence. The sighting still expires after
 five minutes without a new qualifying report. Zero HP lasts only 15 seconds
 unless a separate death report confirms the kill.
 Disconnecting clears live Bear evidence; it does not create a kill.
+
+For A-ranks, confirmed Bear kill reports update shared timers and any matching
+train row. Reports keep the exact kill time and Bear source; completion reports
+place them in **Bear-confirmed kills**, separate from uncertain snipes and
+witnessed train participation. Source priority for the same spawn is
+**witnessed plugin kill > Bear kill > manual snipe report**, including manually
+entered exact snipe times. A genuine fresh plugin observation changing from
+alive to dead can record a kill without a train row; finding an old corpse does
+not invent a kill time.
+
+A-rank living reports retain their actual observation time and any valid
+coordinates. They show **UP** in `/hha` without inserting train rows. A newer
+living observation restores UP and revives an existing matching row, without
+making old corpse coordinates look newly observed. Stored locations alone do
+not confirm a spawn. History survives reconnects and server restarts and is
+sent on connection/reconnection; ongoing reports arrive through the existing
+socket, without a recurring A-rank HTTP poll. A-rank sightings do not trigger
+train callouts or map flags by themselves.
+
+Older plugins can still connect to the updated protocol-4 server, but they do
+not fully support these A-rank sources. They may ignore independent UP reports
+and Bear coordinates, retain an earlier unknown manual snipe window after a
+Bear correction, or display confirmed kills in the uncertain **Sniped** section.
+Update receiving plugins to `0.7.0.3` for matching timers and report presentation.
 
 RELAY chat alerts briefly wait one second for accompanying health reports.
 They use current plugin HP first, then Bear HP; older positive Bear health is
@@ -86,9 +111,10 @@ suppression for a real spawn. The server's feed coverage remains separate.
 The pull-time clock always uses the Faloop report time, even when a plugin or
 Bear supplies the displayed health. If Faloop has not supplied a timer, the
 clock is unknown. Bear updates never restart this pull-time clock. Confirmed
-Bear kills do update the S-rank respawn timer and mapping through the server;
-A-rank timers retain their existing sources. A zero-HP sighting without a
-confirmed kill report does not create a shared kill time.
+Bear kills do update the S-rank respawn timer and mapping through the server.
+A Bear zero-HP sighting without a confirmed kill report does not create a shared
+kill time. The independent A-rank timers described above do not affect this
+S-rank pull-time clock.
 
 For in-game verification, compare the same S-rank, world and instance in Bear and HHE:
 
@@ -119,6 +145,7 @@ For in-game verification, compare the same S-rank, world and instance in Bear an
 
 Automated tests exercise parsing, freshness and compatibility. Account access,
 token renewal and actual in-game rendering can be checked in-game.
-Live Bear sightings and HP are not persisted into shared
-hunt state. Accepted Bear S-rank kills and their mapping cycle are shared server
-state and remain after Bear reports are disabled or the plugin is unloaded.
+Live Bear S-rank HP is not persisted into shared hunt state. Accepted Bear
+S-rank kills and mapping cycles, along with A-rank kills, sightings and valid
+locations, are shared server state. Disabling the live S-rank feed or unloading
+the plugin does not erase that shared history.

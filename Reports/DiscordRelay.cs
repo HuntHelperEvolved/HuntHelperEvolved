@@ -178,15 +178,19 @@ public static class DiscordRelay
             AppendEntries(sb, unknownTimers);
         }
 
-        // Marks found already gone get their own section rather than a note on
-        // an ordinary line. Their leading time is when the train arrived to
-        // find them missing, not a kill, and their window is wider because of
-        // it — mixed into the chronological list they read as kills, which is
-        // the confusion this whole thing exists to remove.
-        var sniped = entries.Where(e => e.Sniped).ToList();
+        // Keep kills outside this train separate from observed participation.
+        // A precise reported time narrows the timer without changing that
+        // classification; remaining entries retain their found-missing bounds.
+        var bear = entries.Where(e => e.DeathSource == "bear").ToList();
+        if (bear.Count > 0)
+        {
+            sb.Append("\n**Bear-confirmed kills** (exact reported times)\n");
+            AppendEntries(sb, bear);
+        }
+        var sniped = entries.Where(e => e.Sniped && e.DeathSource != "bear").ToList();
         if (sniped.Count > 0)
         {
-            sb.Append("\n**Sniped** (found gone — time is when the train got there; earliest timing uses the last live sighting, when known)\n");
+            sb.Append("\n**Sniped** (killed outside this train; exact reported kills are labelled, otherwise time is when found gone)\n");
             AppendEntries(sb, sniped);
         }
 
@@ -227,10 +231,11 @@ public static class DiscordRelay
             }
 
             var killUnix = new DateTimeOffset(entry.KillTimeUtc).ToUnixTimeSeconds();
+            var timeLabel = entry.DeathSource == "bear" ? "Bear-confirmed kill " : entry.ReportedExactTime ? "Known kill " : string.Empty;
 
             if (!entry.HasWindow)
             {
-                sb.Append($"<t:{killUnix}:t> — {entry.DisplayName} — no fixed respawn timer\n");
+                sb.Append($"{timeLabel}<t:{killUnix}:t> — {entry.DisplayName} — no fixed respawn timer\n");
                 continue;
             }
 
@@ -239,7 +244,7 @@ public static class DiscordRelay
             var timing = entry.WindowOpensUtc is { } opens
                 ? $"window <t:{new DateTimeOffset(opens).ToUnixTimeSeconds()}:t> → <t:{capUnix}:t>"
                 : $"earliest unknown; ready by <t:{capUnix}:t>";
-            sb.Append($"<t:{killUnix}:t> — {entry.Location} — {entry.DisplayName}{instanceGlyph} — {timing}\n");
+            sb.Append($"{timeLabel}<t:{killUnix}:t> — {entry.Location} — {entry.DisplayName}{instanceGlyph} — {timing}\n");
         }
     }
 

@@ -15,6 +15,7 @@ public sealed class ARankLocation
     public float X { get; set; }
     public float Y { get; set; }
     public DateTime SeenAt { get; set; }
+    public string Source { get; set; } = string.Empty;
 }
 
 public static class ARankLocations
@@ -23,7 +24,7 @@ public static class ARankLocations
         location is not null && ExpansionData.Lookup(location.NameId) is { } mark
         && ARankZoneInstances.ZoneTerritories.TryGetValue(mark.Location, out var territories)
         && territories.Contains(location.TerritoryId)
-        && location.WorldId != 0 && location.MapId != 0 && location.Instance <= 9
+        && location.WorldId != 0 && (location.MapId != 0 || location.Source == "bear") && location.Instance <= 9
         && float.IsFinite(location.X) && float.IsFinite(location.Y)
         && location.X is >= 1 and <= 100 && location.Y is >= 1 and <= 100
         && location.SeenAt > DateTime.UnixEpoch && location.SeenAt <= now;
@@ -43,7 +44,7 @@ public static class ARankLocations
         {
             NameId = mark.NameId, WorldId = mark.WorldId, Instance = mark.Instance,
             TerritoryId = mark.TerritoryId, MapId = mark.MapId,
-            X = mark.X, Y = mark.Y, SeenAt = mark.LastSeen,
+            X = mark.X, Y = mark.Y, SeenAt = mark.LocationSeenAt ?? mark.LastSeen,
         });
 
     public static IEnumerable<ARankLocation> FromSightings(IEnumerable<SyncSighting> sightings) => sightings
@@ -62,7 +63,7 @@ public static class ARankLocations
             NameId = location.NameId, WorldId = location.WorldId, Instance = location.Instance,
             TerritoryId = location.TerritoryId, MapId = location.MapId,
             X = location.X, Y = location.Y,
-            SeenAt = LocalSeenAt(location.SeenAt, toLocal, receivedAt),
+            SeenAt = LocalSeenAt(location.SeenAt, toLocal, receivedAt), Source = location.Source,
         });
 
     public static DateTime LocalSeenAt(DateTime seenAt, Func<DateTime, DateTime> toLocal, DateTime receivedAt)
@@ -108,7 +109,7 @@ public static class ARankLocations
             {
                 NameId = location.NameId, WorldId = location.WorldId, Instance = location.Instance,
                 TerritoryId = location.TerritoryId, MapId = location.MapId,
-                X = location.X, Y = location.Y, SeenAt = location.SeenAt,
+                X = location.X, Y = location.Y, SeenAt = location.SeenAt, Source = location.Source,
             };
         }
         var merged = latest.Values.ToList();

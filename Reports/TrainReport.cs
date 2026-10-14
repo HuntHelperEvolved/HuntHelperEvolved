@@ -15,7 +15,9 @@ public record TrainReportEntry(
     bool Sniped,
     DateTime LastAliveUtc,
     uint WorldId = 0,
-    string WorldName = "")
+    string WorldName = "",
+    bool ReportedExactTime = false,
+    string DeathSource = "")
 {
     public string DisplayName => string.IsNullOrEmpty(WorldName) ? $"{Name} — world {WorldId}" : $"{Name} — {WorldName}";
 
@@ -25,19 +27,19 @@ public record TrainReportEntry(
     /// <summary>
     /// The earliest the mark can come back.
     ///
-    /// For one we watched die, that is its kill time plus the minimum. For one
-    /// found already sniped it is the last time it was seen ALIVE plus the
+    /// An observed or precisely reported death uses its kill time plus the
+    /// minimum. A snipe with no exact time uses the last time it was seen ALIVE plus the
     /// minimum: it could have died the moment we last looked at it, and a
     /// window measured from when we noticed it was gone would send people to
     /// stand there after it had already respawned.
     /// </summary>
     public DateTime? WindowOpensUtc =>
-        MinHours == null || Sniped && (LastAliveUtc <= DateTime.UnixEpoch || LastAliveUtc > KillTimeUtc)
-            ? null : (Sniped ? LastAliveUtc : KillTimeUtc).AddHours(MinHours.Value);
+        MinHours == null || Sniped && !ReportedExactTime && (LastAliveUtc <= DateTime.UnixEpoch || LastAliveUtc > KillTimeUtc)
+            ? null : (Sniped && !ReportedExactTime ? LastAliveUtc : KillTimeUtc).AddHours(MinHours.Value);
 
     /// <summary>
     /// The latest it can come back: the kill time plus the maximum. For a
-    /// sniped mark that kill time is the moment it was found gone, which is
+    /// sniped mark with no exact report that time is the moment it was found gone, which is
     /// the latest it can possibly have died — so the same arithmetic gives the
     /// honest far edge without a special case.
     /// </summary>
@@ -70,7 +72,7 @@ public static class TrainReport
     /// counts as a kill.
     /// </summary>
     public static bool IsObservedKill(TrackedMark mark) =>
-        mark.Dead && mark.DeathObservedAtUtc != null && mark.SnipedAtUtc == null;
+        mark.Dead && mark.DeathObservedAtUtc != null && mark.SnipedAtUtc == null && mark.DeathSource != "bear";
 
     private static string ExpansionOf(TrackedMark mark) =>
         ExpansionData.Lookup(mark.ModelId)?.Expansion ?? UnknownExpansion;
@@ -166,7 +168,9 @@ public static class TrainReport
                 // Sniped wins over an observed death: the two should never both
                 // be set, and if a conductor has managed it, the one they
                 // clicked deliberately is the one they meant.
-                var killTime = EnsureUtc(m.SnipedAtUtc ?? m.DeathObservedAtUtc!.Value);
+                var external = m.SnipedAtUtc is not null || m.DeathSource == "bear";
+                var reportedExact = external && (m.DeathSource == "bear" || m.ReportedKillAtUtc is { } reported && reported > DateTime.UnixEpoch);
+                var killTime = EnsureUtc(reportedExact ? m.ReportedKillAtUtc ?? m.SnipedAtUtc ?? m.DeathObservedAtUtc!.Value : m.SnipedAtUtc ?? m.DeathObservedAtUtc!.Value);
                 return new TrainReportEntry(
                     killTime,
                     info?.Expansion ?? UnknownExpansion,
@@ -175,8 +179,8 @@ public static class TrainReport
                     m.Instance,
                     info?.MinHours,
                     info?.MaxHours,
-                    m.SnipedAtUtc != null,
-                    EnsureUtc(m.LastSeenUtc), m.WorldId, m.WorldName);
+                    external,
+                    EnsureUtc(m.LastSeenUtc), m.WorldId, m.WorldName, reportedExact, m.DeathSource);
             })
             .OrderBy(e => e.KillTimeUtc)
             .ToList();

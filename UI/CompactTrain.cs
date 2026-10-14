@@ -18,7 +18,7 @@ public sealed partial class Plugin
         var toolbarWidth = Math.Max(1, ImGui.GetContentRegionAvail().X - padding * 2);
         var navigationRows = TrainNavigationControlsWidth() <= toolbarWidth ? 1 : 2;
         var modeRows = TrainOperatingControlsWidth(compact: true) <= toolbarWidth ? 0 : 1;
-        var toolbarRows = navigationRows + modeRows + 1;
+        var toolbarRows = navigationRows + modeRows + TrainSecondaryRows(compact: true, toolbarWidth);
         var toolbarHeight = ImGui.GetFrameHeight() * toolbarRows
             + ImGui.GetStyle().ItemSpacing.Y * (toolbarRows - 1) + padding * 2;
         HuntUi.FillBand(toolbarHeight, HuntTheme.Panel);

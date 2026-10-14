@@ -36,6 +36,7 @@ public class PersistedMark
     public bool Dead { get; set; }
     public DateTime FirstSeenUtc { get; set; }
     public DateTime LastSeenUtc { get; set; }
+    public DateTime? LastSeenLocalUtc { get; set; }
     public DateTime? LocationSeenAtUtc { get; set; }
     public DateTime? DeathObservedAtUtc { get; set; }
     public int Order { get; set; }
@@ -45,6 +46,8 @@ public class PersistedMark
 
     /// <summary>When the train found this mark already gone. See DetectedMark.SnipedAtUtc.</summary>
     public DateTime? SnipedAtUtc { get; set; }
+    /// <summary>Preserves external kill provenance across train saves and restores.</summary>
+    public string DeathSource { get; set; } = string.Empty;
 }
 
 /// <summary>Per-mark auto-reset settings for the trigger-mob counters.</summary>
@@ -698,6 +701,7 @@ public class Configuration : IPluginConfiguration
     public List<uint> ARankWindowWorlds { get; set; } = new();
     public List<string> ARankWindowExpansions { get; set; } = ExpansionData.ModelIdToMark.Values.Select(m => m.Expansion).Distinct().ToList();
     public bool ARankWindowAvailableOnly { get; set; }
+    public bool ARankWindowNotInTrain { get; set; }
     public string ARankWindowSearch { get; set; } = "";
     public List<Sync.ARankKill> ARankKills { get; set; } = new();
     public List<Sync.ARankSighting> ARankSightings { get; set; } = new();

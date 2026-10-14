@@ -351,7 +351,7 @@ public sealed partial class SyncCoordinator : IDisposable
             case "marks.visible":
                 var visible = SyncProtocol.Deserialize<VisibleMarksBroadcast>(payload)!;
                 RememberSharedARankLocations(ARankLocations.FromSightings(visible.Marks.Select(m => m.Mark)));
-                RememberARankSightings(ARankSightings.FromSightings(visible.Marks.Select(m => m.Mark)));
+                RememberSharedARankSightings(ARankSightings.FromSightings(visible.Marks.Select(m => m.Mark)));
                 VisibleObservationBatch.Apply(visible.Marks,visible.Removed,_visibleMarks,_activeMarkGrace,DateTime.UtcNow,
                     _config.SyncReceiveBearFeed ? RememberBearPluginDeath : null);
                 break;
@@ -391,8 +391,8 @@ public sealed partial class SyncCoordinator : IDisposable
                         if (mark.Dead && mark.SnipedAt is null && mark.DeathAt is { } death)
                             RememberBearPluginDeath((mark.NameId,mark.Instance,mark.WorldId),death);
                 RememberSharedARankLocations(ARankLocations.FromMarks(marks));
-                RememberARankSightings(ARankSightings.FromMarks(marks));
-                if (ARankHistory.Merge(_config.ARankKills, ARankHistory.FromMarks(marks), DateTime.UtcNow)) _config.Save();
+                RememberSharedARankSightings(ARankSightings.FromMarks(marks));
+                if (ARankHistory.Merge(_config.ARankKills, ARankHistory.FromMarks(marks), DateTime.UtcNow, _sightingClock.ToServer(DateTime.UtcNow), _config.ARankSightings)) _config.Save();
                 if (_config.SyncShareTrain) ApplyMarks(marks);
                 break;
             }
@@ -418,7 +418,7 @@ public sealed partial class SyncCoordinator : IDisposable
             case ServerMessageTypes.Sightings:
                 var sightings = SyncProtocol.Deserialize<SightingsBroadcast>(payload)!.Sightings;
                 RememberSharedARankLocations(ARankLocations.FromSightings(sightings));
-                if (!SupportsVisibleMarks) RememberARankSightings(ARankSightings.FromSightings(sightings));
+                if (!SupportsVisibleMarks) RememberSharedARankSightings(ARankSightings.FromSightings(sightings));
                 foreach (var s in sightings)
                     AddRemoteSighting(s);
                 Bump();
@@ -426,6 +426,11 @@ public sealed partial class SyncCoordinator : IDisposable
 
             case ServerMessageTypes.ARankLocations:
                 RememberSharedARankLocations(SyncProtocol.Deserialize<ARankLocationsBroadcast>(payload)!.Locations);
+                break;
+
+            case ServerMessageTypes.ARankSightings:
+                RememberSharedARankSightings(SyncProtocol.Deserialize<ARankSightingsBroadcast>(payload)!.Sightings);
+                Bump();
                 break;
 
             case ServerMessageTypes.ARankUpdates:
@@ -484,7 +489,7 @@ public sealed partial class SyncCoordinator : IDisposable
         if (_config.SyncReceiveBearFeed)
         {
             foreach (var kill in welcome.ARankKills)
-                if (!kill.Uncertain) RememberBearPluginDeath((kill.NameId,kill.Instance,kill.WorldId),kill.At);
+                if (!kill.Uncertain && ARankHistory.SourceOf(kill) == "observed") RememberBearPluginDeath((kill.NameId,kill.Instance,kill.WorldId),kill.At);
             foreach (var mark in welcome.Marks)
                 if (mark.Dead && mark.SnipedAt is null && mark.DeathAt is { } death)
                     RememberBearPluginDeath((mark.NameId,mark.Instance,mark.WorldId),death);
@@ -504,7 +509,7 @@ public sealed partial class SyncCoordinator : IDisposable
         RememberSharedARankLocations(welcome.ARankLocations.Concat(ARankLocations.FromMarks(welcome.Marks))
             .Concat(ARankLocations.FromSightings(welcome.Sightings))
             .Concat(ARankLocations.FromSightings(welcome.VisibleMarks.Select(m => m.Mark))));
-        RememberARankSightings(ARankSightings.FromMarks(welcome.Marks).Concat(ARankSightings.FromSightings(
+        RememberSharedARankSightings(welcome.ARankSightings.Concat(ARankSightings.FromMarks(welcome.Marks)).Concat(ARankSightings.FromSightings(
             welcome.SupportsVisibleMarks ? welcome.VisibleMarks.Select(m => m.Mark) : welcome.Sightings)));
         RememberSharedARankKills(welcome.ARankKills.Concat(ARankHistory.FromMarks(welcome.Marks)));
         ClientId = welcome.ClientId;
@@ -577,7 +582,8 @@ public sealed partial class SyncCoordinator : IDisposable
             {
                 var key = m.Key;
                 if (key.NameId == 0) continue;
-                var locationSeenAt = ARankLocations.LocalSeenAt(m.LastSeen, _sightingClock.ToLocal, DateTime.UtcNow);
+                var localSeenAt = ARankLocations.LocalSeenAt(m.LastSeen, _sightingClock.ToLocal, DateTime.UtcNow);
+                var locationSeenAt = ARankLocations.LocalSeenAt(m.LocationSeenAt ?? m.LastSeen, _sightingClock.ToLocal, DateTime.UtcNow);
 
                 if (!_detector.Marks.TryGetValue(key, out var local))
                 {
@@ -594,8 +600,9 @@ public sealed partial class SyncCoordinator : IDisposable
                         Dead = m.Dead,
                         FirstSeenUtc = m.FirstSeen,
                         LastSeenUtc = m.LastSeen,
+                        LastSeenLocalUtc = localSeenAt,
                         LocationSeenAtUtc = locationSeenAt,
-                        DeathObservedAtUtc = m.DeathAt, SnipedAtUtc = m.SnipedAt,
+                        DeathObservedAtUtc = m.DeathAt, SnipedAtUtc = m.SnipedAt, DeathSource = m.DeathSource,
                         IsCustom = m.IsCustom,
                         ZoneName = m.ZoneName,
                         Spiced = m.Spiced,
@@ -618,6 +625,7 @@ public sealed partial class SyncCoordinator : IDisposable
                     if (m.LastSeen >= local.LastSeenUtc)
                     {
                         local.LastSeenUtc = m.LastSeen;
+                        local.LastSeenLocalUtc = localSeenAt;
                     }
                     if (locationSeenAt >= previousLocationSeenAt)
                     {
@@ -630,9 +638,13 @@ public sealed partial class SyncCoordinator : IDisposable
 
                     if (!hasKnown || m.Revision > known.Revision || untouched)
                     {
-                        local.Dead = m.Dead;
-                        local.DeathObservedAtUtc = m.DeathAt;
-                        local.SnipedAtUtc = m.SnipedAt;
+                        if (!ARankHistory.PreserveObservedDeath(local, m))
+                        {
+                            local.Dead = m.Dead;
+                            local.DeathObservedAtUtc = m.DeathAt;
+                            local.SnipedAtUtc = m.SnipedAt;
+                            local.DeathSource = m.Dead ? m.DeathSource : string.Empty;
+                        }
                         local.Spiced = m.Spiced;
                         local.IsCustom = m.IsCustom;
                         if (!string.IsNullOrEmpty(m.Name)) local.Name = m.Name;
@@ -646,7 +658,7 @@ public sealed partial class SyncCoordinator : IDisposable
                     _detector.RemoveSighting(key.NameId, key.Instance, key.WorldId);
 
                 // Remember the canonical signature, not any unsent local edit.
-                var canonical = new DetectedMark { Dead = m.Dead, DeathObservedAtUtc = m.DeathAt, SnipedAtUtc = m.SnipedAt,
+                var canonical = new DetectedMark { Dead = m.Dead, DeathObservedAtUtc = m.DeathAt, SnipedAtUtc = m.SnipedAt, DeathSource = m.DeathSource,
                     Spiced = m.Spiced, Name = m.Name, ZoneName = m.ZoneName, IsCustom = m.IsCustom,
                     TerritoryId = m.TerritoryId, MapId = m.MapId, MapPosition = new Vector2(m.X, m.Y), LastSeenUtc = m.LastSeen,
                     LocationSeenAtUtc = locationSeenAt };
@@ -1072,27 +1084,8 @@ public sealed partial class SyncCoordinator : IDisposable
         };
     }
 
-    private static SyncMark ToSyncMark(DetectedMark m, long baseRevision) => new()
-    {
-        NameId = m.NameId,
-        Instance = m.Instance,
-        WorldId = m.WorldId,
-        Name = m.Name,
-        TerritoryId = m.TerritoryId,
-        MapId = m.MapId,
-        WorldName = m.WorldName,
-        X = m.MapPosition.X,
-        Y = m.MapPosition.Y,
-        Dead = m.Dead,
-        FirstSeen = AsUtc(m.FirstSeenUtc),
-        LastSeen = AsUtc(m.LastSeenUtc),
-        DeathAt = m.DeathObservedAtUtc is { } d ? AsUtc(d) : null,
-        SnipedAt = m.SnipedAtUtc is { } sniped ? AsUtc(sniped) : null,
-        IsCustom = m.IsCustom,
-        ZoneName = m.ZoneName,
-        Spiced = m.Spiced,
-        BaseRevision = baseRevision,
-    };
+    private SyncMark ToSyncMark(DetectedMark m, long baseRevision) =>
+        TrainMarkSync.FromLocal(m, baseRevision, _sightingClock.ToServer);
 
     private static DateTime AsUtc(DateTime dt) =>
         dt.Kind == DateTimeKind.Utc ? dt : DateTime.SpecifyKind(dt, DateTimeKind.Utc);

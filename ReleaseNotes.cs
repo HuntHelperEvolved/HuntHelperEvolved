@@ -34,6 +34,15 @@ public static class ReleaseNotes
 
     public static readonly Release[] All =
     {
+        new("0.7.0.3", "2026-10-14", "Bear A-rank reports, train currency messages and more reliable map markers.",
+        [
+            new("Snipe corrections", "Shared exact-time corrections use the server's clock, so clock differences do not leave an older unknown window in place. Train rows and completion reports use the corrected kill time and exact respawn window while retaining the sniped classification.", Kihtli),
+            new("Train currency", "Currency in Train and /hht creates a message from the living A-ranks currently listed across worlds and instances. Preview estimated full-credit rewards or the maximum starting balance before each holding cap, then copy plain text, party or shout text. Optional templates support the currency amounts and living-mark count.", Kihtli),
+            new("Bear A-ranks", "Confirmed Bear kills update A-rank timers and matching train rows. Sightings retain their UP time and available location without adding train rows; later live evidence restores UP. Witnessed plugin kills take priority for the same spawn, and Bear kills can replace manual snipe reports. Genuine plugin-witnessed deaths also update timers without a train row. Completion reports list Bear-confirmed kills separately with exact times, without counting them as witnessed train kills.", Kihtli),
+            new("A-rank board", "UP shows its sighting time beside the clickable last known location. Green marks UP in the train; blue marks UP outside the train or READY without a sighting. Not in train list hides matching entries by mark, world and instance, including dead rows. Unknown timers and offline worlds remain neutral.", Kihtli),
+            new("Map markers", "Markers retry failed image loads and wait for the native map to be ready. Existing markers stay visible while replacement textures load, reducing cases where reopening the map was needed to see them.", Kihtli),
+            new("Updating", "Bear A-rank features require server 0.3.33-bear-preview.7 or later and receiving plugins on 0.7.0.3. Older plugins can still connect but may miss independent UP reports, retain an earlier manual snipe window or show confirmed kills as uncertain snipes. History loads on connection and reconnect; no recurring A-rank HTTP poll is added.", Kihtli),
+        ]),
         new("0.7.0.2", "2026-10-08", "Share exact A-rank corrections after an unknown snipe report.",
         [
             new("Shared A-rank timers", "Known kill times entered after an unknown Sniped report now update the group's timer. The Sniped action in /hha and the main A-rank table shares exact times and unknown-time bounds for the selected world and instance, even without a train row. Existing train rows remain classified as sniped.", Kihtli),

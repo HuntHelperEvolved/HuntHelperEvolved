@@ -19,6 +19,7 @@ public class TrackedMark
     /// Null when first seen dead; a sighting time is never an exact death time.
     /// </summary>
     public DateTime? DeathObservedAtUtc;
+    public string DeathSource = string.Empty;
     public DateTime LastSeenUtc;
 
     /// <summary>
@@ -27,5 +28,8 @@ public class TrackedMark
     /// the moment it died.
     /// </summary>
     public DateTime? SnipedAtUtc;
+
+    /// <summary>Exact kill timing supplied by A-rank history; does not imply train participation.</summary>
+    public DateTime? ReportedKillAtUtc;
 }
 

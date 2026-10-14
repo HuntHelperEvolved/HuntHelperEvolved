@@ -12,6 +12,7 @@ internal static class TrainMarkSignature
     {
         var h = new HashCode();
         h.Add(m.Dead);
+        h.Add(m.DeathSource);
         h.Add(m.DeathObservedAtUtc?.Ticks / TimeSpan.TicksPerSecond ?? 0);
         h.Add(m.Spiced);
         h.Add(m.SnipedAtUtc?.Ticks ?? 0);
@@ -20,6 +21,7 @@ internal static class TrainMarkSignature
         h.Add(m.IsCustom);
         h.Add(m.TerritoryId);
         h.Add(m.MapId);
+        h.Add(m.LocationSeenAtUtc?.Ticks / (10 * TimeSpan.TicksPerSecond) ?? 0);
         h.Add(MathF.Round(m.MapPosition.X, 1));
         h.Add(MathF.Round(m.MapPosition.Y, 1));
         // Sniped windows and alive evidence after a death must reach the server

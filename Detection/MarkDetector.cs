@@ -331,11 +331,13 @@ public sealed class MarkDetector
                 // and it carries as far as the object table does. The battle
                 // log only reaches as far as the fight, so a mark killed across
                 // the zone never produced a line and stayed lit.
-                if (IsDead(mob) && !existing.Dead && _config.MarkDeadOnObservedDefeat)
+                if (IsDead(mob) && _config.MarkDeadOnObservedDefeat)
                 {
-                    existing.Dead = true;
-                    existing.DeathObservedAtUtc = witnessedDeath ? now : null;
-                    if (witnessedDeath) MarkObservedDead?.Invoke(existing);
+                    if (witnessedDeath)
+                    {
+                        if (existing.ObserveDeath(now)) MarkObservedDead?.Invoke(existing);
+                    }
+                    else if (!existing.Dead) existing.Dead = true;
                 }
 
                 continue;
@@ -566,8 +568,10 @@ public sealed class MarkDetector
             Dead = m.Dead,
             FirstSeenUtc = m.FirstSeenUtc,
             LastSeenUtc = m.LastSeenUtc,
+            LastSeenLocalUtc = m.LastSeenLocalUtc,
             LocationSeenAtUtc = m.LocationSeenAtUtc,
             DeathObservedAtUtc = m.DeathObservedAtUtc,
+            DeathSource = m.DeathSource,
             Order = m.Order,
             IsCustom = m.IsCustom,
             ZoneName = m.ZoneName,
@@ -609,8 +613,10 @@ public sealed class MarkDetector
                 Dead = p.Dead,
                 FirstSeenUtc = p.FirstSeenUtc,
                 LastSeenUtc = p.LastSeenUtc,
+                LastSeenLocalUtc = p.LastSeenLocalUtc,
                 LocationSeenAtUtc = p.LocationSeenAtUtc,
                 DeathObservedAtUtc = p.DeathObservedAtUtc,
+                DeathSource = p.DeathSource,
                 Order = p.Order,
                 IsCustom = p.IsCustom,
                 ZoneName = p.ZoneName,

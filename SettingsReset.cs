@@ -167,6 +167,7 @@ public static class SettingsReset
                 config.ARankWindowWorlds = defaults.ARankWindowWorlds;
                 config.ARankWindowExpansions = defaults.ARankWindowExpansions;
                 config.ARankWindowAvailableOnly = defaults.ARankWindowAvailableOnly;
+                config.ARankWindowNotInTrain = defaults.ARankWindowNotInTrain;
                 config.ARankWindowSearch = defaults.ARankWindowSearch;
                 config.SRankWindowCurrentWorld = defaults.SRankWindowCurrentWorld;
                 config.SRankWindowWorlds = defaults.SRankWindowWorlds;

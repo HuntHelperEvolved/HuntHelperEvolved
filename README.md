@@ -6,8 +6,10 @@ summaries and sniped/missing-mark details, draws spawn points, your detection ra
 event locations on the **in-game map**, counts S-rank trigger mobs, and keeps a
 lifetime per-mark kill tally for every character you play.
 
-> **0.7.0.2:** Shared A-rank snipe times and corrections, with
-> confirmation when the server accepts them.
+> **0.7.0.3:** Bear A-rank timers and sightings, train currency messages,
+> exact snipe timing in reports and more reliable map markers.
+> Bear A-rank features require server **0.3.33-bear-preview.7 or later** and
+> receiving plugins on **0.7.0.3**.
 > Bear S-rank reports are enabled by default on compatible configured servers;
 > turn them off under Sharing.
 > Published builds use the existing testing feed.
@@ -135,6 +137,14 @@ board confirms when the server accepts a report. Offline reports and
 reports on older servers remain local; reconnect or update the server, then
 submit again to share them. Reporting works without a train row.
 
+Confirmed Bear A-rank reports require server **0.3.33-bear-preview.7 or later**
+and plugin **0.7.0.3** on receiving clients. Bear kills correct manual snipe
+reports; witnessed plugin kills take priority for the same spawn. Independent
+sightings show **UP**, their observation time and any available location without
+adding train entries. A later live sighting also revives an existing matching
+row. Older plugins still connect but do not fully understand these sources,
+independent sightings or exact report timings.
+
 Manual S-rank mapping: **Shift-click** an S-capable map point to toggle a shared
 exclusion, or click the point count in `/hhs` to compare coordinates and select a
 source (Manual, Faloop, Bear or Other). Requires a server with manual-mapping
@@ -167,6 +177,15 @@ sync off while keeping connection details. Saved sync credentials and Discord
 destinations have separate clearing actions and are excluded from reset-all.
 
 ## Release notes
+
+### 0.7.0.3 — changes since 0.7.0.2
+
+- **Snipe corrections:** Accept shared exact-time corrections using the server's clock, so a receiver's clock offset does not leave the previous unknown snipe window in place. Train rows and completion reports use the reported exact kill time when available while retaining the sniped classification.
+- **Train currency:** Generate a currency message from the living A-ranks currently in the train, with a live preview and copy controls. Show estimated full-credit rewards or the maximum starting balance before reaching each currency's holding cap.
+- **Bear A-ranks:** Share confirmed Bear kill times and live sightings through the existing server connection. Sightings retain their time and location independently of train membership; kills update matching train rows and `/hha`. Plugin-witnessed kills take priority over Bear kills, Bear kills replace plugin snipes, and newer live sightings restore UP. Reports list Bear-confirmed kills separately with exact timing; they retain their source and do not count as witnessed train kills. Genuine plugin-witnessed deaths also update timers without a train row. A-rank history loads on connection/reconnection without a recurring A-rank poll.
+- **A-rank board:** `/hha` shows UP with its sighting time and a clickable last known location. Status cells use green for UP in the train, blue for UP outside the train or READY without a sighting, yellow for an open window, and red for cooldown or a snipe whose opening is unknown. **Not in train list** filters by the exact mark, world and instance, including dead train entries. Unknown timers and offline worlds remain neutral.
+- **Map markers:** Retry failed image loads, wait for the native map to be ready, and keep existing markers visible while replacement images load.
+- **Updating:** Bear A-rank features require server **0.3.33-bear-preview.7 or later** and receiving plugins on **0.7.0.3**. Older plugins can still connect but may miss independent UP reports, retain an earlier manual snipe window or show confirmed kills as uncertain snipes.
 
 ### 0.7.0.2 — changes since 0.7.0.1
 
@@ -404,6 +423,18 @@ Hide dead changes only the display. Setup's **Remove Dead** removes dead route
 rows while keeping their report history. Expansion totals exclude rally stops
 and retain recorded counts when dead rows are hidden.
 
+**Currency** in Train and `/hht` generates a message from all living A-ranks
+currently listed, grouped by expansion across their worlds and instances. Dead
+and sniped marks, rally stops and S-rank watches are excluded. The preview updates
+as the train changes. Choose **Amount gained** for full-credit estimates or
+**Starting balance** for the maximum balance that leaves room below each holding
+cap. Weekly tomestone limits and reward eligibility still apply; this does not
+read your character's balance. **Copy text**, **Party** and **Shout** copy the
+preview, with the appropriate chat prefix where selected. The optional session
+template accepts `$c` for currency amounts and `$n` for living A-rank count.
+This follows the [Hunt Train Currency Macro Generator](https://xiv.wobbuffet.net/hunt-tome-macro/),
+with tomestone rates checked against the [official 7.4 patch notes](https://na.finalfantasyxiv.com/lodestone/topics/detail/06944d892fd98cc00b2a28ff77edbafa4f7eef54/).
+
 **Scouting reports** live under **Reports > Scouting report**. They summarize
 last recorded state by world and expansion using compact remaining/expected
 counts such as **1/12** for a partial scout. Totals use the full expansion
@@ -451,10 +482,17 @@ on the right of the row, alongside **X** for removal.
 The check button records a kill now or restores a dead mark. Crosshairs marks a
 mark found gone; clearing that evidence leaves it dead with an unknown kill
 time. These remain separate report states.
-Their individual respawn window uses the interval between the last live sighting
+When an exact kill time is reported in `/hha`, their train-row details and
+completion report use that time and its exact respawn window. They remain sniped
+and do not count as witnessed train kills. Without an exact correction, their
+individual respawn window uses the interval between the last live sighting
 and when the train found them missing. Roster marks not recorded on this train
 appear under **Missing / not seen this train**, without an asserted respawn time.
 Unfinished marks, unknown kill times and S-rank checks retain their own details.
+
+Confirmed Bear kills use exact kill and respawn times in a separate
+**Bear-confirmed kills** section. Plugin kill reports take priority for the same
+spawn. A later live sighting restores UP in `/hha` and any matching train row.
 
 Manage S-rank watches in **Setup > S-rank watch setup**. Their Spawned / Didn't
 Spawn boxes remain under the route, including in the popout. Hold **Ctrl** and

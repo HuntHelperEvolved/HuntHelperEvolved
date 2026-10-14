@@ -44,14 +44,17 @@ internal static class TrainRowPresentation
         return (recorded, remaining);
     }
 
-    internal static string Describe(DetectedMark mark, DateTime now, string? secondaryLabel, bool showAge, bool showSpicing)
+    internal static string Describe(DetectedMark mark, DateTime now, string? secondaryLabel, bool showAge, bool showSpicing,
+        DateTime? reportedKillAtUtc = null)
     {
         var parts = new List<string>();
         if (!string.IsNullOrWhiteSpace(secondaryLabel)) parts.Add(secondaryLabel);
         if (mark.IsCustom) parts.Add(mark.Dead ? "Stop complete" : "Rally stop");
         else if (mark.Dead)
         {
-            if (mark.SnipedAtUtc is { } gone) parts.Add($"Found gone {gone.ToLocalTime():HH:mm}");
+            if (mark.DeathSource == "bear" && mark.SnipedAtUtc is { } bear) parts.Add($"Bear · killed {(reportedKillAtUtc ?? bear).ToLocalTime():HH:mm}");
+            else if (mark.SnipedAtUtc is { } gone) parts.Add(reportedKillAtUtc is { } reported
+                ? $"Sniped · known kill {reported.ToLocalTime():HH:mm}" : $"Found gone {gone.ToLocalTime():HH:mm}");
             else if (mark.DeathObservedAtUtc is { } killed) parts.Add($"Killed {killed.ToLocalTime():HH:mm}");
             else parts.Add("Dead · kill time unknown");
         }

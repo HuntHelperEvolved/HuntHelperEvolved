@@ -13,7 +13,7 @@ namespace HuntHelperEvolved;
 
 public sealed partial class Plugin
 {
-    private enum TrainWorkspacePage { Route, Reports, Setup }
+    private enum TrainWorkspacePage { Route, Reports, Setup, Currency }
     private TrainWorkspacePage _trainWorkspacePage;
     private TrainWorkspacePage _compactTrainPanel;
     private bool _trainCompletionReport;
@@ -51,13 +51,29 @@ public sealed partial class Plugin
         DrawTrainWorkspaceBody();
     }
 
-    private float TrainSecondaryWidth(bool compact)
+    private static float[] TrainSecondaryControlWidths(bool compact) => new[]
     {
-        var gap = ImGui.GetStyle().ItemSpacing.X;
-        return HuntUi.ButtonWidth("Plan", compact ? null : FontAwesomeIcon.Route)
-            + HuntUi.ButtonWidth("Reports", compact ? null : FontAwesomeIcon.PaperPlane)
-            + HuntUi.ButtonWidth("Import", FontAwesomeIcon.Clipboard)
-            + ImGui.GetFrameHeight() + gap * 3;
+        HuntUi.ButtonWidth("Import", FontAwesomeIcon.Clipboard),
+        HuntUi.ButtonWidth("Plan", compact ? null : FontAwesomeIcon.Route),
+        HuntUi.ButtonWidth("Reports", compact ? null : FontAwesomeIcon.PaperPlane),
+        HuntUi.ButtonWidth("Currency", compact ? null : FontAwesomeIcon.Coins),
+        ImGui.GetFrameHeight(),
+    };
+
+    private static float TrainSecondaryWidth(bool compact) =>
+        TrainSecondaryControlWidths(compact).Sum() + ImGui.GetStyle().ItemSpacing.X * 4;
+
+    private static int TrainSecondaryRows(bool compact, float availableWidth)
+    {
+        var rows = 1;
+        var used = 0f;
+        foreach (var control in TrainSecondaryControlWidths(compact))
+        {
+            var needed = control + (used > 0 ? ImGui.GetStyle().ItemSpacing.X : 0);
+            if (used > 0 && used + needed > availableWidth) { rows++; used = control; }
+            else used += needed;
+        }
+        return rows;
     }
 
     private static void TrainControlSameLine(float width)
@@ -86,7 +102,8 @@ public sealed partial class Plugin
         var primaryWidth = TrainOperatingControlsWidth(compact: false);
         var secondaryWidth = TrainSecondaryWidth(compact: false);
         var inline = primaryWidth + secondaryWidth + padding * 3 <= width;
-        var rows = inline ? 1 : primaryWidth + padding * 2 > width ? 3 : 2;
+        var rows = inline ? 1 : (primaryWidth + padding * 2 > width ? 2 : 1)
+            + TrainSecondaryRows(compact: false, width - padding * 2);
         var height = ImGui.GetFrameHeight() * rows + padding * 2
             + ImGui.GetStyle().ItemSpacing.Y * (rows - 1);
         HuntUi.FillBand(height, HuntTheme.Panel);
@@ -188,6 +205,8 @@ public sealed partial class Plugin
         DrawTrainPanelChoice("Plan", TrainWorkspacePage.Setup, compact);
         TrainControlSameLine(HuntUi.ButtonWidth("Reports", compact ? null : FontAwesomeIcon.PaperPlane));
         DrawTrainPanelChoice("Reports", TrainWorkspacePage.Reports, compact);
+        TrainControlSameLine(HuntUi.ButtonWidth("Currency", compact ? null : FontAwesomeIcon.Coins));
+        DrawTrainPanelChoice("Currency", TrainWorkspacePage.Currency, compact);
         CompactTrainControlSameLine();
         if (compact) ImGui.SetCursorPosX(Math.Max(ImGui.GetCursorPosX(), ImGui.GetWindowContentRegionMax().X - ImGui.GetFrameHeight()));
         if (HuntUi.IconButton("train-view", FontAwesomeIcon.SlidersH, "Train view and export")) ImGui.OpenPopup("TrainViewOptions");
@@ -198,7 +217,8 @@ public sealed partial class Plugin
     {
         var selected = (compact ? _compactTrainPanel : _trainWorkspacePage) == panel;
         if (HuntUi.Button("panel-" + panel, label, compact ? null
-            : panel == TrainWorkspacePage.Setup ? FontAwesomeIcon.Route : FontAwesomeIcon.PaperPlane,
+            : panel == TrainWorkspacePage.Setup ? FontAwesomeIcon.Route
+            : panel == TrainWorkspacePage.Currency ? FontAwesomeIcon.Coins : FontAwesomeIcon.PaperPlane,
             selected: selected, quiet: true)) SelectTrainPanel(selected ? TrainWorkspacePage.Route : panel, compact);
     }
 
@@ -245,7 +265,8 @@ public sealed partial class Plugin
     private void DrawTrainContextPanel(bool compact)
     {
         var panel = compact ? _compactTrainPanel : _trainWorkspacePage;
-        var title = panel == TrainWorkspacePage.Setup ? "Train plan" : "Train reports";
+        var title = panel == TrainWorkspacePage.Setup ? "Train plan"
+            : panel == TrainWorkspacePage.Currency ? "Currency" : "Train reports";
         ImGui.AlignTextToFramePadding();
         ImGui.TextUnformatted(title);
         ImGui.SameLine();
@@ -256,6 +277,11 @@ public sealed partial class Plugin
         if (panel == TrainWorkspacePage.Setup)
         {
             DrawTrainSetup(compact);
+            return;
+        }
+        if (panel == TrainWorkspacePage.Currency)
+        {
+            DrawTrainCurrency();
             return;
         }
         var available = ImGui.GetContentRegionAvail().Y;
@@ -909,13 +935,14 @@ public sealed partial class Plugin
             hash.Add(mark.Name); hash.Add(mark.NameId); hash.Add(mark.WorldId); hash.Add(mark.WorldName);
             hash.Add(mark.Instance); hash.Add(mark.TerritoryId); hash.Add(mark.MapId); hash.Add(mark.MapPosition);
             hash.Add(mark.Dead); hash.Add(mark.LastSeenUtc); hash.Add(mark.DeathObservedAtUtc); hash.Add(mark.SnipedAtUtc);
-            hash.Add(mark.IsCustom); hash.Add(mark.Spiced); hash.Add(mark.ZoneName);
+            hash.Add(mark.IsCustom); hash.Add(mark.Spiced); hash.Add(mark.ZoneName); hash.Add(mark.DeathSource);
         }
         foreach (var name in scouts) hash.Add(name);
         foreach (var mark in history)
         {
             hash.Add(mark.Key); hash.Add(mark.Name); hash.Add(mark.WorldName); hash.Add(mark.TerritoryId);
             hash.Add(mark.Dead); hash.Add(mark.LastSeenUtc); hash.Add(mark.DeathObservedAtUtc); hash.Add(mark.SnipedAtUtc);
+            hash.Add(mark.ReportedKillAtUtc); hash.Add(mark.DeathSource);
         }
         foreach (var flag in _config.Flags)
         {

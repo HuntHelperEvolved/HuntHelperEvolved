@@ -3,6 +3,7 @@ using Dalamud.Game.Addon.Lifecycle;
 using Dalamud.Game.Addon.Lifecycle.AddonArgTypes;
 using Dalamud.Plugin.Services;
 using Dalamud.Plugin;
+using Dalamud.Interface.Textures.TextureWraps;
 using KamiToolKit.MapOverlay;
 using System;
 using System.Collections.Generic;
@@ -48,6 +49,7 @@ public sealed unsafe class HuntMapOverlay : IDisposable
 
     private readonly IDalamudPluginInterface _pluginInterface;
     private Dictionary<string, string>? _dotPaths;
+    private readonly MapTextureCache<IDalamudTextureWrap> _textures;
 
     // The colours the files on disk were drawn in. A change means new files,
     // new paths, and markers that have to be re-placed to pick them up.
@@ -103,6 +105,7 @@ public sealed unsafe class HuntMapOverlay : IDisposable
         MarkDetector detector,
         SsEventWatcher ssEvent,
         IDalamudPluginInterface pluginInterface,
+        ITextureProvider textureProvider,
         SyncCoordinator? sync = null)
     {
         _framework = framework;
@@ -117,10 +120,15 @@ public sealed unsafe class HuntMapOverlay : IDisposable
         _ssEvent = ssEvent;
         _sync = sync;
         _pluginInterface = pluginInterface;
+        _textures = new MapTextureCache<IDalamudTextureWrap>(
+            (path, cancellation) => textureProvider.CreateFromImageAsync(File.ReadAllBytes(path),
+                $"HHE map: {Path.GetFileName(path)}", cancellation),
+            (path, ex) => _log.Warning(ex, "Could not load map image {Image}; retrying.", Path.GetFileName(path)));
 
         try
         {
             _addonLifecycle.RegisterListener(AddonEvent.PostRefresh, "AreaMap", OnMapRefresh);
+            _addonLifecycle.RegisterListener(AddonEvent.PostSetup, "AreaMap", OnMapRefresh);
             _addonLifecycle.RegisterListener(AddonEvent.PreUpdate, "AreaMap", OnMapUpdate);
             Status = "Waiting to start.";
         }
@@ -216,12 +224,11 @@ public sealed unsafe class HuntMapOverlay : IDisposable
         {
             var markWorld = MapCoordinates.ToWorld(_dataManager, mapId, markSpawn.X, markSpawn.Y);
 
-            _overlay.AddMarker(new MapMarkerNode
+            _overlay.AddMarker(new MapTextureMarker(CopyTexture(dots["ssmark"]))
             {
                 AllowAnyMap = false,
                 MapId = mapId,
                 Position = markWorld,
-                TexturePath = dots["ssmark"],
                 Size = new Vector2(_config.SpawnDotSize * 2.2f, _config.SpawnDotSize * 2.2f),
                 TextTooltip = "SS event — the mark spawns here\n"
                               + $"{markSpawn.X:F1}, {markSpawn.Y:F1}\n"
@@ -236,12 +243,11 @@ public sealed unsafe class HuntMapOverlay : IDisposable
         {
             var world = MapCoordinates.ToWorld(_dataManager, mapId, position.X, position.Y);
 
-            _overlay.AddMarker(new MapMarkerNode
+            _overlay.AddMarker(new MapTextureMarker(CopyTexture(dots["ssminion"]))
             {
                 AllowAnyMap = false,
                 MapId = mapId,
                 Position = world,
-                TexturePath = dots["ssminion"],
 
                 // Smaller than a live mark, on purpose. A minion standing on
                 // its own spot is drawn at the same coordinates in the same
@@ -320,9 +326,9 @@ public sealed unsafe class HuntMapOverlay : IDisposable
             retained.Add(sighting.LiveKey);
             if (!_liveNodes.TryGetValue(sighting.LiveKey, out var nodes))
             {
-                var node = new MapMarkerNode
+                var node = new MapTextureMarker(CopyTexture(dots[dot]))
                 {
-                    AllowAnyMap = false, MapId = mapId, Position = world, TexturePath = dots[dot],
+                    AllowAnyMap = false, MapId = mapId, Position = world,
                     Size = new Vector2(_config.SpawnDotSize * LiveMarkScale, _config.SpawnDotSize * LiveMarkScale),
                 };
                 _overlay.AddMarker(node);
@@ -613,11 +619,10 @@ public sealed unsafe class HuntMapOverlay : IDisposable
         // The path goes under the ring, matching the order Hunt Helper draws in.
         if (_config.ShowPlayerFacingOnMap)
         {
-            var path = new WorldSizedMarker(MarkerPositionScaling)
+            var path = new WorldSizedMarker(MarkerPositionScaling, CopyTexture(dots["facing"]))
             {
                 AllowAnyMap = false,
                 MapId = mapId,
-                TexturePath = dots["facing"],
                 WorldSize = new Vector2(ProjectedPathLength, radius * 2f),
                 TextTooltip = "Projected path",
 
@@ -643,11 +648,10 @@ public sealed unsafe class HuntMapOverlay : IDisposable
         // them up.
         if (_config.ShowPlayerCircleOnMap && _config.ShowPlayerFacingOnMap)
         {
-            var fill = new WorldSizedMarker(MarkerPositionScaling)
+            var fill = new WorldSizedMarker(MarkerPositionScaling, CopyTexture(dots["fill"]))
             {
                 AllowAnyMap = false,
                 MapId = mapId,
-                TexturePath = dots["fill"],
                 WorldSize = new Vector2(radius * 2f, radius * 2f),
                 TextTooltip = "Detection range",
                 PositionProvider = PlayerPosition,
@@ -665,11 +669,10 @@ public sealed unsafe class HuntMapOverlay : IDisposable
             // edge and no further.
             var length = radius;
 
-            var line = new WorldSizedMarker(MarkerPositionScaling)
+            var line = new WorldSizedMarker(MarkerPositionScaling, CopyTexture(dots["dirline"]))
             {
                 AllowAnyMap = false,
                 MapId = mapId,
-                TexturePath = dots["dirline"],
                 WorldSize = new Vector2(
                     length,
                     radius * Math.Clamp(_config.PlayerDirectionLineThickness, 0.01f, 0.4f)),
@@ -687,11 +690,10 @@ public sealed unsafe class HuntMapOverlay : IDisposable
         {
             var diameter = radius * Math.Clamp(_config.PlayerPositionDotSize, 0.01f, 0.5f);
 
-            var dot = new WorldSizedMarker(MarkerPositionScaling)
+            var dot = new WorldSizedMarker(MarkerPositionScaling, CopyTexture(dots["posdot"]))
             {
                 AllowAnyMap = false,
                 MapId = mapId,
-                TexturePath = dots["posdot"],
                 WorldSize = new Vector2(diameter, diameter),
                 TextTooltip = "You",
                 PositionProvider = PlayerPosition,
@@ -703,11 +705,10 @@ public sealed unsafe class HuntMapOverlay : IDisposable
 
         if (_config.ShowPlayerCircleOnMap)
         {
-            var ring = new WorldSizedMarker(MarkerPositionScaling)
+            var ring = new WorldSizedMarker(MarkerPositionScaling, CopyTexture(dots["circle"]))
             {
                 AllowAnyMap = false,
                 MapId = mapId,
-                TexturePath = dots["circle"],
                 WorldSize = new Vector2(radius * 2f, radius * 2f),
                 TextTooltip = "Detection range",
                 PositionProvider = PlayerPosition,
@@ -755,8 +756,7 @@ public sealed unsafe class HuntMapOverlay : IDisposable
 
     /// <summary>
     /// Draws the dots in the configured colours and writes them to the
-    /// plugin's config folder, returning their paths. KamiToolKit takes a file
-    /// path, so they have to exist on disk.
+    /// plugin's config folder, returning their paths for the texture cache.
     ///
     /// The colour is part of the file name on purpose. Textures are cached by
     /// path, so rewriting the same name with new pixels would keep handing back
@@ -1131,21 +1131,24 @@ public sealed unsafe class HuntMapOverlay : IDisposable
                 if (_dotPaths is not null) DrawLiveMarks(mapId, _dotPaths, _config.ShowMarksOnMap ? live : Enumerable.Empty<OtherRankSighting>());
                 return;
             }
-            _needsRefresh = false;
-
-            _overlay.RemoveAllMarkers();
-            _liveNodes.Clear();
-
             var dots = EnsureDotFiles();
             if (dots == null)
             {
-                // The markers are already gone and the refresh already spent,
-                // so leaving it here would leave the map bare for good. Ask
-                // for another pass instead.
-                _needsRefresh = true;
                 Status = "Could not prepare the dot images — see /xllog.";
                 return;
             }
+            if (!_textures.Prepare(dots.Values, DateTime.UtcNow))
+            {
+                Status = "Loading map images.";
+                return;
+            }
+
+            // Keep the previous nodes until their replacements can be drawn.
+            // Each node receives its own reference; rebuilding never unloads
+            // an image still in use by another marker.
+            _needsRefresh = false;
+            _overlay.RemoveAllMarkers();
+            _liveNodes.Clear();
 
             var guides = DrawPlayerGuides(mapId, dots, out var guidesWaiting);
             if (guidesWaiting) _needsRefresh = true;
@@ -1235,12 +1238,11 @@ public sealed unsafe class HuntMapOverlay : IDisposable
                 if (dot is "scand" or "dim-scand" or "train-scand")
                     markerSize *= DotTextures.OutlinedSize(_config.SpawnCandidateOutlineWidth, _config.OutlineMapDots) / (float)DotTextures.Size;
 
-                _overlay.AddMarker(new MapMarkerNode
+                _overlay.AddMarker(new MapTextureMarker(CopyTexture(dots[dot]))
                 {
                     AllowAnyMap = false,
                     MapId = mapId,
                     Position = world,
-                    TexturePath = dots[dot],
                     Size = new Vector2(markerSize, markerSize),
                     TextTooltip = tooltip + ClickHint + (point.Ranks.HasFlag(SpawnRanks.S) && _sync?.SupportsManualMapping == true ? "\nShift-click: toggle manual S-rank exclusion." : ""),
                     OnClick = SpawnPointClick(territory, worldId, instance, mapId, pointIndex, point),
@@ -1281,10 +1283,19 @@ public sealed unsafe class HuntMapOverlay : IDisposable
 
     private bool StartOverlay()
     {
+        // KamiToolKit considers setup complete even when the native map
+        // component is missing. Wait for it instead of leaving an unattached
+        // controller that only recovers when AreaMap is reopened.
+        var addon = (FFXIVClientStructs.FFXIV.Client.UI.AddonAreaMap*)
+            _gameGui.GetAddonByName("AreaMap").Address;
+        if (addon == null || addon->GetNodeById(53) == null || addon->AreaMap.ComponentMap == null)
+            return false;
         if (!EnsureOverlay() || _overlay is null) return false;
         _overlay.Enable();
         return true;
     }
+
+    private IDalamudTextureWrap CopyTexture(string path) => _textures.Get(path).CreateWrapSharingLowLevelResource();
 
     private void SetOverlayVisible(bool visible)
     {
@@ -1298,8 +1309,10 @@ public sealed unsafe class HuntMapOverlay : IDisposable
         var cleanup = new CleanupSequence();
         cleanup.Run("map update callback", () => _addonLifecycle.UnregisterListener(AddonEvent.PreUpdate, "AreaMap", OnMapUpdate));
         cleanup.Run("map refresh callback", () => _addonLifecycle.UnregisterListener(AddonEvent.PostRefresh, "AreaMap", OnMapRefresh));
+        cleanup.Run("map setup callback", () => _addonLifecycle.UnregisterListener(AddonEvent.PostSetup, "AreaMap", OnMapRefresh));
         // The upstream controller owns its nodes; never manually dispose them first.
         cleanup.Run("map overlay", () => _overlay?.Dispose());
+        cleanup.Run("map textures", _textures.Dispose);
         _liveNodes.Clear();
         _overlay = null;
         cleanup.ThrowIfFailed();

@@ -65,8 +65,10 @@ public sealed class SyncMark
     public bool Dead { get; set; }
     public DateTime FirstSeen { get; set; }
     public DateTime LastSeen { get; set; }
+    public DateTime? LocationSeenAt { get; set; }
     public DateTime? DeathAt { get; set; }
     public DateTime? SnipedAt { get; set; }
+    public string DeathSource { get; set; } = string.Empty;
     public bool IsCustom { get; set; }
     public string ZoneName { get; set; } = string.Empty;
     public bool Spiced { get; set; }
@@ -323,6 +325,7 @@ public static class ServerMessageTypes
     public const string SightingsExpired = "sightings.expired";
     public const string ARankLocations = "aranks.locations";
     public const string ARankUpdates = "aranks.update";
+    public const string ARankSightings = "aranks.sightings";
     public const string SRankUpdate = "srank.update";
     public const string SpawnUpdate = "spawn.update";
     public const string Presence = "presence";
@@ -351,6 +354,7 @@ public sealed class WelcomeMessage
     public bool SupportsScoutRemoval { get; set; }
     public List<ScoutCreditDto> ScoutCredits { get; set; } = new();
     public List<ARankKill> ARankKills { get; set; } = new();
+    public List<ARankSighting> ARankSightings { get; set; } = new();
     public List<ARankLocation> ARankLocations { get; set; } = new();
     public bool SupportsScopedTrainWatches { get; set; }
     public bool SupportsManualMapping { get; set; }
@@ -374,6 +378,7 @@ public sealed class WelcomeMessage
 }
 
 public sealed class ErrorMessage { public string Code { get; set; } = string.Empty; public string Message { get; set; } = string.Empty; }
+public sealed class ARankSightingsBroadcast { public List<ARankSighting> Sightings { get; set; } = new(); }
 public sealed class ARankLocationsBroadcast { public List<ARankLocation> Locations { get; set; } = new(); }
 public sealed class ARankUpdatesBroadcast
 {

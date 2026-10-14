@@ -15,6 +15,9 @@ internal sealed class TrainStatusInput
     public uint WorldId { get; init; }
     public string WorldName { get; init; } = string.Empty;
     public DateTime NowUtc { get; init; }
+    public DateTime? ServerNowUtc { get; init; }
+    public Func<ARankKill?, DateTime?>? KillTimeForSighting { get; init; }
+    public Func<DateTime?, DateTime?>? LocalTimeForServerEvidence { get; init; }
     public IReadOnlyList<DetectedMark> Marks { get; init; } = Array.Empty<DetectedMark>();
     public IReadOnlyList<ARankKill> Kills { get; init; } = Array.Empty<ARankKill>();
     public IReadOnlyList<ARankSighting> Sightings { get; init; } = Array.Empty<ARankSighting>();
@@ -50,11 +53,13 @@ internal static class TrainStatusBuilder
             .Select(m => new ARankKill { NameId = m.NameId, WorldId = m.WorldId, Instance = m.Instance,
                 At = (m.SnipedAtUtc ?? m.DeathObservedAtUtc)!.Value,
                 LastAliveAt = m.SnipedAtUtc is not null ? m.LastSeenUtc : null,
-                Uncertain = m.SnipedAtUtc is not null }), input.NowUtc);
+                Source = m.DeathSource is "bear" or "observed" or "snipe" ? m.DeathSource : m.SnipedAtUtc is not null ? "snipe" : "observed",
+                EvidenceThrough = m.SnipedAtUtc ?? m.DeathObservedAtUtc,
+                Uncertain = m.SnipedAtUtc is not null && m.DeathSource != "bear" }), input.NowUtc, input.ServerNowUtc, input.Sightings);
         var sightings = input.Sightings.Where(s => s.WorldId == input.WorldId).ToList();
         ARankSightings.Merge(sightings, marks.Where(m => !m.Dead).Select(m => new ARankSighting {
             NameId = m.NameId, WorldId = m.WorldId, Instance = m.Instance,
-            At = m.LastSeenUtc, Alive = true }), input.NowUtc);
+            At = m.LastSeenUtc, LocalAt = m.LastSeenLocalUtc, Alive = true }), input.NowUtc);
         var killsByMark = kills.ToLookup(k => k.NameId);
         var sightingsByMark = sightings.ToDictionary(s => (s.NameId, s.Instance));
         var statuses = input.SRankStatuses.Where(s => s.WorldId == input.WorldId).ToArray();
@@ -90,9 +95,13 @@ internal static class TrainStatusBuilder
                 {
                     var kill = markKills.FirstOrDefault(k => k.Instance == instance);
                     var sighting = sightingsByMark.GetValueOrDefault((nameId, instance));
-                    var up = ARankSightings.IsSpawned(sighting, kill, restart, input.NowUtc);
+                    var localRestart = input.LocalTimeForServerEvidence is { } toLocal ? toLocal(restart) : restart;
+                    var up = ARankSightings.IsSpawned(sighting, kill, localRestart, input.NowUtc,
+                        input.KillTimeForSighting?.Invoke(kill));
                     var (opens, ends) = ARankHistory.Window(kill, info.MinHours, info.MaxHours, restart);
-                    if (ARankSpawnProgress.Fraction(up, opens, ends, input.NowUtc) is not { } progress) continue;
+                    var timerNow = kill is { Revision: > 0, UpdatedAt: not null }
+                        ? input.ServerNowUtc ?? input.NowUtc : input.NowUtc;
+                    if (ARankSpawnProgress.Fraction(up, opens, ends, timerNow) is not { } progress) continue;
                     progressSum += progress;
                     known++;
                     if (progress == 1d) completed++;

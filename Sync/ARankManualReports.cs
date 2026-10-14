@@ -53,7 +53,7 @@ internal static class ARankManualReports
             NameId = nameId, WorldId = world, Instance = instance,
             At = killedAt ?? now, LastAliveAt = lastAlive,
             EarliestKilledAt = earliestKilledAt,
-            Uncertain = killedAt is null, ReportedAt = now,
+            Uncertain = killedAt is null, ReportedAt = now, Source = "snipe", EvidenceThrough = now,
         };
         // A known time may precede the previous found-missing report; it is an
         // explicit correction rather than another historical observation.
@@ -63,7 +63,7 @@ internal static class ARankManualReports
         // A genuinely newer live observation can still establish a new spawn.
         ARankSightings.Merge(sightings, new[] { new ARankSighting
         {
-            NameId = nameId, WorldId = world, Instance = instance, At = now, Alive = false,
+            NameId = nameId, WorldId = world, Instance = instance, At = now, Alive = false, Source = "snipe",
         } }, now);
         if (matchingMark is not null)
         {
@@ -71,6 +71,7 @@ internal static class ARankManualReports
             // The timer can be exact without claiming this train witnessed or
             // participated in the kill. Existing train sync keeps it sniped.
             matchingMark.DeathObservedAtUtc = null;
+            matchingMark.DeathSource = "snipe";
             matchingMark.SnipedAtUtc = now;
             // CaptureHistory reads this field as the lower bound for a snipe.
             // Keep an absent bound absent instead of reusing a corpse timestamp.
@@ -87,7 +88,7 @@ internal static class ARankManualReports
     internal static bool RestoreSnipeBound(IEnumerable<ARankKill> kills, SyncMark incoming,
         DetectedMark local, DetectedMark canonical)
     {
-        if (incoming.IsCustom || !incoming.Dead || incoming.DeathAt is not null
+        if (incoming.DeathSource == "bear" || incoming.IsCustom || !incoming.Dead || incoming.DeathAt is not null
             || incoming.SnipedAt is not { } reportedAt || incoming.LastSeen > reportedAt
             || local.IsCustom || !local.Dead || local.DeathObservedAtUtc is not null
             || local.SnipedAtUtc != reportedAt || local.LastSeenUtc > reportedAt

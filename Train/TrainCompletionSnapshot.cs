@@ -18,7 +18,7 @@ internal static class TrainCompletionSnapshot
             {
                 m.NameId, m.WorldId, m.Instance, m.Name, m.WorldName, m.TerritoryId, m.MapId,
                 m.IsCustom, m.ZoneName, m.Spiced, m.Dead, m.FirstSeenUtc,
-                m.DeathObservedAtUtc, m.SnipedAtUtc,
+                m.DeathObservedAtUtc, m.DeathSource, m.SnipedAtUtc,
                 LastAlive = RelevantLastAlive(m.Dead, m.DeathObservedAtUtc, m.SnipedAtUtc, m.LastSeenUtc),
                 Position = m.IsCustom ? (System.Numerics.Vector2?)m.MapPosition : null
             }),
@@ -26,7 +26,7 @@ internal static class TrainCompletionSnapshot
                 .Select(m => new
                 {
                     m.ModelId, m.WorldId, m.Instance, m.Name, m.WorldName, m.TerritoryId,
-                    m.Dead, m.DeathObservedAtUtc, m.SnipedAtUtc,
+                    m.Dead, m.DeathObservedAtUtc, m.DeathSource, m.SnipedAtUtc, m.ReportedKillAtUtc,
                     LastAlive = RelevantLastAlive(m.Dead, m.DeathObservedAtUtc, m.SnipedAtUtc, m.LastSeenUtc)
                 }),
             Flags = watches

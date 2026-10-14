@@ -182,13 +182,12 @@ public class TrainWatcher : IDisposable
 
             foreach (var mark in _detector.Marks.Values)
             {
-                if (mark.Dead || mark.IsCustom) continue;
+                if (mark.IsCustom) continue;
                 if (mark.Instance != instance || mark.WorldId != worldId) continue;
                 if (string.IsNullOrWhiteSpace(mark.Name)) continue;
                 if (!DefeatedInLine(text, mark.Name)) continue;
 
-                mark.Dead = true;
-                mark.DeathObservedAtUtc = now;
+                if (!mark.ObserveDeath(now)) continue;
                 ObservedDeathCount++;
 
                 // Its dot goes out now rather than waiting for the sighting to
@@ -217,14 +216,14 @@ public class TrainWatcher : IDisposable
     /// Takes a kill from the tally. Public because the tally is wired to this
     /// from Plugin now; it used to arrive on this class's own IPC subscription.
     ///
-    /// Only queue evidence for a living train row. Ordinary hunting outside
+    /// Only queue evidence for an existing row without a witnessed kill. Ordinary hunting outside
     /// the train must not grow the pending queue or kill-deduplication history.
     /// </summary>
     public void OnHuntTallyKill(HuntTallyKill kill)
     {
         if (!_config.AutoMarkDeadEnabled || kill.WorldId == 0
             || !_detector.Marks.TryGetValue((kill.NameId, kill.InstanceId, kill.WorldId), out var mark)
-            || mark.IsCustom || mark.Dead) return;
+            || mark.IsCustom || mark.HasObservedDeath) return;
         _pendingKills.Enqueue(kill);
     }
 
@@ -319,7 +318,7 @@ public class TrainWatcher : IDisposable
         .Select(mark => new TrackedMark { Name = mark.Name, ModelId = mark.NameId,
             Instance = mark.Instance, WorldId = mark.WorldId, WorldName = mark.WorldName,
             TerritoryId = mark.TerritoryId, Dead = mark.Dead, LastSeenUtc = mark.LastSeenUtc,
-            DeathObservedAtUtc = mark.DeathObservedAtUtc, SnipedAtUtc = mark.SnipedAtUtc }));
+            DeathObservedAtUtc = mark.DeathObservedAtUtc, SnipedAtUtc = mark.SnipedAtUtc, DeathSource = mark.DeathSource }));
 
     private void Poll()
     {
@@ -348,10 +347,8 @@ public class TrainWatcher : IDisposable
             var matched = false;
 
             // Use the world captured by the tally, even when delivery follows travel.
-            if (_detector.Marks.TryGetValue((kill.NameId, kill.InstanceId, kill.WorldId), out var own) && !own.Dead)
+            if (_detector.Marks.TryGetValue((kill.NameId, kill.InstanceId, kill.WorldId), out var own) && own.ObserveDeath(killTime))
             {
-                own.Dead = true;
-                own.DeathObservedAtUtc = killTime;
                 matched = true;
             }
 

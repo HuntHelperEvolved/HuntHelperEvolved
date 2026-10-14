@@ -422,7 +422,7 @@ public sealed partial class Plugin : IDalamudPlugin
 
             _ssEvent = new SsEventWatcher(chatGui, clientState, _log, _detector);
             startup.Add(_ssEvent.Dispose);
-            _mapOverlay = new HuntMapOverlay(framework, clientState, objectTable, dataManager, addonLifecycle, gameGui, _log, _config, _detector, _ssEvent, _pluginInterface, _sync);
+            _mapOverlay = new HuntMapOverlay(framework, clientState, objectTable, dataManager, addonLifecycle, gameGui, _log, _config, _detector, _ssEvent, _pluginInterface, textureProvider, _sync);
             startup.Add(_mapOverlay.Dispose);
             startup.Add(() => { _detector.OtherRankDetected -= OnSightingDetected; });
             _detector.OtherRankDetected += OnSightingDetected;
@@ -778,7 +778,12 @@ public sealed partial class Plugin : IDalamudPlugin
     private void OnOpenConfigUi() => OpenPreferences(_settingsPage);
 
     /// <summary>Native report history, including removed dead rows and full world identity.</summary>
-    private List<TrackedMark> BuildCurrentMarks() => _watcher.GetTrackedSnapshot().Values.ToList();
+    private List<TrackedMark> BuildCurrentMarks()
+    {
+        var marks = _watcher.GetTrackedSnapshot().Values.ToList();
+        Sync.ARankHistory.ApplyKnownSnipeTimes(marks, _config.ARankKills);
+        return marks;
+    }
 
     private Task SendTestAsync() => SendReportAsync(
         (webhooks, token) => DiscordRelay.PostTestAsync(webhooks, token));
@@ -2757,18 +2762,29 @@ public sealed partial class Plugin : IDalamudPlugin
 
         var entries = TrainReport.BuildEntries(marks);
 
-        DrawReportEntries(entries.Where(e => !e.Sniped).ToList());
+        DrawReportEntries(entries.Where(e => !e.Sniped && e.DeathSource != "bear").ToList());
+
+        var bearKills = entries.Where(e => e.DeathSource == "bear").ToList();
+        if (bearKills.Count > 0)
+        {
+            ImGui.Spacing();
+            ImGui.Separator();
+            ImGui.Spacing();
+            ImGui.TextWrapped("Bear-confirmed kills");
+            ImGui.Spacing();
+            DrawReportEntries(bearKills);
+        }
 
         // Its own section, exactly as the posted report has it — this is the
         // preview of that report, and a preview laid out differently from the
         // thing it previews is worse than none.
-        var sniped = entries.Where(e => e.Sniped).ToList();
+        var sniped = entries.Where(e => e.Sniped && e.DeathSource != "bear").ToList();
         if (sniped.Count > 0)
         {
             ImGui.Spacing();
             ImGui.Separator();
             ImGui.Spacing();
-            ImGui.TextWrapped("Sniped (found gone — time is when the train got there)");
+            ImGui.TextWrapped("Sniped (known kill time when reported; otherwise found-gone time)");
             ImGui.Spacing();
             DrawReportEntries(sniped);
         }
@@ -2809,6 +2825,10 @@ public sealed partial class Plugin : IDalamudPlugin
             }
 
             var localTime = entry.KillTimeUtc.ToLocalTime().ToString("g");
+            if (entry.DeathSource == "bear")
+                localTime = "Bear confirmed kill " + localTime;
+            else if (entry.Sniped)
+                localTime = (entry.ReportedExactTime ? "Kill reported " : "Found gone ") + localTime;
 
             if (!entry.HasWindow)
             {

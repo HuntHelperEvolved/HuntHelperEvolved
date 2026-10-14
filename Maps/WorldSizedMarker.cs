@@ -1,4 +1,5 @@
 using KamiToolKit.MapOverlay;
+using Dalamud.Interface.Textures.TextureWraps;
 using System;
 using System.Numerics;
 
@@ -26,11 +27,11 @@ namespace HuntHelperEvolved;
 /// out. Rotation is untouched by that method, which is what lets the projected
 /// path be a single rotated quad rather than a line of sprites.
 /// </summary>
-public sealed class WorldSizedMarker : MapMarkerNode
+public sealed class WorldSizedMarker : MapTextureMarker
 {
     private readonly Func<float> markerPositionScaling;
 
-    public WorldSizedMarker(Func<float> markerPositionScaling)
+    public WorldSizedMarker(Func<float> markerPositionScaling, IDalamudTextureWrap texture) : base(texture)
     {
         this.markerPositionScaling = markerPositionScaling;
     }
@@ -73,5 +74,7 @@ public sealed class WorldSizedMarker : MapMarkerNode
 
         if (RotationProvider is { } rotation)
             Rotation = rotation();
+
+        base.OnUpdate();
     }
 }

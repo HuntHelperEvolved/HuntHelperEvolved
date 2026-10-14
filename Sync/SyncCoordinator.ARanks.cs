@@ -19,6 +19,18 @@ public sealed partial class SyncCoordinator
     internal void RememberARankSightings(IEnumerable<ARankSighting> sightings) =>
         _arankSightingsDirty |= ARankSightings.Merge(_config.ARankSightings, sightings, DateTime.UtcNow);
 
+    private void RememberSharedARankSightings(IEnumerable<ARankSighting> sightings) =>
+        RememberARankSightings(sightings.Select(s => new ARankSighting
+        {
+            NameId = s.NameId, WorldId = s.WorldId, Instance = s.Instance,
+            At = s.At, LocalAt = ARankLocations.LocalSeenAt(s.At, _sightingClock.ToLocal, DateTime.UtcNow), Alive = s.Alive, Source = s.Source,
+        }));
+
+    public DateTime? KillTimeForSighting(ARankKill? kill) => kill is null ? null
+        : kill.Revision > 0 && kill.UpdatedAt is not null ? _sightingClock.ToLocal(ARankHistory.EvidenceTime(kill)) : ARankHistory.EvidenceTime(kill);
+
+    public DateTime? LocalTimeForServerEvidence(DateTime? at) => at is { } value ? _sightingClock.ToLocal(value) : null;
+
     internal void ReportARankSnipe(uint nameId, uint worldId, uint instance, DateTime? killedAt)
     {
         _detector.Marks.TryGetValue((nameId, instance, worldId), out var mark);
@@ -45,18 +57,23 @@ public sealed partial class SyncCoordinator
         var kills = incoming.ToList();
         foreach (var kill in kills) kill.ServerId = _arankHistoryServerId;
         var now = DateTime.UtcNow;
-        var changed = ARankHistory.Merge(_config.ARankKills, kills, now);
+        var serverNow = _sightingClock.ToServer(now);
+        var changed = ARankHistory.Merge(_config.ARankKills, kills, now, serverNow, _config.ARankSightings);
         var keys = kills.Select(k => (k.NameId, k.WorldId, k.Instance)).ToHashSet();
         // A backdated correction also ends earlier live confirmations. A real
         // sighting after the report can still establish the following spawn.
         // Use accepted history and its clock-drift allowance so an acknowledged
         // report a few seconds ahead is not lost from sighting history forever.
         _arankSightingsDirty |= ARankSightings.Merge(_config.ARankSightings,
-            _config.ARankKills.Where(k => k.ReportedAt is not null && keys.Contains((k.NameId, k.WorldId, k.Instance)))
-                .Select(k => new ARankSighting
+            _config.ARankKills.Where(k => keys.Contains((k.NameId, k.WorldId, k.Instance)))
+                .Select(k =>
                 {
-                    NameId = k.NameId, WorldId = k.WorldId, Instance = k.Instance,
-                    At = k.ReportedAt!.Value, Alive = false,
+                    var at = ARankHistory.EvidenceTime(k);
+                    return new ARankSighting
+                    {
+                        NameId = k.NameId, WorldId = k.WorldId, Instance = k.Instance,
+                        At = at, LocalAt = k.Revision > 0 && k.UpdatedAt is not null ? _sightingClock.ToLocal(at) : null, Alive = false, Source = ARankHistory.SourceOf(k),
+                    };
                 }), now.AddSeconds(10));
         if (changed) _config.Save();
     }

@@ -17,9 +17,8 @@ namespace HuntHelperEvolved;
 /// solid through the middle, antialiased at the rim, with the corners fully
 /// transparent.
 ///
-/// Written to disk rather than handed over as a texture because KamiToolKit's
-/// MapMarkerInfo picks its image by file path, and generating them means a
-/// release still stays two files (dll + manifest) with nothing to go missing.
+/// Generated files are cached between sessions, then loaded into owned textures
+/// before markers are attached. No image assets need to be bundled separately.
 /// </summary>
 public static class DotTextures
 {

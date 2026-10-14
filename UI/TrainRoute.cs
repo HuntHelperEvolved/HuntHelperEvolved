@@ -187,9 +187,12 @@ public sealed partial class Plugin
             var swapNames = swapMarkAndZone && showZones && !string.IsNullOrWhiteSpace(zone) && zone != "?";
             var name = $"{(isCurrent ? "> " : "")}{(swapNames ? zone : mark.Name)}";
             var secondaryLabel = showZones ? (swapNames ? mark.Name : zone) : null;
+            var reportedKillAt = Sync.ARankHistory.KnownSnipedKillAt(_config.ARankKills,
+                mark.NameId, mark.WorldId, mark.Instance, mark.SnipedAtUtc);
             var detail = TrainRowPresentation.Describe(mark, now, secondaryLabel,
-                _config.ShowMarkAge, _config.ShowSpicing);
+                _config.ShowMarkAge, _config.ShowSpicing, reportedKillAt);
             var status = mark.Dead ? mark.IsCustom ? " (done)"
+                : mark.DeathSource == "bear" ? " (killed: Bear)"
                 : mark.SnipedAtUtc is not null ? " (gone)"
                 : mark.DeathObservedAtUtc is not null ? " (killed)" : " (dead)" : string.Empty;
             var zoneWidth = !showZones ? 0 : TrainRowLayout.SecondaryTextWidth(layout.TextWidth,
@@ -199,7 +202,8 @@ public sealed partial class Plugin
             var displayedName = TrainRowPresentation.FitText(name, nameWidth,
                 static text => ImGui.CalcTextSize(text).X, instance + status);
             var displayedNameWidth = ImGui.CalcTextSize(displayedName).X;
-            var inlineDetail = TrainRowPresentation.Describe(mark, now, null, _config.ShowMarkAge, _config.ShowSpicing);
+            var inlineDetail = TrainRowPresentation.Describe(mark, now, null, _config.ShowMarkAge, _config.ShowSpicing,
+                reportedKillAt);
             if (!string.IsNullOrEmpty(inlineDetail)) inlineDetail = " · " + inlineDetail;
             var displayedDetail = TrainRowPresentation.FitText(inlineDetail,
                 nameWidth - displayedNameWidth, static text => ImGui.CalcTextSize(text).X);
@@ -293,8 +297,9 @@ public sealed partial class Plugin
             {
                 mark.Dead = !mark.Dead;
                 mark.DeathObservedAtUtc = mark.Dead ? DateTime.UtcNow : null;
-                if (!mark.Dead) mark.SnipedAtUtc = null;
-                else _detector.RemoveSighting(mark.NameId, mark.Instance, mark.WorldId);
+                mark.DeathSource = mark.Dead ? "observed" : string.Empty;
+                mark.SnipedAtUtc = null;
+                if (mark.Dead) _detector.RemoveSighting(mark.NameId, mark.Instance, mark.WorldId);
             }
             if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled)) ImGui.SetTooltip(TrainMutationBusy
                 ? "Wait for the report operation to finish before editing the train"
@@ -316,10 +321,15 @@ public sealed partial class Plugin
             if (wasSniped) ImGui.PopStyleColor();
             if (snipePressed)
             {
-                if (wasSniped) mark.SnipedAtUtc = null;
+                if (wasSniped)
+                {
+                    mark.SnipedAtUtc = null;
+                    mark.DeathSource = string.Empty;
+                }
                 else
                 {
                     mark.SnipedAtUtc = DateTime.UtcNow;
+                    mark.DeathSource = "snipe";
                     mark.DeathObservedAtUtc = null;
                     mark.Dead = true;
                     _detector.RemoveSighting(mark.NameId, mark.Instance, mark.WorldId);

@@ -23,9 +23,12 @@ public class DetectedMark
     public bool Dead;
     public DateTime FirstSeenUtc;
     public DateTime LastSeenUtc;
+    /// <summary>Local clock equivalent of LastSeenUtc, independent of coordinate freshness.</summary>
+    public DateTime? LastSeenLocalUtc;
     /// <summary>Local-clock observation time for MapPosition; separate from shared train timestamps.</summary>
     public DateTime? LocationSeenAtUtc;
     public DateTime? DeathObservedAtUtc;
+    public string DeathSource = string.Empty;
 
     /// <summary>
     /// Defaults to scouting order; drag-and-drop can reorder it.
@@ -54,6 +57,18 @@ public class DetectedMark
     /// </summary>
     public (uint NameId, uint Instance, uint WorldId) Key => (NameId, Instance, WorldId);
 
+    internal bool HasObservedDeath => Dead && DeathObservedAtUtc is not null && SnipedAtUtc is null && DeathSource != "bear";
+
+    internal bool ObserveDeath(DateTime at)
+    {
+        if (HasObservedDeath) return false;
+        Dead = true;
+        DeathObservedAtUtc = at;
+        SnipedAtUtc = null;
+        DeathSource = "observed";
+        return true;
+    }
+
     internal void UpdateSighting(uint currentHp, uint maxHp, DateTime seenAt, Vector2 position, bool recording)
     {
         if (maxHp == 0) return;
@@ -61,11 +76,13 @@ public class DetectedMark
         LocationSeenAtUtc = seenAt;
         if (currentHp == 0) return;
         LastSeenUtc = seenAt;
+        LastSeenLocalUtc = seenAt;
 
         // Paused scans still refresh sightings, but only active scouting restores a train row.
         if (!recording) return;
         Dead = false;
         DeathObservedAtUtc = null;
+        DeathSource = string.Empty;
         SnipedAtUtc = null;
     }
 }

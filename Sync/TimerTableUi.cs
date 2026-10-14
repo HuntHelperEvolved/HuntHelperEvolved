@@ -38,7 +38,8 @@ public static class TimerTableUi
     }
 
     public static void Status(SRankPhase phase, double percent, DateTime? opens, DateTime? ready, DateTime now,
-        bool offline = false, string upLabel = "UP", string? unknownLabel = null, string? evidence = null)
+        bool offline = false, string upLabel = "UP", string? unknownLabel = null, string? evidence = null,
+        Vector4? textColour = null)
     {
         ImGui.AlignTextToFramePadding();
         if (offline) ImGui.TextColored(Cooldown, "OFFLINE / MAINTENANCE");
@@ -55,7 +56,7 @@ public static class TimerTableUi
                     : ready is { } latest ? "sniped; ready by " + Local(latest) : "sniped; timing unknown", Window),
                 _ => (unknownLabel ?? "no kill recorded", Unknown)
             };
-            ImGui.TextColored(colour, label);
+            ImGui.TextColored(textColour ?? colour, label);
         }
         if (!ImGui.IsItemHovered()) return;
         var lines = new List<string>();
