@@ -44,9 +44,10 @@ unless a separate death report confirms the kill.
 Disconnecting clears live Bear evidence; it does not create a kill.
 
 For A-ranks, confirmed Bear kill reports update shared timers and any matching
-train row. Reports keep the exact kill time and Bear source; completion reports
-place them in **Bear-confirmed kills**, separate from uncertain snipes and
-witnessed train participation. Source priority for the same spawn is
+train row. Completion reports include Bear kills within their world's expansion
+respawn range, with a separate Bear-confirmed count; other Bear kills
+retain individual details. They do not count as witnessed train kills.
+Source priority for the same spawn is
 **witnessed plugin kill > Bear kill > manual snipe report**, including manually
 entered exact snipe times. A genuine fresh plugin observation changing from
 alive to dead can record a kill without a train row; finding an old corpse does
