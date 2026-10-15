@@ -51,10 +51,18 @@ public sealed record AssumedSnipedGroup(uint WorldId, string WorldName, string E
 
 /// <summary>
 /// The outer bounds of the individual respawn windows for observed kills on
-/// one world and expansion. This is not a shared window for every mark.
+/// one world and expansion, also covering Bear kills whose windows fit within
+/// those bounds. This is not a shared window for every mark.
 /// </summary>
 public sealed record TrainWindowSummary(uint WorldId, string WorldName, string Expansion,
-    int ObservedKills, DateTime EarliestWindowOpensUtc, DateTime LatestWindowCapsUtc, List<uint> Instances);
+    int ObservedKills, DateTime EarliestWindowOpensUtc, DateTime LatestWindowCapsUtc, List<uint> Instances,
+    int BearConfirmedKills = 0)
+{
+    public bool ContainsBearKillWindow(TrainReportEntry entry) =>
+        entry.DeathSource == "bear" && entry.WorldId == WorldId && entry.Expansion == Expansion &&
+        entry.HasWindow && entry.WindowOpensUtc is { } opens && entry.WindowCapsUtc is { } caps &&
+        opens <= caps && opens >= EarliestWindowOpensUtc && caps <= LatestWindowCapsUtc;
+}
 
 /// <summary>Shared report selection and kill-window calculations for Discord and the preview.</summary>
 public static class TrainReport
@@ -186,8 +194,10 @@ public static class TrainReport
             .ToList();
     }
 
-    public static List<TrainWindowSummary> BuildWindowSummaries(List<TrackedMark> marks) =>
-        BuildEntries(marks).Where(e => !e.Sniped && e.HasWindow)
+    public static List<TrainWindowSummary> BuildWindowSummaries(List<TrackedMark> marks)
+    {
+        var entries = BuildEntries(marks);
+        var summaries = entries.Where(e => !e.Sniped && e.HasWindow)
             .GroupBy(e => (e.WorldId, e.Expansion))
             .Select(group => new TrainWindowSummary(group.Key.WorldId,
                 group.Select(e => e.WorldName).FirstOrDefault(name => !string.IsNullOrWhiteSpace(name))
@@ -196,6 +206,20 @@ public static class TrainReport
                 group.Min(e => e.WindowOpensUtc!.Value), group.Max(e => e.WindowCapsUtc!.Value),
                 group.Select(e => e.Instance).Distinct().OrderBy(instance => instance).ToList()))
             .ToList();
+
+        // Compare with the observed bounds before including Bear kills, so an
+        // outlier cannot widen the range and hide another outlier's details.
+        return summaries.Select(summary =>
+        {
+            var bear = entries.Where(summary.ContainsBearKillWindow).ToList();
+            return summary with
+            {
+                BearConfirmedKills = bear.Count,
+                Instances = summary.Instances.Concat(bear.Select(e => e.Instance))
+                    .Distinct().OrderBy(instance => instance).ToList(),
+            };
+        }).ToList();
+    }
 
     /// <summary>
     /// Named marks belonging to any expansion actually represented in this train

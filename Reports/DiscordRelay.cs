@@ -147,9 +147,9 @@ public static class DiscordRelay
     }
 
     /// <summary>
-    /// Summarizes observed-kill windows by world and expansion. Sniped marks,
-    /// unknown timers, unfinished marks and missing roster entries retain their
-    /// own details, so none can be mistaken for a kill included in the range.
+    /// Summarizes observed-kill windows by world and expansion, including Bear
+    /// kills within those bounds. Other Bear kills, sniped marks, unknown timers,
+    /// unfinished marks and missing roster entries retain their own details.
     /// </summary>
     private static string BuildTrainBody(List<TrackedMark> marks)
     {
@@ -159,14 +159,15 @@ public static class DiscordRelay
         var summaries = TrainReport.BuildWindowSummaries(marks);
         if (summaries.Count > 0)
         {
-            sb.Append("**Respawn windows**\nOverall ranges for observed kills only; each mark has its own window.\n");
+            sb.Append("**Respawn windows**\nOverall ranges by world and expansion; each mark has its own window.\n");
             foreach (var summary in summaries)
             {
                 var openUnix = new DateTimeOffset(summary.EarliestWindowOpensUtc).ToUnixTimeSeconds();
                 var capUnix = new DateTimeOffset(summary.LatestWindowCapsUtc).ToUnixTimeSeconds();
                 var instances = string.Concat(summary.Instances.Select(ExpansionData.InstanceGlyph));
                 if (instances.Length > 0) instances = " — instances" + instances;
-                sb.Append($"\n**{summary.WorldName} / {summary.Expansion}** — {summary.ObservedKills} observed kills{instances}\n");
+                var bearCount = summary.BearConfirmedKills > 0 ? $" + {summary.BearConfirmedKills} Bear-confirmed" : string.Empty;
+                sb.Append($"\n**{summary.WorldName} / {summary.Expansion}** — {summary.ObservedKills} observed kills{bearCount}{instances}\n");
                 sb.Append($"Overall respawn range <t:{openUnix}:t> → <t:{capUnix}:t>\n");
             }
         }
@@ -178,10 +179,9 @@ public static class DiscordRelay
             AppendEntries(sb, unknownTimers);
         }
 
-        // Keep kills outside this train separate from observed participation.
-        // A precise reported time narrows the timer without changing that
-        // classification; remaining entries retain their found-missing bounds.
-        var bear = entries.Where(e => e.DeathSource == "bear").ToList();
+        // Bear kills already covered by a summary need no separate window.
+        // Their source stays distinct from observed train participation.
+        var bear = entries.Where(e => e.DeathSource == "bear" && !summaries.Any(s => s.ContainsBearKillWindow(e))).ToList();
         if (bear.Count > 0)
         {
             sb.Append("\n**Bear-confirmed kills** (exact reported times)\n");

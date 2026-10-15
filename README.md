@@ -6,9 +6,9 @@ summaries and sniped/missing-mark details, draws spawn points, your detection ra
 event locations on the **in-game map**, counts S-rank trigger mobs, and keeps a
 lifetime per-mark kill tally for every character you play.
 
-> **0.7.0.4:** Exact A-rank kill timers outside trains, combat spawn-point
-> mapping and saved currency templates with full control over copied wording.
-> These fixes are a plugin-only update for the existing A-rank-capable server.
+> **0.7.0.5:** Shorter train reports include Bear-confirmed kills in matching
+> respawn summaries, keeping separate details when their windows fall outside
+> the observed range. This is a plugin-only update; no server update is required.
 > Bear S-rank reports are enabled by default on compatible configured servers;
 > turn them off under Sharing.
 > Published builds use the existing testing feed.
@@ -186,6 +186,12 @@ sync off while keeping connection details. Saved sync credentials and Discord
 destinations have separate clearing actions and are excluded from reset-all.
 
 ## Release notes
+
+### 0.7.0.5 — changes since 0.7.0.4
+
+- **Train reports:** Bear-confirmed kills join their world's expansion summary when their entire respawn windows fit within the observed range. Observed and Bear-confirmed counts stay separate, and the range stays unchanged. Other Bear kills retain their individual exact-time details.
+- **Report previews:** The completion preview and individual history use the same grouping, with Bear source labels preserved. Bear kills do not count as witnessed train kills.
+- **Updating:** Plugin-only update; no server update is required.
 
 ### 0.7.0.4 — changes since 0.7.0.3
 
@@ -510,9 +516,13 @@ and when the train found them missing. Roster marks not recorded on this train
 appear under **Missing / not seen this train**, without an asserted respawn time.
 Unfinished marks, unknown kill times and S-rank checks retain their own details.
 
-Confirmed Bear kills use exact kill and respawn times in a separate
-**Bear-confirmed kills** section. Plugin kill reports take priority for the same
-spawn. A later live sighting restores UP in `/hha` and any matching train row.
+Confirmed Bear kills whose entire respawn windows fit within the observed range
+join that world's expansion summary, with a separate Bear-confirmed count.
+They do not change the observed kill count or the range. Bear kills outside those
+bounds, or without a matching range, retain their exact details in the
+**Bear-confirmed kills** section. Individual kill history keeps the Bear source
+labels. Plugin kill reports take priority for the same spawn. A later live
+sighting restores UP in `/hha` and any matching train row.
 
 Manage S-rank watches in **Setup > S-rank watch setup**. Their Spawned / Didn't
 Spawn boxes remain under the route, including in the popout. Hold **Ctrl** and

@@ -34,6 +34,12 @@ public static class ReleaseNotes
 
     public static readonly Release[] All =
     {
+        new("0.7.0.5", "2026-10-15", "Shorter train reports with Bear-confirmed kills included in matching respawn summaries.",
+        [
+            new("Train reports", "Bear-confirmed kills now join their world's expansion summary when their full respawn windows fit within its observed-kill range. Observed and Bear-confirmed counts stay separate, and the range stays unchanged. Bear kills outside those bounds, or without a matching range, retain their individual exact-time details.", Kihtli),
+            new("Report previews", "The completion preview and individual kill history use the same grouping. Individual records retain their Bear source labels, and Bear kills do not count as witnessed train kills.", Kihtli),
+            new("Updating", "This is a plugin-only update; no server update is required.", Kihtli),
+        ]),
         new("0.7.0.4", "2026-10-15", "Reliable A-rank kill timers and combat mapping, with saved currency templates.",
         [
             new("A-rank kills", "Killing or witnessing an A-rank death now saves its exact /hha timer even outside the train, while scouting is paused or while disconnected. Duplicate detections keep the original time. With sighting sharing enabled, the live-to-dead observation reaches the server before its evidence is removed, allowing the group to receive the kill without adding a train row. Finding an already-dead body alone does not establish an exact kill time.", Kihtli),

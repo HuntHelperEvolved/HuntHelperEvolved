@@ -2761,10 +2761,11 @@ public sealed partial class Plugin : IDalamudPlugin
         }
 
         var entries = TrainReport.BuildEntries(marks);
+        var summaries = TrainReport.BuildWindowSummaries(marks);
 
-        DrawReportEntries(entries.Where(e => !e.Sniped && e.DeathSource != "bear").ToList());
+        DrawReportEntries(entries.Where(e => !e.Sniped || summaries.Any(s => s.ContainsBearKillWindow(e))).ToList());
 
-        var bearKills = entries.Where(e => e.DeathSource == "bear").ToList();
+        var bearKills = entries.Where(e => e.DeathSource == "bear" && !summaries.Any(s => s.ContainsBearKillWindow(e))).ToList();
         if (bearKills.Count > 0)
         {
             ImGui.Spacing();
