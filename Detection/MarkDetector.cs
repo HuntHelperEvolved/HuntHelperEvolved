@@ -438,16 +438,23 @@ public sealed class MarkDetector
         if (IsDead(mob))
         {
             _announcements.Killed(mob.NameId, instance, worldId);
-            if ((rank != HuntRank.A || witnessedDeath) && _otherRanks.TryGetValue(key, out var dying))
-                SightingObservedDead?.Invoke(dying, now);
-            _otherRanks.Remove(key);
-            _visibleCorpses[key] = new OtherRankSighting
+            var corpse = new OtherRankSighting
             {
                 EntityId=entityId, WorldId=worldId, WorldName=worldName, Name=mob.Name.TextValue, NameId=mob.NameId,
                 Rank=rank, TerritoryId=territoryId, MapId=mapId, Instance=instance,
                 MapPosition=MapCoordinates.FromWorld(_dataManager,mapId,mob.Position.X,mob.Position.Z),
                 LastSeenUtc=now, HealthPercent=0, NearbyPlayers=CountPlayers(mob.Position), InCombat=false, ZoneName=GetZoneName(territoryId)
             };
+            // A Bear death can remove the map sighting before this scan. The
+            // same actor's live-to-dead evidence still proves our own kill.
+            if (rank == HuntRank.A)
+            {
+                if (witnessedDeath) SightingObservedDead?.Invoke(corpse, now);
+            }
+            else if (_otherRanks.TryGetValue(key, out var dying))
+                SightingObservedDead?.Invoke(dying, now);
+            _otherRanks.Remove(key);
+            _visibleCorpses[key] = corpse;
             return;
         }
 

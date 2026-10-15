@@ -10,12 +10,8 @@ using System.Text.RegularExpressions;
 namespace HuntHelperEvolved;
 
 /// <summary>
-/// One counted kill as reported by the tally.
-///
-/// Kept as a flat primitive record even though the tally is now part of this
-/// same assembly: it was the payload of the old cross-plugin IPC contract, and
-/// it is still exactly what the train needs - an identity, a place and a time -
-/// without coupling the watcher to the tally's own richer kill type.
+/// One counted kill as reported by the tally. The precise internal timestamp
+/// preserves observation ordering; UnixSeconds remains the legacy fallback.
 /// </summary>
 public readonly record struct HuntTallyKill(
     string Name,
@@ -24,7 +20,8 @@ public readonly record struct HuntTallyKill(
     uint TerritoryId,
     uint InstanceId,
     long UnixSeconds,
-    uint WorldId);
+    uint WorldId,
+    DateTime? ObservedAtUtc = null);
 
 /// <summary>Schedules local detection, applies scoped kill evidence and retains native report history.</summary>
 public class TrainWatcher : IDisposable
@@ -158,9 +155,8 @@ public class TrainWatcher : IDisposable
     /// Ticks a mark dead when the battle log says it died, whoever landed the
     /// kill.
     ///
-    /// The tally can only report kills you were credited with, so a mark the
-    /// group brought down while you were still running in stayed lit as though
-    /// it were up. The battle log does not care who tagged it.
+    /// This supplements direct health observations when the battle log reports
+    /// a defeat outside the loaded-object scan.
     ///
     /// The mark's name is matched at the END of the line rather than anywhere
     /// in it. "defeats the Ker" is a prefix of "defeats the Ker Shroud", and
@@ -225,6 +221,18 @@ public class TrainWatcher : IDisposable
             || !_detector.Marks.TryGetValue((kill.NameId, kill.InstanceId, kill.WorldId), out var mark)
             || mark.IsCustom || mark.HasObservedDeath) return;
         _pendingKills.Enqueue(kill);
+    }
+
+    /// <summary>
+    /// Applies the tally's witnessed live-to-dead transition before any battle-credit
+    /// decision. It may correct an existing train row, but never inserts one.
+    /// </summary>
+    public void OnObservedMarkDeath(uint nameId, uint instanceId, uint worldId, DateTime observedAtUtc)
+    {
+        if (!_config.MarkDeadOnObservedDefeat || worldId == 0
+            || !_detector.Marks.TryGetValue((nameId, instanceId, worldId), out var mark)
+            || mark.IsCustom || !mark.ObserveDeath(observedAtUtc.ToUniversalTime())) return;
+        OnMarkObservedDead(mark);
     }
 
     private void OnUpdate(IFramework framework)
@@ -343,7 +351,8 @@ public class TrainWatcher : IDisposable
             var dedupeKey = (kill.NameId, kill.TerritoryId, kill.InstanceId, kill.WorldId, kill.UnixSeconds);
             if (!_seenKills.Add(dedupeKey)) continue;
 
-            var killTime = DateTimeOffset.FromUnixTimeSeconds(kill.UnixSeconds).UtcDateTime;
+            var killTime = kill.ObservedAtUtc?.ToUniversalTime()
+                ?? DateTimeOffset.FromUnixTimeSeconds(kill.UnixSeconds).UtcDateTime;
             var matched = false;
 
             // Use the world captured by the tally, even when delivery follows travel.

@@ -616,8 +616,7 @@ public sealed partial class Plugin : IDalamudPlugin
     }
 
     /// <summary>
-    /// Hands a counted kill to the train watcher, flattened to the same shape
-    /// it used to arrive in over IPC.
+    /// Hands a counted kill to the train watcher with its precise observation time.
     /// </summary>
     private void OnTallyKillPublished(KillDetail kill)
     {
@@ -627,7 +626,8 @@ public sealed partial class Plugin : IDalamudPlugin
             (int)kill.Mark.Rank,
             kill.TerritoryId,
             kill.InstanceId,
-            new DateTimeOffset(kill.Time).ToUnixTimeSeconds(), _worldData.IdOf(kill.World)));
+            new DateTimeOffset(kill.Time).ToUnixTimeSeconds(), _worldData.IdOf(kill.World),
+            kill.Time.ToUniversalTime()));
     }
 
     /// <summary>
@@ -2583,12 +2583,11 @@ public sealed partial class Plugin : IDalamudPlugin
         }
 
         var notesOnUpdate = _config.ShowReleaseNotesOnUpdate;
-        if (ImGui.Checkbox("Show this automatically after an update", ref notesOnUpdate))
+        if (ImGui.Checkbox("Show release notes after updates", ref notesOnUpdate))
         {
             _config.ShowReleaseNotesOnUpdate = notesOnUpdate;
             _config.Save();
         }
-        ImGui.TextDisabled("Only after an update — never on a fresh install, and never on an ordinary login.");
 
         ImGui.Spacing();
         ImGui.Separator();
@@ -2651,11 +2650,10 @@ public sealed partial class Plugin : IDalamudPlugin
 
         ImGui.TextColored(HuntTheme.Accent, "Credits");
         ImGui.TextWrapped(
-            "Hunt Train Relay by MusicManBowls and Hunt Tally by kihtli, merged and carried on here.");
+            "Hunt Train Relay: MusicManBowls. Hunt Tally: kihtli.");
         ImGui.TextWrapped(
-            "Spawn point data, territory ids and the map's design come from Hunt Helper by img02, "
-            + "used under the MIT licence. SS minion and mark coordinates are from Faloop.");
-        ImGui.TextDisabled("Full notices are in THIRD-PARTY-NOTICES.md in the repository.");
+            "Map data and design: Hunt Helper by img02 (MIT). SS coordinates: Faloop.");
+        ImGui.TextDisabled("Full licences: THIRD-PARTY-NOTICES.md.");
     }
 
     private void DrawSRankWatches()
@@ -3348,6 +3346,7 @@ public sealed partial class Plugin : IDalamudPlugin
     {
         var world = _worldData.IdOf(kill.World);
         if (world == 0) world = _detector.CurrentWorldId();
+        _watcher.OnObservedMarkDeath(kill.Mark.NameId, kill.InstanceId, world, kill.Time.ToUniversalTime());
         _detector.ResetAnnouncementOnKill(kill.Mark.NameId, kill.InstanceId, world);
         try
         {
