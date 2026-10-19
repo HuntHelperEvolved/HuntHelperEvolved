@@ -612,12 +612,15 @@ public sealed partial class SyncCoordinator : IDisposable
                 else
                 {
                     var hasKnown = _known.TryGetValue(key, out var known);
+                    var customFlag = local.IsCustom || m.IsCustom;
+                    if (customFlag && hasKnown && m.Revision < known.Revision) continue;
 
                     // Untouched means "nothing edited here since the last
                     // sync". A same-revision echo of our own position update
                     // must not overwrite a tick the user made a moment ago;
                     // a higher revision is somebody else's edit and wins.
                     var untouched = !hasKnown || TrainMarkSignature.Create(local) == known.Signature;
+                    var acceptEdit = !hasKnown || m.Revision > known.Revision || untouched;
 
                     // A manual snipe can intentionally have no live lower bound;
                     // position freshness still follows its own observation time.
@@ -627,7 +630,9 @@ public sealed partial class SyncCoordinator : IDisposable
                         local.LastSeenUtc = m.LastSeen;
                         local.LastSeenLocalUtc = localSeenAt;
                     }
-                    if (locationSeenAt >= previousLocationSeenAt)
+                    // Flag positions are edits, not live observations. A changed
+                    // clock sample must not split a rally's new name from its position.
+                    if (customFlag ? acceptEdit : locationSeenAt >= previousLocationSeenAt)
                     {
                         local.MapPosition = new Vector2(m.X, m.Y);
                         local.LocationSeenAtUtc = locationSeenAt;
@@ -636,7 +641,7 @@ public sealed partial class SyncCoordinator : IDisposable
                     if (m.FirstSeen != default && m.FirstSeen < local.FirstSeenUtc)
                         local.FirstSeenUtc = m.FirstSeen;
 
-                    if (!hasKnown || m.Revision > known.Revision || untouched)
+                    if (acceptEdit)
                     {
                         if (!ARankHistory.PreserveObservedDeath(local, m))
                         {

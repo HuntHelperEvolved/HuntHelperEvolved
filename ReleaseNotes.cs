@@ -38,6 +38,10 @@ public static class ReleaseNotes
 
     public static readonly Release[] All =
     {
+        new("0.7.0.6", "2026-10-19", "Reliable shared rally locations.",
+        [
+            new("Rally flags", "Recalculating shared rallies now updates their locations together with their names.", Kihtli),
+        ]),
         new("0.7.0.5", "2026-10-15", "Clearer reports and help, with reliable plugin kill attribution.",
         [
             new("Train reports", "Bear kills within their world and expansion's observed respawn range join that summary; kills outside it keep individual details.", Kihtli),
