@@ -1,5 +1,7 @@
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface;
+using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 
 namespace HuntHelperEvolved;
@@ -13,10 +15,21 @@ public sealed partial class Plugin
     private void DrawTrainCurrency()
     {
         var summary = TrainCurrency.Calculate(_detector.Marks.Values);
+        var overflows = TrainCurrency.FindOverflows(summary, _trainCurrencyWallet.Balances);
         ImGui.TextUnformatted($"{summary.MarkCount} living A ranks");
         if (summary.MarkCount == 0)
             ImGui.TextWrapped("Add living A ranks to the train to generate a currency message.");
         else ImGui.TextWrapped(string.Join(" · ", summary.Expansions));
+
+        if (overflows.Count > 0)
+        {
+            ImGui.PushStyleColor(ImGuiCol.Text, HuntTheme.Danger);
+            ImGui.TextWrapped("Over cap: " + string.Join(", ", overflows.Select(x => x.Name)) + ". Spend before the remaining kills.");
+            ImGui.PopStyleColor();
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip(TrainCurrencyWarningText(overflows));
+        }
+        else if (summary.MarkCount > 0 && _trainCurrencyWallet.Balances is null)
+            ImGui.TextColored(HuntTheme.Muted, "Waiting for your currency balances.");
 
         if (ImGui.BeginTable("Train currency totals", 3, ImGuiTableFlags.RowBg | ImGuiTableFlags.SizingStretchProp))
         {
@@ -40,7 +53,7 @@ public sealed partial class Plugin
             }
             ImGui.EndTable();
         }
-        ImGui.TextWrapped("Full-credit estimates for eligible jobs with hunts unlocked. Current tomes require level 100. Start ≤ is the maximum starting balance before holding caps. Your balance is not read; weekly allowance also limits Mnemonics.");
+        ImGui.TextWrapped("Full-credit estimates for eligible jobs; current tomes require level 100. Start ≤ leaves room below holding caps. The red warning uses your balance and remaining weekly allowance.");
         ImGui.Separator();
 
         DrawTrainCurrencyMode("Starting balance", TrainCurrencyMessageMode.StartingBalance);
@@ -83,6 +96,11 @@ public sealed partial class Plugin
         DrawTrainCurrencyCopy("Shout", message.Shout, message.CanCopyShout);
         if (_trainCurrencyCopied.Length > 0) ImGui.TextColored(HuntTheme.Muted, _trainCurrencyCopied);
     }
+
+    private static string TrainCurrencyWarningText(IReadOnlyList<TrainCurrencyOverflow> overflows) =>
+        "Remaining marks would exceed holding caps at full credit:\n" + string.Join("\n", overflows.Select(x =>
+            $"{x.Name}: {TrainCurrency.Number(x.Held)} + {TrainCurrency.Number(x.Gained)} / {TrainCurrency.Number(x.HoldingCap)} ({TrainCurrency.Number(x.Lost)} over)"))
+        + "\nAssumes eligible jobs; weekly allowance is included.";
 
     private void DrawTrainCurrencyMode(string label, TrainCurrencyMessageMode mode)
     {

@@ -17,6 +17,13 @@ internal sealed record TrainCurrencyAmount(string Name, long Gained, int Holding
 internal sealed record TrainCurrencySummary(int MarkCount, IReadOnlyList<string> Expansions,
     IReadOnlyList<TrainCurrencyAmount> Amounts);
 
+internal sealed record TrainCurrencyBalance(long Held, long? WeeklyRemaining = null);
+
+internal sealed record TrainCurrencyOverflow(string Name, long Held, long Gained, int HoldingCap)
+{
+    public long Lost => Math.Max(0, Gained - (HoldingCap - Held));
+}
+
 internal sealed record TrainCurrencyMessage(string Plain, bool HasCurrencyPlaceholder)
 {
     public string Party => Plain.Length == 0 ? string.Empty : "/p " + Plain;
@@ -67,6 +74,26 @@ internal static class TrainCurrency
         return new(count, expansions.Values.Select(x => $"{x.Name}: {x.Count}").ToArray(),
             CurrencyNames.Select((name, index) => new TrainCurrencyAmount(name, totals[index], HoldingCaps[index]))
                 .Where(x => x.Gained > 0).ToArray());
+    }
+
+    internal static IReadOnlyList<TrainCurrencyOverflow> FindOverflows(TrainCurrencySummary summary,
+        IReadOnlyDictionary<string, TrainCurrencyBalance>? balances)
+    {
+        if (summary.MarkCount <= 0 || balances is null) return Array.Empty<TrainCurrencyOverflow>();
+
+        var overflows = new List<TrainCurrencyOverflow>();
+        foreach (var amount in summary.Amounts)
+        {
+            if (amount.Gained <= 0 || amount.HoldingCap <= 0
+                || !balances.TryGetValue(amount.Name, out var balance) || balance is null
+                || balance.Held < 0 || balance.Held > amount.HoldingCap) continue;
+
+            var gained = balance.WeeklyRemaining is { } remaining
+                ? Math.Min(amount.Gained, Math.Max(0, remaining)) : amount.Gained;
+            if (gained > amount.HoldingCap - balance.Held)
+                overflows.Add(new(amount.Name, balance.Held, gained, amount.HoldingCap));
+        }
+        return overflows;
     }
 
     internal static string DefaultTemplate(TrainCurrencyMessageMode mode) => mode == TrainCurrencyMessageMode.AmountGained

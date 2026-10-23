@@ -127,10 +127,11 @@ public sealed partial class Plugin
         var summary = CompactTrainSummary();
         var width = ImGui.GetContentRegionAvail().X;
         var connectionWidth = CompactTrainConnectionWidth(summary,width);
+        summary = TrainRouteCountText(Math.Max(1, width - connectionWidth - ImGui.GetStyle().ItemSpacing.X));
         var inline = TrainFooterEndFits(summary,width-connectionWidth-ImGui.GetStyle().ItemSpacing.X);
         ConnectionUi.Draw("train-connection", _config, _sync, () => OpenPreferences(SettingsPage.Sharing), connectionWidth);
         ImGui.SameLine();
-        DrawTrainFooterMutedText(summary);
+        DrawTrainCountSummary(summary);
         if (inline)
         {
             ImGui.SameLine();
@@ -165,6 +166,7 @@ public sealed partial class Plugin
         var summary = CompactTrainSummary();
         var spacing = ImGui.GetStyle().ItemSpacing.Y;
         var summaryWidth = Math.Max(1,width-CompactTrainConnectionWidth(summary,width)-ImGui.GetStyle().ItemSpacing.X);
+        summary = TrainRouteCountText(summaryWidth);
         var textHeight = ImGui.CalcTextSize(summary,false,summaryWidth).Y;
         var height = Math.Max(textHeight,ImGui.GetFrameHeight());
         if (!TrainFooterEndFits(summary,summaryWidth)) height += spacing+ImGui.GetFrameHeight();

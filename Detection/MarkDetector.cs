@@ -73,6 +73,7 @@ public sealed class MarkDetector
     private readonly Dictionary<uint, string> _zoneNames = new();
     private bool _nearbyPlayersAvailable;
     private int? CountPlayers(Vector3 position) => _nearbyPlayersAvailable ? _nearbyPlayers.CountNear(position) : null;
+    public int? NearbyPlayersAroundYou { get; private set; }
 
     private readonly MarkAnnouncementDebounce _announcements = new();
     public void ResetAnnouncementOnKill(uint name, uint instance, uint world) => _announcements.Killed(name, instance, world);
@@ -81,16 +82,23 @@ public sealed class MarkDetector
         sighting.NameId, sighting.Instance, sighting.WorldId, sighting.SpawnPointIndex,
         sighting.MapPosition, sighting.InCombat == true);
 
-    public void ClearNearbyPlayers() { _nearbyPlayers.Clear(); _nearbyPlayersAvailable = false; }
+    public void ClearNearbyPlayers()
+    {
+        _nearbyPlayers.Clear();
+        _nearbyPlayersAvailable = false;
+        NearbyPlayersAroundYou = null;
+    }
 
-    // Like Sonar's PlayerCounterService: native character slots, refreshed each
-    // framework tick, with last-known positions retained for this zone session.
+    // Native character slots, refreshed each framework tick. Briefly retain
+    // missing slots for crowd culling; departed players expire from the cache.
     public unsafe void RefreshNearbyPlayers()
     {
+        NearbyPlayersAroundYou = null;
         if (!GameReadiness.CanReadCharacters) { ClearNearbyPlayers(); return; }
         var world = CurrentWorldId();
         var territory = _clientState.TerritoryType;
-        if (_objectTable.LocalPlayer is null || world == 0 || territory == 0)
+        var player = _objectTable.LocalPlayer;
+        if (player is null || world == 0 || territory == 0)
         { ClearNearbyPlayers(); return; }
         _nearbyPlayers.SetScope(world, territory, GetCurrentInstance());
         var manager = FFXIVClientStructs.FFXIV.Client.Game.Character.CharacterManager.Instance();
@@ -103,6 +111,10 @@ public sealed class MarkDetector
             var position = character->Position;
             _nearbyPlayers.Observe(character->EntityId, new Vector3(position.X, position.Y, position.Z));
         }
+        var center = player.Position;
+        if (player.EntityId is not (0 or 0xE0000000) && float.IsFinite(center.X)
+            && float.IsFinite(center.Y) && float.IsFinite(center.Z))
+            NearbyPlayersAroundYou = _nearbyPlayers.CountNear(center, player.EntityId);
     }
     private readonly IObjectTable _objectTable;
     private readonly IClientState _clientState;

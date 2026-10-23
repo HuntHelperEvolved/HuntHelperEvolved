@@ -216,10 +216,15 @@ public sealed partial class Plugin
     private void DrawTrainPanelChoice(string label, TrainWorkspacePage panel, bool compact)
     {
         var selected = (compact ? _compactTrainPanel : _trainWorkspacePage) == panel;
+        var overflows = panel == TrainWorkspacePage.Currency
+            ? TrainCurrency.FindOverflows(TrainCurrency.Calculate(_detector.Marks.Values), _trainCurrencyWallet.Balances)
+            : Array.Empty<TrainCurrencyOverflow>();
         if (HuntUi.Button("panel-" + panel, label, compact ? null
             : panel == TrainWorkspacePage.Setup ? FontAwesomeIcon.Route
             : panel == TrainWorkspacePage.Currency ? FontAwesomeIcon.Coins : FontAwesomeIcon.PaperPlane,
-            selected: selected, quiet: true)) SelectTrainPanel(selected ? TrainWorkspacePage.Route : panel, compact);
+            selected: selected, quiet: true, danger: overflows.Count > 0,
+            tooltip: overflows.Count > 0 ? TrainCurrencyWarningText(overflows) : null))
+            SelectTrainPanel(selected ? TrainWorkspacePage.Route : panel, compact);
     }
 
     private void DrawTrainWorkspaceBody()
@@ -443,7 +448,7 @@ public sealed partial class Plugin
         var unavailable = RallyCalculationUnavailable;
         ImGui.BeginDisabled(unavailable is not null);
         if (HuntUi.Button("calculate-rallies", "Calculate rallies", FontAwesomeIcon.MapMarkedAlt,
-            tooltip: unavailable ?? "Calculate pending rally flags for the current route order") && RallyCalculationUnavailable is null)
+            tooltip: unavailable ?? "Update rally flags for this route, restoring removed stops where living marks remain.") && RallyCalculationUnavailable is null)
         {
             if (SharingPresetTrain) _sync.SendPreset("recalculate-rallies");
             else ApplyLocalTrainPreset(force: true, recalculateRallies: true);
@@ -750,7 +755,7 @@ public sealed partial class Plugin
         if (compact) return CompactTrainFooterHeight();
         var style = ImGui.GetStyle();
         var width = Math.Max(1, ImGui.GetContentRegionAvail().X);
-        var summary = TrainRouteCountText();
+        var summary = TrainRouteCountText(width);
         var textHeight = ImGui.CalcTextSize(summary, false, width).Y;
         var height = TrainFooterEndFits(summary, width) ? Math.Max(textHeight, ImGui.GetFrameHeight())
             : textHeight + style.ItemSpacing.Y + ImGui.GetFrameHeight();
@@ -787,7 +792,7 @@ public sealed partial class Plugin
         ? _lastPostResult : string.Empty;
     private string TrainReportBusyText => _completion.IsBusy ? "Finishing report…" : "Sending report…";
 
-    private string TrainRouteCountText()
+    private string TrainRouteCountText(float? availableWidth = null)
     {
         var recorded = 0;
         var remaining = 0;
@@ -797,7 +802,17 @@ public sealed partial class Plugin
             recorded++;
             if (!mark.Dead) remaining++;
         }
-        return $"{remaining} left / {recorded} recorded";
+        var summary = $"{remaining} left / {recorded} recorded";
+        if (availableWidth is not { } width) return summary;
+        // Keep the existing footer height: shorten the counts before displacing
+        // an End train button that already fits beside them.
+        var textWidth = TrainFooterEndFits(summary, width)
+            ? width - HuntUi.ButtonWidth(TrainEndLabel) - ImGui.GetStyle().ItemSpacing.X : width;
+        var nearby = _detector.NearbyPlayersAroundYou is { } count ? $"~{count}" : "—";
+        var full = $"{summary} · {nearby} nearby";
+        if (ImGui.CalcTextSize(full).X <= textWidth) return full;
+        var compact = $"{remaining}/{recorded} left · {nearby} nearby";
+        return ImGui.CalcTextSize(compact).X <= textWidth ? compact : $"{remaining}/{recorded} · {nearby} near";
     }
 
     private static bool TrainFooterEndFits(string summary, float width) =>
@@ -811,12 +826,20 @@ public sealed partial class Plugin
         ImGui.PopStyleColor();
     }
 
+    private void DrawTrainCountSummary(string summary)
+    {
+        DrawTrainFooterMutedText(summary);
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip(TrainRouteCountText()
+                + "\nNearby: other players within 50 yalms of you. An estimate; players no longer seen drop out after 5 seconds.");
+    }
+
     private void DrawTrainWorkspaceFooter()
     {
         ImGui.Separator();
-        var summary = TrainRouteCountText();
+        var summary = TrainRouteCountText(ImGui.GetContentRegionAvail().X);
         var endFits = TrainFooterEndFits(summary, ImGui.GetContentRegionAvail().X);
-        DrawTrainFooterMutedText(summary);
+        DrawTrainCountSummary(summary);
         if (endFits)
         {
             ImGui.SameLine();

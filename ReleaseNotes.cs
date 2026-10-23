@@ -38,6 +38,12 @@ public static class ReleaseNotes
 
     public static readonly Release[] All =
     {
+        new("0.7.0.7", "2026-10-23", "Restored rallies, nearby player counts and currency warnings.",
+        [
+            new("Rally flags", "Calculate Rally Flags restores removed rallies when living marks remain in that zone and instance.", Kihtli),
+            new("Nearby players", "Train and /hht show nearby player counts beside marks remaining; players no longer seen drop out after five seconds.", Kihtli),
+            new("Currency", "Currency glows red when remaining train rewards would exceed your holding caps. Hover for details; the weekly Mnemonics cap alone does not trigger a warning.", Kihtli),
+        ]),
         new("0.7.0.6", "2026-10-19", "Reliable shared rally locations.",
         [
             new("Rally flags", "Recalculating shared rallies now updates their locations together with their names.", Kihtli),

@@ -96,7 +96,7 @@ public sealed partial class Plugin
         }
         ImGui.EndDisabled();
         if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
-            ImGui.SetTooltip(unavailable ?? "Update pending rally flags for the current train order using this preset's rally settings.\nThe mark order stays unchanged and the preset stays paused. Completed rallies stay completed."
+            ImGui.SetTooltip(unavailable ?? "Update rally flags for this route, restoring removed stops where living marks remain.\nKeeps the mark order and checked-off rallies."
                 + (SharingPresetTrain ? "\nUpdates the shared train for everyone." : ""));
     }
 

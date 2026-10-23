@@ -75,15 +75,17 @@ internal static class HuntUi
     }
 
     public static bool Button(string id, string label, FontAwesomeIcon? icon = null,
-        bool primary = false, bool selected = false, bool quiet = false, Vector2? size = null, string? tooltip = null)
+        bool primary = false, bool selected = false, bool quiet = false, Vector2? size = null, string? tooltip = null,
+        bool danger = false)
     {
         var dimensions = size ?? new Vector2(ButtonWidth(label, icon), ImGui.GetFrameHeight());
-        ImGui.PushStyleColor(ImGuiCol.Button, primary || selected ? HuntTheme.Selected
+        ImGui.PushStyleColor(ImGuiCol.Button, danger ? HuntTheme.Danger with { W = selected ? .25f : .16f }
+            : primary || selected ? HuntTheme.Selected
             : quiet ? Vector4.Zero : HuntTheme.Panel);
-        ImGui.PushStyleColor(ImGuiCol.ButtonHovered, HuntTheme.Selected);
-        ImGui.PushStyleColor(ImGuiCol.ButtonActive, HuntTheme.Selected);
-        ImGui.PushStyleColor(ImGuiCol.Border, primary ? HuntTheme.Accent : HuntTheme.Line);
-        ImGui.PushStyleVar(ImGuiStyleVar.FrameBorderSize, primary || !quiet ? 1 : 0);
+        ImGui.PushStyleColor(ImGuiCol.ButtonHovered, danger ? HuntTheme.Danger with { W = .3f } : HuntTheme.Selected);
+        ImGui.PushStyleColor(ImGuiCol.ButtonActive, danger ? HuntTheme.Danger with { W = .4f } : HuntTheme.Selected);
+        ImGui.PushStyleColor(ImGuiCol.Border, danger ? HuntTheme.Danger : primary ? HuntTheme.Accent : HuntTheme.Line);
+        ImGui.PushStyleVar(ImGuiStyleVar.FrameBorderSize, danger || primary || !quiet ? 1 : 0);
         var clicked = ImGui.Button("##" + id, dimensions);
         ImGui.PopStyleVar();
         ImGui.PopStyleColor(4);
@@ -92,7 +94,8 @@ internal static class HuntUi
 
         var min = ImGui.GetItemRectMin();
         var max = ImGui.GetItemRectMax();
-        var color = ImGui.GetColorU32(primary || selected ? HuntTheme.Accent : ImGui.GetStyle().Colors[(int)ImGuiCol.Text]);
+        var color = ImGui.GetColorU32(danger ? HuntTheme.Danger
+            : primary || selected ? HuntTheme.Accent : ImGui.GetStyle().Colors[(int)ImGuiCol.Text]);
         var labelWidth = ImGui.CalcTextSize(label).X;
         var iconWidth = 0f;
         if (icon is { } glyph)
@@ -105,6 +108,17 @@ internal static class HuntUi
         var x = min.X + Math.Max(0, (max.X - min.X - labelWidth - iconWidth - gap) / 2);
         var y = min.Y + (max.Y - min.Y - ImGui.GetFontSize()) / 2;
         var draw = ImGui.GetWindowDrawList();
+        if (danger)
+        {
+            // A steady halo makes the warning visible without flashing or changing layout.
+            for (var step = 1; step <= 3; step++)
+            {
+                var spread = new Vector2(step * ImGuiHelpers.GlobalScale);
+                draw.AddRect(min - spread, max + spread,
+                    ImGui.GetColorU32(HuntTheme.Danger with { W = .24f / step }),
+                    ImGui.GetStyle().FrameRounding + spread.X);
+            }
+        }
         draw.PushClipRect(min, max, true);
         if (icon is { } symbol)
         {

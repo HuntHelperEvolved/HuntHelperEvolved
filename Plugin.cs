@@ -82,6 +82,7 @@ public sealed partial class Plugin : IDalamudPlugin
     private readonly IGameGui _gameGui;
     private readonly ITextureProvider _textureProvider;
     private readonly MarkNotifier _notifier;
+    private readonly TrainCurrencyWallet _trainCurrencyWallet = new();
 
     // Asked for once; enumerating voices constructs a synthesiser.
     private string[]? _voices;
@@ -534,6 +535,7 @@ public sealed partial class Plugin : IDalamudPlugin
     private void OnPluginFrameworkUpdate(IFramework framework)
     {
         if (_disposed) return;
+        _trainCurrencyWallet.Update(framework.UpdateDelta.TotalSeconds);
         if (_commandHelpDirty) RefreshCommandHelp();
         try { _config.Flush(); }
         catch (Exception ex) { _log.Error(ex, "Could not save configuration; will retry."); }
@@ -579,6 +581,7 @@ public sealed partial class Plugin : IDalamudPlugin
     {
         _config.ScanningPaused = true;
         _detector.ClearNearbyPlayers();
+        _trainCurrencyWallet.Clear();
         try { PersistTrain(); }
         catch (Exception ex) { _log.Error(ex, "Could not capture the train at logout."); }
         try { _config.Flush(force: true); }

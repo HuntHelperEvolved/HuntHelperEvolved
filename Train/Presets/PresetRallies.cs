@@ -61,8 +61,21 @@ public static class PresetRallies
             return new(frozen, ProgressChanged());
         }
         // Explicit recalculation uses the manually adjusted order without
-        // resuming the preset or restarting already completed rally visits.
+        // resuming the preset or restarting checked rally rows.
         var ordered = preset is null || orderingPaused ? ordinary : PresetRouter.Order(ordinary, preset, point);
+        if (preset is not null && recalculateRallies)
+        {
+            var present = progress.Rows.Where(r => existing.ContainsKey(RowIdentity(r)))
+                .Select(r => r.Visit.Key).ToHashSet();
+            foreach (var visit in progress.Completed.Where(v => live.Contains(v.Key) && !present.Contains(v.Key)).ToList())
+            {
+                var remaining = progress.Completed.Where(v => v.Key != visit.Key).ToList();
+                // Recreate only a missing stop still selected for this visit.
+                // Keep other completed expansion entries from moving elsewhere.
+                if (Plan(ordered.Select(point), preset, remaining).Any(s => s.Key == visit.Key))
+                    progress.Completed.RemoveAll(v => v.Key == visit.Key);
+            }
+        }
         if (preset is not null) RememberCompletedEntries(ordered.Select(point), preset, progress.Completed);
         var stops = preset is null ? new List<RallyStop>() : Plan(ordered.Select(point), preset, progress.Completed);
         var pending = new Dictionary<RallyKey, T>();
@@ -72,8 +85,8 @@ public static class PresetRallies
         {
             var previous = progress.Rows.FirstOrDefault(r => r.Visit.Key == stop.Key);
             existing.TryGetValue(RowIdentity(previous), out var old);
-            // Removed flags stay removed. A checked flag remains visible until
-            // the conductor clears it, just like a manually placed custom flag.
+            // Ordinary reconciliation keeps removed flags absent. A checked flag
+            // remains visible until the conductor clears it.
             if (stop.Completed && (old is null || !point(old).Dead)) continue;
             if (!stop.Completed && old is not null && point(old).Dead) old = null;
             var id = previous.NameId;
