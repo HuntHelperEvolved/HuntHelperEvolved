@@ -440,7 +440,8 @@ public sealed unsafe class HuntMapOverlay : IDisposable
             if (!IsLeftMapClick()) return;
             if (Dalamud.Bindings.ImGui.ImGui.GetIO().KeyShift)
             {
-                var excluded = _sync.ZoneFor(territory,world,instance)?.Eliminated.Any(e=>e.Index==index && e.Rank=="Manual")==true;
+                var excluded = SpawnMapping.EvidenceFor(SpawnPointData.For(territory),
+                    _sync.ZoneFor(territory,world,instance), index).Any(e => e.Rank == "Manual");
                 _sync.SetManualMapping(territory,world,instance,index,!excluded);
             }
             else flag?.Invoke();
@@ -1159,10 +1160,10 @@ public sealed unsafe class HuntMapOverlay : IDisposable
             // whatever it says — they are what is actually in the zone, and
             // hiding the map of where things could be is no reason to stop
             // showing where one is.
-            for (var pointIndex = 0; _config.ShowSpawnPointsOnMap && pointIndex < points.Length; pointIndex++)
+            if (_config.ShowSpawnPointsOnMap)
+            foreach (var (point, pointIndex) in SpawnMapping.PhysicalPoints(points))
             {
                 if (_occupiedPoints.Contains(pointIndex)) continue;
-                var point = points[pointIndex];
 
                 // Only draw points that can host a rank the player wants shown.
                 var wanted = SpawnRanks.None;
@@ -1199,16 +1200,16 @@ public sealed unsafe class HuntMapOverlay : IDisposable
                     if (confirmed == pointIndex)
                     {
                         dot = "sconfirmed";
-                        tooltip += zone.SCurrentIndex == pointIndex
+                        tooltip += SpawnMapping.SamePoint(points, zone.SCurrentIndex, pointIndex)
                             ? $"\nConfirmed spawn point for {sTimer.Name} (observed)."
                             : $"\nOnly remaining spawn point for {sTimer.Name} (by elimination).";
                     }
-                    else if (zone.IsRuledOut(pointIndex) || confirmed is not null)
+                    else if (SpawnMapping.IsRuledOut(points, zone, pointIndex) || confirmed is not null)
                     {
                         // Keep the ordinary point fill; only candidates get a gold outline.
                         var reason = confirmed is not null ? "the S point is confirmed elsewhere"
-                            : zone.LastSDeathIndex == pointIndex ? $"{sTimer.Name} spawned here last time"
-                            : zone.EliminatedBy(pointIndex) is { } by ? by.Rank == "Manual"
+                            : SpawnMapping.SamePoint(points, zone.LastSDeathIndex, pointIndex) ? $"{sTimer.Name} spawned here last time"
+                            : SpawnMapping.EvidenceFor(points, zone, pointIndex).FirstOrDefault() is { } by ? by.Rank == "Manual"
                                 ? $"{ClaimantName(by)}, added {FormatAge(by.SeenAt)} ago"
                                 : $"{ClaimantName(by)} seen here {FormatAge(by.SeenAt)} ago" : "ruled out";
                         tooltip += $"\nRuled out for {sTimer.Name}: {reason}.";

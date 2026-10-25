@@ -1067,8 +1067,10 @@ public sealed partial class SyncCoordinator : IDisposable
     {
         if (!IsConnected || !SupportsManualMapping) return;
         LastError = string.Empty;
-        _client.Send(new ManualMappingMessage { TerritoryId=territory, WorldId=world, Instance=instance,
-            Index=index, Exclude=exclude, Source=source, ExpectedSinceAt=ZoneFor(territory,world,instance)?.SinceAt });
+        var zone = ZoneFor(territory, world, instance);
+        foreach (var updateIndex in SpawnMapping.ManualUpdateIndices(SpawnPointData.For(territory), zone, index, exclude))
+            _client.Send(new ManualMappingMessage { TerritoryId=territory, WorldId=world, Instance=instance,
+                Index=updateIndex, Exclude=exclude, Source=source, ExpectedSinceAt=zone?.SinceAt });
     }
 
     public string DisplayName()

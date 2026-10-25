@@ -38,6 +38,10 @@ public static class ReleaseNotes
 
     public static readonly Release[] All =
     {
+        new("0.7.0.8", "2026-10-25", "Reliable S-rank spawn mapping.",
+        [
+            new("S-rank mapping", "Fixed missed A/B exclusions and duplicate S-rank candidates; shared mapping updates are restored.", Kihtli),
+        ]),
         new("0.7.0.7", "2026-10-23", "Restored rallies, nearby player counts and currency warnings.",
         [
             new("Rally flags", "Calculate Rally Flags restores removed rallies when living marks remain in that zone and instance.", Kihtli),

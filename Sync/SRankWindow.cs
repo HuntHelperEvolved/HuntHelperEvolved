@@ -297,7 +297,7 @@ public sealed class SRankWindow
             ImGui.SameLine(0, gap);
             DrawTravelButton(row, world, buttonSize);
             ImGui.SameLine(0, gap);
-            var count = SpawnPointData.For(row.Timer.TerritoryId).Count(p => p.Ranks.HasFlag(SpawnRanks.S));
+            var count = SpawnMapping.PhysicalPoints(SpawnPointData.For(row.Timer.TerritoryId), SpawnRanks.S).Count();
             ImGui.BeginDisabled(count == 0);
             if (HuntUi.Button("mapping", string.Empty, FontAwesomeIcon.MapMarkedAlt, quiet: true, size: buttonSize,
                 tooltip: $"Mapping: {RemainingPoints(row, world) ?? count} / {count} possible points"))
@@ -307,7 +307,7 @@ public sealed class SRankWindow
         if (NextTextColumn()) DrawKilledCell(row);
         if (NextTextColumn())
         {
-            var count = SpawnPointData.For(row.Timer.TerritoryId).Count(p => p.Ranks.HasFlag(SpawnRanks.S));
+            var count = SpawnMapping.PhysicalPoints(SpawnPointData.For(row.Timer.TerritoryId), SpawnRanks.S).Count();
             if (count == 0) ImGui.TextDisabled("—");
             else if (ImGui.SmallButton($"{RemainingPoints(row, world) ?? count}/{count}##points"))
                 Select(row, world, DetailPage.Mapping);
@@ -799,9 +799,9 @@ public sealed class SRankWindow
     {
         var zone=_sync.ZoneFor(row.Timer.TerritoryId,world,row.Instance);
         if(zone is null) return null;
-        var capable=SpawnPointData.For(row.Timer.TerritoryId).Select((p,i)=>(p,i))
-            .Where(p=>p.p.Ranks.HasFlag(SpawnRanks.S)).ToList();
-        return capable.Count==0 ? null : capable.Count(p=>!zone.IsRuledOut(p.i));
+        var points = SpawnPointData.For(row.Timer.TerritoryId);
+        var capable = SpawnMapping.PhysicalPoints(points, SpawnRanks.S).ToList();
+        return capable.Count == 0 ? null : capable.Count(p => !SpawnMapping.IsRuledOut(points, zone, p.Index));
     }
 
     private void DrawRow(Row row, uint worldId, DateTime now, ViewState view)
@@ -964,9 +964,7 @@ public sealed class SRankWindow
     private void DrawPointsCell(Row row, uint worldId, ViewState view)
     {
         var points = SpawnPointData.For(row.Timer.TerritoryId);
-        var capable = new List<int>();
-        for (var i = 0; i < points.Length; i++)
-            if (points[i].Ranks.HasFlag(SpawnRanks.S)) capable.Add(i);
+        var capable = SpawnMapping.PhysicalPoints(points, SpawnRanks.S).ToList();
 
         if (capable.Count == 0)
         {
@@ -975,7 +973,7 @@ public sealed class SRankWindow
         }
 
         var zone = _sync.ZoneFor(row.Timer.TerritoryId, worldId, row.Instance);
-        var left = capable.Count(i => zone is null || !zone.IsRuledOut(i));
+        var left = capable.Count(p => !SpawnMapping.IsRuledOut(points, zone, p.Index));
         if (ImGui.SmallButton($"{left}/{capable.Count}##mapping")) ImGui.OpenPopup("mapping");
         if (ImGui.IsItemHovered()) ImGui.SetTooltip($"{left} of {capable.Count} possible S-rank points. Open mapping evidence for this world and instance.");
         if (ImGui.BeginPopup("mapping"))
@@ -1005,7 +1003,8 @@ public sealed class SRankWindow
         var zone = _sync.ZoneFor(row.Timer.TerritoryId, worldId, row.Instance);
         if (showScope)
             ImGui.TextWrapped($"{row.Timer.Name} / {_worldData.NameOf(worldId)}" + (row.Instance > 0 ? $" / instance {row.Instance}" : ""));
-        var total = points.Count(p => p.Ranks.HasFlag(SpawnRanks.S));
+        var capable = SpawnMapping.PhysicalPoints(points, SpawnRanks.S).ToList();
+        var total = capable.Count;
         ImGui.TextDisabled($"{RemainingPoints(row, worldId) ?? total} / {total} possible points for this kill cycle");
         if (!_sync.SupportsManualMapping) ImGui.TextWrapped("Manual mapping requires an updated sync server.");
         ImGui.SetNextItemWidth(160);
@@ -1013,20 +1012,22 @@ public sealed class SRankWindow
         if (ImGui.IsItemHovered()) ImGui.SetTooltip("Attribution for exclusions you enter. This does not import another service's map.");
         if (!string.IsNullOrEmpty(_sync.LastError)) ImGui.TextWrapped(_sync.LastError);
         if (ImGui.BeginChild("mappingPoints", size, true))
-            for (var i = 0; i < points.Length; i++)
+            foreach (var candidate in capable)
             {
-                if (!points[i].Ranks.HasFlag(SpawnRanks.S)) continue;
-                var manual = zone?.Eliminated.FirstOrDefault(e => e.Index == i && e.Rank == "Manual");
-                var automatic = zone?.LastSDeathIndex == i || zone?.Eliminated.Any(e => e.Index == i && e.Rank != "Manual") == true;
-                var possible = zone is null || !zone.IsRuledOut(i);
-                ImGui.BeginDisabled(!_sync.IsConnected || !_sync.SupportsManualMapping || (automatic && manual is null) || zone?.SCurrentIndex == i);
+                var i = candidate.Index;
+                var evidence = SpawnMapping.EvidenceFor(points, zone, i).ToList();
+                var manual = evidence.FirstOrDefault(e => e.Rank == "Manual");
+                var automatic = SpawnMapping.SamePoint(points, zone?.LastSDeathIndex, i) || evidence.Any(e => e.Rank != "Manual");
+                var current = SpawnMapping.SamePoint(points, zone?.SCurrentIndex, i);
+                var possible = !SpawnMapping.IsRuledOut(points, zone, i);
+                ImGui.BeginDisabled(!_sync.IsConnected || !_sync.SupportsManualMapping || (automatic && manual is null) || current);
                 if (ImGui.Checkbox($"#{i + 1}  ({points[i].X:0.0}, {points[i].Y:0.0})", ref possible))
                     _sync.SetManualMapping(row.Timer.TerritoryId, worldId, row.Instance, i, !possible, new[] { "Manual", "Faloop", "Bear", "Other" }[source]);
                 ImGui.EndDisabled();
                 if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
                     ImGui.SetTooltip(!_sync.IsConnected ? "Connect to update shared mapping."
                         : !_sync.SupportsManualMapping ? "This server does not support manual mapping."
-                        : zone?.SCurrentIndex == i ? "Confirmed current S-rank location."
+                        : current ? "Confirmed current S-rank location."
                         : automatic ? "Ruled out by sighting evidence. Automatic evidence is preserved."
                         : "Checked: still possible. Uncheck to share a manual exclusion for this kill cycle.");
                 if (manual is not null)
@@ -1049,8 +1050,7 @@ public sealed class SRankWindow
     {
         var points = SpawnPointData.For(row.Timer.TerritoryId);
         var zone = _sync.ZoneFor(row.Timer.TerritoryId, world, row.Instance);
-        var candidates = points.Select((point, index) => (Point: point, Index: index))
-            .Where(p => p.Point.Ranks.HasFlag(SpawnRanks.S)).ToList();
+        var candidates = SpawnMapping.PhysicalPoints(points, SpawnRanks.S).ToList();
         ImGui.AlignTextToFramePadding();
         ImGui.TextUnformatted($"{RemainingPoints(row, world) ?? candidates.Count} / {candidates.Count} possible points");
         SameLineIfFits(210);
@@ -1069,12 +1069,13 @@ public sealed class SRankWindow
                 {
                     ImGui.TableNextColumn();
                     ImGui.PushID(candidate.Index);
-                    var manual = zone?.Eliminated.FirstOrDefault(e => e.Index == candidate.Index && e.Rank == "Manual");
-                    var evidence = zone?.Eliminated.FirstOrDefault(e => e.Index == candidate.Index && e.Rank != "Manual");
-                    var previous = zone?.LastSDeathIndex == candidate.Index;
-                    var current = zone?.SCurrentIndex == candidate.Index;
+                    var pointEvidence = SpawnMapping.EvidenceFor(points, zone, candidate.Index).ToList();
+                    var manual = pointEvidence.FirstOrDefault(e => e.Rank == "Manual");
+                    var evidence = pointEvidence.FirstOrDefault(e => e.Rank != "Manual");
+                    var previous = SpawnMapping.SamePoint(points, zone?.LastSDeathIndex, candidate.Index);
+                    var current = SpawnMapping.SamePoint(points, zone?.SCurrentIndex, candidate.Index);
                     var automatic = previous || evidence is not null;
-                    var possible = zone is null || !zone.IsRuledOut(candidate.Index);
+                    var possible = !SpawnMapping.IsRuledOut(points, zone, candidate.Index);
                     var start = ImGui.GetCursorPos();
                     var width = ImGui.GetContentRegionAvail().X;
                     ImGui.BeginDisabled(!_sync.IsConnected || !_sync.SupportsManualMapping || automatic && manual is null || current);
