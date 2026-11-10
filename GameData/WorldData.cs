@@ -28,6 +28,7 @@ public sealed class WorldData
 
         try
         {
+            var dcSheet = dataManager.GetExcelSheet<WorldDCGroupType>();
             foreach (var world in dataManager.GetExcelSheet<World>())
             {
                 // Skip test/internal worlds, which aren't playable.
@@ -36,10 +37,14 @@ public sealed class WorldData
                 var name = world.Name.ExtractText();
                 if (string.IsNullOrWhiteSpace(name)) continue;
 
-                _worlds.Add(new WorldEntry(world.RowId, name, world.DataCenter.RowId));
+                // In 7.58 DataCenter groups worlds for regional matching. Lumina
+                // calls the world's logical data centre Unknown0 in this schema.
+                var logicalDc = world.Unknown0;
+                var dcId = logicalDc != 0 && dcSheet.HasRow(logicalDc) ? logicalDc : world.DataCenter.RowId;
+                _worlds.Add(new WorldEntry(world.RowId, name, dcId));
             }
 
-            foreach (var dc in dataManager.GetExcelSheet<WorldDCGroupType>())
+            foreach (var dc in dcSheet)
             {
                 var name = dc.Name.ExtractText();
                 if (string.IsNullOrWhiteSpace(name)) continue;

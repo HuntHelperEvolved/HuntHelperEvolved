@@ -38,6 +38,10 @@ public static class ReleaseNotes
 
     public static readonly Release[] All =
     {
+        new("0.7.0.9", "2026-11-10", "Correct world grouping after patch 7.58.",
+        [
+            new("World filters", "World pickers and hunt filters use each world's logical data centre again, including Crystal for Mateus.", Kihtli),
+        ]),
         new("0.7.0.8", "2026-10-25", "Reliable S-rank spawn mapping.",
         [
             new("S-rank mapping", "Fixed missed A/B exclusions and duplicate S-rank candidates; shared mapping updates are restored.", Kihtli),
