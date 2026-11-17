@@ -38,6 +38,10 @@ public static class ReleaseNotes
 
     public static readonly Release[] All =
     {
+        new("0.7.0.10", "2026-11-17", "Compact train footer.",
+        [
+            new("Train popout", "/hht now shows a connection icon, marks remaining out of the train total, and how many nearby players are alive.", Kihtli),
+        ]),
         new("0.7.0.9", "2026-11-10", "Correct world grouping after patch 7.58.",
         [
             new("World filters", "World pickers and hunt filters use each world's logical data centre again, including Crystal for Mateus.", Kihtli),

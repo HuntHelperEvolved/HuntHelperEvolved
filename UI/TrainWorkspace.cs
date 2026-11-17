@@ -808,7 +808,7 @@ public sealed partial class Plugin
         // an End train button that already fits beside them.
         var textWidth = TrainFooterEndFits(summary, width)
             ? width - HuntUi.ButtonWidth(TrainEndLabel) - ImGui.GetStyle().ItemSpacing.X : width;
-        var nearby = _detector.NearbyPlayersAroundYou is { } count ? $"~{count}" : "—";
+        var nearby = _detector.NearbyPlayersAroundYou is { } count ? $"~{count.Total}" : "—";
         var full = $"{summary} · {nearby} nearby";
         if (ImGui.CalcTextSize(full).X <= textWidth) return full;
         var compact = $"{remaining}/{recorded} left · {nearby} nearby";

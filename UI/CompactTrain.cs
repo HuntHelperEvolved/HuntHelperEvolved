@@ -126,12 +126,13 @@ public sealed partial class Plugin
         ImGui.Separator();
         var summary = CompactTrainSummary();
         var width = ImGui.GetContentRegionAvail().X;
-        var connectionWidth = CompactTrainConnectionWidth(summary,width);
-        summary = TrainRouteCountText(Math.Max(1, width - connectionWidth - ImGui.GetStyle().ItemSpacing.X));
-        var inline = TrainFooterEndFits(summary,width-connectionWidth-ImGui.GetStyle().ItemSpacing.X);
+        var connectionWidth = ConnectionUi.Width(compact: true);
+        var inline = TrainFooterEndFits(summary, width - connectionWidth - ImGui.GetStyle().ItemSpacing.X);
         ConnectionUi.Draw("train-connection", _config, _sync, () => OpenPreferences(SettingsPage.Sharing), connectionWidth);
         ImGui.SameLine();
-        DrawTrainCountSummary(summary);
+        DrawTrainFooterMutedText(summary);
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Marks remaining / recorded.\nOther players within 50 yalms of you, alive / total.\nPlayers last seen within 5 seconds are included.");
         if (inline)
         {
             ImGui.SameLine();
@@ -147,17 +148,11 @@ public sealed partial class Plugin
         }
     }
 
-    private static float CompactTrainConnectionWidth(string summary, float width)
-    {
-        var labelWidth = ConnectionUi.Width();
-        return TrainFooterEndFits(summary, width - labelWidth - ImGui.GetStyle().ItemSpacing.X)
-            ? labelWidth : ConnectionUi.Width(compact: true);
-    }
-
     private string CompactTrainSummary()
     {
         var counts = TrainRowPresentation.Count(_detector.Marks.Values);
-        return $"{counts.Remaining} left / {counts.Recorded} recorded";
+        var nearby = _detector.NearbyPlayersAroundYou is { } players ? $"{players.Alive}/{players.Total}" : "—/—";
+        return $"{counts.Remaining}/{counts.Recorded} marks · {nearby} nearby alive";
     }
 
     private float CompactTrainFooterHeight()
@@ -165,8 +160,7 @@ public sealed partial class Plugin
         var width = Math.Max(1,ImGui.GetContentRegionAvail().X);
         var summary = CompactTrainSummary();
         var spacing = ImGui.GetStyle().ItemSpacing.Y;
-        var summaryWidth = Math.Max(1,width-CompactTrainConnectionWidth(summary,width)-ImGui.GetStyle().ItemSpacing.X);
-        summary = TrainRouteCountText(summaryWidth);
+        var summaryWidth = Math.Max(1, width - ConnectionUi.Width(compact: true) - ImGui.GetStyle().ItemSpacing.X);
         var textHeight = ImGui.CalcTextSize(summary,false,summaryWidth).Y;
         var height = Math.Max(textHeight,ImGui.GetFrameHeight());
         if (!TrainFooterEndFits(summary,summaryWidth)) height += spacing+ImGui.GetFrameHeight();

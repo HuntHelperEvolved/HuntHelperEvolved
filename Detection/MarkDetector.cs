@@ -73,7 +73,7 @@ public sealed class MarkDetector
     private readonly Dictionary<uint, string> _zoneNames = new();
     private bool _nearbyPlayersAvailable;
     private int? CountPlayers(Vector3 position) => _nearbyPlayersAvailable ? _nearbyPlayers.CountNear(position) : null;
-    public int? NearbyPlayersAroundYou { get; private set; }
+    public (int Alive, int Total)? NearbyPlayersAroundYou { get; private set; }
 
     private readonly MarkAnnouncementDebounce _announcements = new();
     public void ResetAnnouncementOnKill(uint name, uint instance, uint world) => _announcements.Killed(name, instance, world);
@@ -109,12 +109,12 @@ public sealed class MarkDetector
             var character = pointer.Value;
             if (character is null || character->ObjectKind != FFXIVClientStructs.FFXIV.Client.Game.Object.ObjectKind.Pc) continue;
             var position = character->Position;
-            _nearbyPlayers.Observe(character->EntityId, new Vector3(position.X, position.Y, position.Z));
+            _nearbyPlayers.Observe(character->EntityId, new Vector3(position.X, position.Y, position.Z), alive: !character->IsDead());
         }
         var center = player.Position;
         if (player.EntityId is not (0 or 0xE0000000) && float.IsFinite(center.X)
             && float.IsFinite(center.Y) && float.IsFinite(center.Z))
-            NearbyPlayersAroundYou = _nearbyPlayers.CountNear(center, player.EntityId);
+            NearbyPlayersAroundYou = _nearbyPlayers.CountPlayersNear(center, player.EntityId);
     }
     private readonly IObjectTable _objectTable;
     private readonly IClientState _clientState;
