@@ -90,6 +90,7 @@ public sealed partial class Plugin
         ImGui.Separator();
         ImGui.BeginDisabled(TrainMutationBusy);
         if (ImGui.MenuItem("Copy export code")) CopyTrainExport();
+        if (ImGui.MenuItem("Copy for Turtle Scout")) ExportToTurtle();
         ImGui.EndDisabled();
         if (compact && ImGui.MenuItem("Open train workspace")) OpenTrainWorkspace(_compactTrainPanel);
         ImGui.EndPopup();

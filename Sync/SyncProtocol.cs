@@ -358,6 +358,7 @@ public sealed class WelcomeMessage
     public List<ARankLocation> ARankLocations { get; set; } = new();
     public bool SupportsScopedTrainWatches { get; set; }
     public bool SupportsManualMapping { get; set; }
+    public bool SupportsCommunityMapping { get; set; }
     public bool SupportsVisibleMarks { get; set; }
     public List<VisibleMark> VisibleMarks { get; set; } = new();
     public string CounterServerId { get; set; } = string.Empty;
@@ -526,6 +527,14 @@ public sealed class TrainScoutsBroadcast
     public List<ScoutCreditDto> Credits { get; set; } = new();
 
     public List<string> Names { get; set; } = new();
+}
+
+public sealed class MappingRequestMessage
+{
+    public string Type => "spawn.mapping";
+    public uint TerritoryId { get; set; }
+    public uint WorldId { get; set; }
+    public uint Instance { get; set; }
 }
 
 public sealed class ManualMappingMessage

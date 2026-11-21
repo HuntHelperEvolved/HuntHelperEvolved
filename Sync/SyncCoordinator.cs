@@ -60,6 +60,8 @@ public sealed partial class SyncCoordinator : IDisposable
     public bool SupportsVisibleMarks { get; private set; }
     public bool SupportsScopedTrainWatches { get; private set; }
     public bool SupportsManualMapping { get; private set; }
+    public bool SupportsCommunityMapping { get; private set; }
+    private readonly Dictionary<(uint Territory, uint World, uint Instance), (DateTime? Cycle, DateTime Sent)> _mappingRequests = new();
     private List<SyncPresence> _clients = new();
     private SyncFaloopStatus _faloop = new();
 
@@ -515,6 +517,8 @@ public sealed partial class SyncCoordinator : IDisposable
         ClientId = welcome.ClientId;
         SupportsVisibleMarks = welcome.SupportsVisibleMarks;
         SupportsManualMapping = welcome.SupportsManualMapping;
+        SupportsCommunityMapping = welcome.SupportsCommunityMapping;
+        _mappingRequests.Clear();
         SupportsScopedTrainWatches = welcome.SupportsScopedTrainWatches;
         _visibleMarks.Clear(); _activeMarkGrace.Clear();
         VisibleObservationBatch.Apply(welcome.VisibleMarks,Array.Empty<SyncKey>(),_visibleMarks,_activeMarkGrace,DateTime.UtcNow,
@@ -824,6 +828,7 @@ public sealed partial class SyncCoordinator : IDisposable
         PresetStatus = "";
         ResetCompletionConnection();
         _visibleMarks.Clear(); _activeMarkGrace.Clear(); ClientId = string.Empty; SupportsVisibleMarks = false; SupportsManualMapping = false; SupportsScopedTrainWatches = false;
+        SupportsCommunityMapping = false; _mappingRequests.Clear();
         _counterServerId = string.Empty; _counterReady = false; _sharedCounters.Clear();
         _known.Clear();
         _lastSentOrder = new();
@@ -1061,6 +1066,21 @@ public sealed partial class SyncCoordinator : IDisposable
         if (SupportsVisibleMarks) return _activeMarkGrace.IsAlive(key, killed, now, serverNow);
         return _remote.TryGetValue((key.Item1,key.Item2,key.Item3,0,0), out var remote) && ActiveSRankFilter.LivingObservation(
             remote.HealthPercent, remote.LastSeenUtc, _sightingClock.ToLocal(remote.LastSeenUtc) + RemoteSightingTtl, killed, now, serverNow);
+    }
+
+    public void RequestCommunityMapping(uint territory, uint world, uint instance)
+    {
+        if (!IsConnected || !SupportsCommunityMapping || world == 0 || SpawnPointData.For(territory).Length == 0) return;
+        var key = (territory, world, instance);
+        var cycle = ZoneFor(territory, world, instance)?.SinceAt;
+        var now = DateTime.UtcNow;
+        // Keep interest alive while viewing a map. The server shares and caches
+        // upstream requests across all clients, once per connection/kill cycle.
+        if (_mappingRequests.TryGetValue(key, out var previous) && previous.Cycle == cycle
+            && now - previous.Sent < TimeSpan.FromMinutes(2)) return;
+        if (_mappingRequests.Count >= 256) _mappingRequests.Remove(_mappingRequests.MinBy(p => p.Value.Sent).Key);
+        _mappingRequests[key] = (cycle, now);
+        _client.Send(new MappingRequestMessage { TerritoryId = territory, WorldId = world, Instance = instance });
     }
 
     public void SetManualMapping(uint territory, uint world, uint instance, int index, bool exclude, string source = "Manual")

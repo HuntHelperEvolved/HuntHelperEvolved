@@ -375,6 +375,7 @@ public sealed unsafe class HuntMapOverlay : IDisposable
 
     private static string ClaimantName(SyncEliminatedPoint claim) =>
         claim.Rank == "Manual" ? $"Manual exclusion ({claim.Source ?? "Manual"}, {claim.Reporter ?? "Unknown"})" :
+        claim.Rank == "Community" ? $"{claim.Source} mapping" :
         OtherRankData.Lookup(claim.NameId)?.Name
         ?? ExpansionData.Lookup(claim.NameId)?.Name
         ?? $"{claim.Rank} rank";
@@ -1026,6 +1027,7 @@ public sealed unsafe class HuntMapOverlay : IDisposable
             // Only mapping changes rebuild static markers. Heartbeats and live movement
             // update existing nodes below, keeping their textures attached.
             long markSignature = HashCode.Combine(_sync?.SupportsManualMapping, _sync?.IsConnected);
+            _sync?.RequestCommunityMapping(territory, worldId, instance);
             var mapping = _sync?.ZoneFor(territory, worldId, instance);
             if (mapping is not null)
             {
@@ -1209,7 +1211,7 @@ public sealed unsafe class HuntMapOverlay : IDisposable
                         // Keep the ordinary point fill; only candidates get a gold outline.
                         var reason = confirmed is not null ? "the S point is confirmed elsewhere"
                             : SpawnMapping.SamePoint(points, zone.LastSDeathIndex, pointIndex) ? $"{sTimer.Name} spawned here last time"
-                            : SpawnMapping.EvidenceFor(points, zone, pointIndex).FirstOrDefault() is { } by ? by.Rank == "Manual"
+                            : SpawnMapping.EvidenceFor(points, zone, pointIndex).FirstOrDefault() is { } by ? by.Rank is "Manual" or "Community"
                                 ? $"{ClaimantName(by)}, added {FormatAge(by.SeenAt)} ago"
                                 : $"{ClaimantName(by)} seen here {FormatAge(by.SeenAt)} ago" : "ruled out";
                         tooltip += $"\nRuled out for {sTimer.Name}: {reason}.";

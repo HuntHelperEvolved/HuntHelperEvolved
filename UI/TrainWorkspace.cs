@@ -199,7 +199,7 @@ public sealed partial class Plugin
     {
         ImGui.BeginDisabled(TrainMutationBusy);
         if (HuntUi.Button("import", "Import", FontAwesomeIcon.Clipboard, quiet: true,
-            tooltip: "Import train from clipboard")) ImportFromClipboard();
+            tooltip: "Import an HHE code or Turtle Scout export from the clipboard")) ImportFromClipboard();
         ImGui.EndDisabled();
         TrainControlSameLine(HuntUi.ButtonWidth("Plan", compact ? null : FontAwesomeIcon.Route));
         DrawTrainPanelChoice("Plan", TrainWorkspacePage.Setup, compact);
@@ -470,6 +470,9 @@ public sealed partial class Plugin
             if (HuntUi.Button("plan-import", "Import", FontAwesomeIcon.Clipboard)) ImportFromClipboard();
             TrainControlSameLine(HuntUi.ButtonWidth("Export", FontAwesomeIcon.Copy));
             if (HuntUi.Button("plan-export", "Export", FontAwesomeIcon.Copy)) CopyTrainExport();
+            TrainControlSameLine(HuntUi.ButtonWidth("Turtle Scout", FontAwesomeIcon.Copy));
+            if (HuntUi.Button("plan-turtle", "Turtle Scout", FontAwesomeIcon.Copy,
+                tooltip: "Copy living marks for Turtle Scout's Import button")) ExportToTurtle();
             ImGui.Spacing();
             DrawAddTrainFlagControls(labelWidth: Math.Min(180, ImGui.GetContentRegionAvail().X));
             ImGui.EndDisabled();

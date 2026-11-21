@@ -38,6 +38,11 @@ public static class ReleaseNotes
 
     public static readonly Release[] All =
     {
+        new("0.7.0.11", "2026-11-21", "Community mapping and Turtle Scout exchange.",
+        [
+            new("S-rank mapping", "Bear and Faloop mapping updates now appear alongside plugin sightings.", Kihtli),
+            new("Turtle Scout", "Import and export living train marks through the clipboard, choosing a world when importing.", Kihtli),
+        ]),
         new("0.7.0.10", "2026-11-17", "Compact train footer.",
         [
             new("Train popout", "/hht now shows a connection icon, marks remaining out of the train total, and how many nearby players are alive.", Kihtli),

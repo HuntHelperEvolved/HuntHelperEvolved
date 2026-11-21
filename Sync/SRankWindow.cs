@@ -994,6 +994,7 @@ public sealed class SRankWindow
 
     private void DrawMappingDetails(Row row, uint worldId, Vector2 size, ref int source, bool showScope = true)
     {
+        _sync.RequestCommunityMapping(row.Timer.TerritoryId, worldId, row.Instance);
         if (!showScope)
         {
             DrawMappingGrid(row, worldId, size, ref source);
@@ -1009,7 +1010,7 @@ public sealed class SRankWindow
         if (!_sync.SupportsManualMapping) ImGui.TextWrapped("Manual mapping requires an updated sync server.");
         ImGui.SetNextItemWidth(160);
         ImGui.Combo("Source", ref source, "Manual\0Faloop\0Bear\0Other\0");
-        if (ImGui.IsItemHovered()) ImGui.SetTooltip("Attribution for exclusions you enter. This does not import another service's map.");
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip("Attribution for exclusions you enter manually.");
         if (!string.IsNullOrEmpty(_sync.LastError)) ImGui.TextWrapped(_sync.LastError);
         if (ImGui.BeginChild("mappingPoints", size, true))
             foreach (var candidate in capable)
@@ -1057,7 +1058,7 @@ public sealed class SRankWindow
         ImGui.SetNextItemWidth(145);
         ImGui.Combo("Source", ref source, "Manual\0Faloop\0Bear\0Other\0");
         source = Math.Clamp(source, 0, 3);
-        if (ImGui.IsItemHovered()) ImGui.SetTooltip("Attribution for manual exclusions, not an import from another service.");
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip("Attribution for exclusions you enter manually.");
         if (!_sync.SupportsManualMapping) ImGui.TextDisabled("Manual mapping requires an updated sync server.");
         if (!string.IsNullOrEmpty(_sync.LastError)) ImGui.TextWrapped(_sync.LastError);
         if (ImGui.BeginChild("Mapping candidates", size, false))
@@ -1099,6 +1100,7 @@ public sealed class SRankWindow
                     ImGui.EndDisabled();
                     ImGui.SetCursorPos(new Vector2(start.X + ImGui.GetFrameHeight() + ImGui.GetStyle().ItemSpacing.X, start.Y + ImGui.GetFrameHeightWithSpacing()));
                     var reason = current ? "Current S location" : previous ? "Previous S spawn"
+                        : evidence?.Rank == "Community" ? $"{evidence.Source} mapping"
                         : evidence is not null ? $"{evidence.Rank}-rank sighting"
                         : manual is not null ? $"{manual.Source ?? "Manual"} exclusion" : "Possible";
                     ImGui.TextDisabled(reason);

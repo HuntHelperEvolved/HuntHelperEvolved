@@ -650,6 +650,9 @@ public sealed class MarkDetector
     public uint GetMapId(uint territoryId) =>
         _dataManager.GetExcelSheet<TerritoryType>().GetRowOrDefault(territoryId)?.Map.RowId ?? 0;
 
+    public string GetMarkName(uint nameId) =>
+        _dataManager.GetExcelSheet<BNpcName>().GetRowOrDefault(nameId)?.Singular.ExtractText() ?? "";
+
 
     /// <summary>
     /// The world the player is on, which is part of a mark's identity. Read the

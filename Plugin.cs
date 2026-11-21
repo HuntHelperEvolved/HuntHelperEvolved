@@ -1025,6 +1025,7 @@ public sealed partial class Plugin : IDalamudPlugin
             _tallyWindows.Draw();
         }
         _huntWindows.Draw();
+        DrawTurtleDialog();
     }
 
     /// <summary>
@@ -1242,7 +1243,7 @@ public sealed partial class Plugin : IDalamudPlugin
             return;
         }
 
-        ImportTrainCode(clipboard, "the clipboard");
+        if (!PrepareTurtleImport(clipboard)) ImportTrainCode(clipboard, "the clipboard");
     }
 
     private void ReportProblem(string message)
