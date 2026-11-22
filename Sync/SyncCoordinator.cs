@@ -45,6 +45,7 @@ public sealed partial class SyncCoordinator : IDisposable
     private readonly SyncClient _client;
 
     private readonly Dictionary<(uint NameId, uint Instance, uint WorldId), KnownMark> _known = new();
+    private readonly TrainUpsertRetry _trainUpserts = new();
     private List<(uint NameId, uint Instance, uint WorldId)> _lastSentOrder = new();
 
     private readonly Dictionary<(uint NameId, uint Instance, uint WorldId, uint TerritoryId, uint EntityId), OtherRankSighting> _remote = new();
@@ -251,7 +252,8 @@ public sealed partial class SyncCoordinator : IDisposable
             if (IsConnected)
             {
                 var others = Math.Max(0, _clients.Count - 1);
-                return $"Connected to {ServerName} (server {ServerVersion}) — {others} other{(others == 1 ? "" : "s")} online.";
+                return $"Connected to {ServerName} (server {ServerVersion}) — {others} other{(others == 1 ? "" : "s")} online."
+                    + (_trainUpserts.Recovering ? " Train updates pending; retrying." : "");
             }
 
             return _client.StatusText;
@@ -381,6 +383,7 @@ public sealed partial class SyncCoordinator : IDisposable
             {
                 var error = SyncProtocol.Deserialize<ErrorMessage>(payload)!;
                 LastError = error.Message;
+                _trainUpserts.Reject(error.Operation, error.Code, DateTime.UtcNow);
                 _log.Warning($"Sync server: {error.Message}");
                 break;
             }
@@ -544,6 +547,7 @@ public sealed partial class SyncCoordinator : IDisposable
         foreach (var z in welcome.SpawnZones) _zones[z.Key] = z;
 
         _known.Clear();
+        _trainUpserts.Reset();
         _sentSightings.Clear();
         _lastSentOrder = new();
         _lastPresence = default;
@@ -622,9 +626,11 @@ public sealed partial class SyncCoordinator : IDisposable
                     // Untouched means "nothing edited here since the last
                     // sync". A same-revision echo of our own position update
                     // must not overwrite a tick the user made a moment ago;
-                    // a higher revision is somebody else's edit and wins.
+                    // a higher revision wins unless a newer local edit is still
+                    // waiting behind an unconfirmed write.
                     var untouched = !hasKnown || TrainMarkSignature.Create(local) == known.Signature;
-                    var acceptEdit = !hasKnown || m.Revision > known.Revision || untouched;
+                    var editedWhilePending = _trainUpserts.HasNewerLocalEdit(key, TrainMarkSignature.Create(local));
+                    var acceptEdit = !editedWhilePending && (!hasKnown || m.Revision > known.Revision || untouched);
 
                     // A manual snipe can intentionally have no live lower bound;
                     // position freshness still follows its own observation time.
@@ -673,6 +679,7 @@ public sealed partial class SyncCoordinator : IDisposable
                     LocationSeenAtUtc = locationSeenAt };
                 ARankManualReports.RestoreSnipeBound(_config.ARankKills, m, local, canonical);
                 _known[key] = new KnownMark(TrainMarkSignature.Create(canonical), m.Revision, m.Dead);
+                _trainUpserts.Forget(key);
             }
         }
         finally
@@ -699,7 +706,7 @@ public sealed partial class SyncCoordinator : IDisposable
         try
         {
             var removed = keys.Select(k => k.ToTuple()).ToList();
-            foreach (var key in removed) _known.Remove(key);
+            foreach (var key in removed) { _known.Remove(key); _trainUpserts.Forget(key); }
 
             // A reported removal has report history to settle as well as the
             // row itself, and that history belongs to the plugin rather than
@@ -721,6 +728,7 @@ public sealed partial class SyncCoordinator : IDisposable
         try
         {
             _known.Clear();
+            _trainUpserts.Reset();
             _lastSentOrder = new();
             RemoteTrainCleared?.Invoke(by);
             if (_detector.Marks.Count > 0) _detector.Clear();
@@ -831,6 +839,7 @@ public sealed partial class SyncCoordinator : IDisposable
         SupportsCommunityMapping = false; _mappingRequests.Clear();
         _counterServerId = string.Empty; _counterReady = false; _sharedCounters.Clear();
         _known.Clear();
+        _trainUpserts.Reset();
         _lastSentOrder = new();
         _remote.Clear();
         _sranks.Clear();
@@ -861,6 +870,7 @@ public sealed partial class SyncCoordinator : IDisposable
         var upserts = new List<SyncMark>();
         var newlyDead = new List<SyncKey>();
         var present = new HashSet<(uint, uint, uint)>();
+        var now = DateTime.UtcNow;
 
         foreach (var mark in _detector.Marks.Values)
         {
@@ -869,15 +879,15 @@ public sealed partial class SyncCoordinator : IDisposable
 
             var signature = TrainMarkSignature.Create(mark);
             var hasKnown = _known.TryGetValue(key, out var known);
-            if (hasKnown && known.Signature == signature) continue;
+            if (hasKnown && known.Signature == signature && !_trainUpserts.Contains(key)) continue;
+            if (!_trainUpserts.TrySend(key, signature, now)) continue;
 
             upserts.Add(ToSyncMark(mark, hasKnown ? known.Revision : 0));
             if (mark.Dead && (!hasKnown || !known.Dead)) newlyDead.Add(SyncKey.From(key));
-            _known[key] = new KnownMark(signature, hasKnown ? known.Revision : 0, mark.Dead);
         }
 
-        var removed = _known.Keys.Where(k => !present.Contains(k)).ToList();
-        foreach (var key in removed) _known.Remove(key);
+        var removed = _known.Keys.Concat(_trainUpserts.Keys).Distinct().Where(k => !present.Contains(k)).ToList();
+        foreach (var key in removed) { _known.Remove(key); _trainUpserts.Forget(key); }
 
         if (upserts.Count > 0) _client.Send(new TrainUpsertMessage { Marks = upserts, Scouting = !_config.ScanningPaused });
         if (removed.Count > 0) _client.Send(new TrainRemoveMessage { Keys = removed.Select(SyncKey.From).ToList() });
@@ -895,6 +905,7 @@ public sealed partial class SyncCoordinator : IDisposable
     {
         if (_applying) return;
         _known.Clear();
+        _trainUpserts.Reset();
         _lastSentOrder = new();
         if (IsConnected && _config.SyncShareTrain)
             _client.Send(new TrainClearMessage());

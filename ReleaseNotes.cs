@@ -38,6 +38,10 @@ public static class ReleaseNotes
 
     public static readonly Release[] All =
     {
+        new("0.7.0.12", "2026-11-22", "More reliable train sharing.",
+        [
+            new("Train sharing", "Scouted marks retry sharing when an update is rejected or not confirmed.", Kihtli),
+        ]),
         new("0.7.0.11", "2026-11-21", "Community mapping and Turtle Scout exchange.",
         [
             new("S-rank mapping", "Bear and Faloop mapping updates now appear alongside plugin sightings.", Kihtli),

@@ -378,7 +378,7 @@ public sealed class WelcomeMessage
     public SyncFaloopStatus Faloop { get; set; } = new();
 }
 
-public sealed class ErrorMessage { public string Code { get; set; } = string.Empty; public string Message { get; set; } = string.Empty; }
+public sealed class ErrorMessage { public string? Operation { get; set; } public string Code { get; set; } = string.Empty; public string Message { get; set; } = string.Empty; }
 public sealed class ARankSightingsBroadcast { public List<ARankSighting> Sightings { get; set; } = new(); }
 public sealed class ARankLocationsBroadcast { public List<ARankLocation> Locations { get; set; } = new(); }
 public sealed class ARankUpdatesBroadcast
