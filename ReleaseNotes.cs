@@ -38,6 +38,10 @@ public static class ReleaseNotes
 
     public static readonly Release[] All =
     {
+        new("0.7.0.13", "2026-11-23", "Clearer train sharing status.",
+        [
+            new("Train sharing", "Train and /hht now warn when sharing is off, with a button to re-enable it.", Kihtli),
+        ]),
         new("0.7.0.12", "2026-11-22", "More reliable train sharing.",
         [
             new("Train sharing", "Scouted marks retry sharing when an update is rejected or not confirmed.", Kihtli),

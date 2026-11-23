@@ -401,11 +401,47 @@ public sealed partial class Plugin
                 _trainPopoutVisible = true;
         }
         ImGui.SetCursorPos(new Vector2(start.X, Math.Max(start.Y + height, ImGui.GetCursorPosY())));
+        DrawTrainSharingWarning();
         if (sharing && !_sync.HasCurrentTrainSnapshot)
             ImGui.TextWrapped("Waiting for the server's train. Shared updates resume after reconnecting.");
         else if (sharing && !_sync.SupportsTrainPresets)
             ImGui.TextWrapped("Shared presets need server 0.3.26 or later; ordinary train sharing remains available.");
         if (!string.IsNullOrWhiteSpace(_sync.PresetStatus)) ImGui.TextWrapped(_sync.PresetStatus);
+    }
+
+    private void DrawTrainSharingWarning()
+    {
+        if (_config.SyncEnabled && _config.SyncShareTrain) return;
+
+        ImGui.AlignTextToFramePadding();
+        ImGui.PushStyleColor(ImGuiCol.Text, HuntTheme.Warning);
+        ImGui.TextWrapped("Train sharing is off — this train is local.");
+        ImGui.PopStyleColor();
+
+        var configured = Sync.SyncCoordinator.TryBuildUri(_config.SyncServerUrl, out _, out _, _config.SyncAllowPlaintext)
+            && !string.IsNullOrWhiteSpace(_config.SyncPassword);
+        var label = configured ? "Enable sharing" : "Set up sharing";
+        HuntUi.SameLineIfFits(HuntUi.ButtonWidth(label));
+        ImGui.BeginDisabled(TrainMutationBusy);
+        var enable = HuntUi.Button("enable-train-sharing", label,
+            tooltip: configured
+                ? "Join the server's current train. Local-only marks are kept under Settings > Sharing > Upload saved local marks."
+                : "Open sharing settings to configure your server connection.");
+        ImGui.EndDisabled();
+        if (!enable || TrainMutationBusy) return;
+        if (!configured)
+        {
+            OpenPreferences(SettingsPage.Sharing);
+            return;
+        }
+
+        _config.SyncEnabled = true;
+        _config.SyncShareTrain = true;
+        _config.Save();
+        _lastPostResult = string.Empty;
+        // Undo disables train sharing without disconnecting other feeds, so
+        // force a fresh snapshot even if the last connection settings match.
+        _sync.ApplySettings(force: true);
     }
 
     private void DrawTrainContextFlagButton()
